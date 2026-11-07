@@ -18,27 +18,31 @@ enum FileScanner {
                 errorHandler: { _, _ in true }
             ) else { continue }
 
-            for case let fileURL as URL in enumerator {
-                let values = try? fileURL.resourceValues(forKeys: [
-                    .fileSizeKey, .contentModificationDateKey, .creationDateKey, .isDirectoryKey
-                ])
+            // Each file's lookup is released right away; a drive with hundreds of thousands of
+            // files would otherwise hold all of them in memory until the listing finishes.
+            while let next = autoreleasepool(invoking: { enumerator.nextObject() }) {
+                guard let fileURL = next as? URL else { continue }
+                let file: MediaFile? = autoreleasepool {
+                    let values = try? fileURL.resourceValues(forKeys: [
+                        .fileSizeKey, .contentModificationDateKey, .creationDateKey, .isDirectoryKey
+                    ])
 
-                if values?.isDirectory == true {
-                    if PremiereCacheFinder.projectAdjacentFolderNames.contains(fileURL.lastPathComponent) {
-                        enumerator.skipDescendants()
+                    if values?.isDirectory == true {
+                        if PremiereCacheFinder.projectAdjacentFolderNames.contains(fileURL.lastPathComponent) {
+                            enumerator.skipDescendants()
+                        }
+                        return nil
                     }
-                    continue
+
+                    let ext = fileURL.pathExtension.lowercased()
+                    guard videoExtensions.contains(ext) else { return nil }
+
+                    progress?(fileURL.lastPathComponent)
+                    return MediaFile(path: fileURL.path, sizeBytes: Int64(values?.fileSize ?? 0),
+                                     modificationDate: values?.contentModificationDate ?? Date(),
+                                     creationDate: values?.creationDate)
                 }
-
-                let ext = fileURL.pathExtension.lowercased()
-                guard videoExtensions.contains(ext) else { continue }
-
-                let size = Int64(values?.fileSize ?? 0)
-                let mtime = values?.contentModificationDate ?? Date()
-                let ctime = values?.creationDate
-
-                progress?(fileURL.lastPathComponent)
-                results.append(MediaFile(path: fileURL.path, sizeBytes: size, modificationDate: mtime, creationDate: ctime))
+                if let file { results.append(file) }
             }
         }
         return results
