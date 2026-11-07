@@ -14,6 +14,7 @@ cd "${0:A:h}"
 
 BUILD="$PWD/build/release"
 APP="$BUILD/Build/Products/Release/Lens.app"
+mkdir -p "$HOME/Desktop"
 OUT="$HOME/Desktop/Lens.zip"
 
 python3 generate_xcodeproj.py >/dev/null
@@ -43,9 +44,12 @@ fi
 rm -f "$OUT"
 ditto -c -k --keepParent "$STAGE/Lens.app" "$OUT"
 
-if [[ -n "$IDENTITY" ]] && xcrun notarytool history --keychain-profile lens-notary >/dev/null 2>&1; then
+# On GitHub's build machines the notary credentials live in a temporary keychain.
+NOTARY_ARGS=(--keychain-profile lens-notary)
+[[ -n "${NOTARY_KEYCHAIN:-}" ]] && NOTARY_ARGS+=(--keychain "$NOTARY_KEYCHAIN")
+if [[ -n "$IDENTITY" ]] && xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1; then
   echo "Notarizing (a few minutes)…"
-  xcrun notarytool submit "$OUT" --keychain-profile lens-notary --wait
+  xcrun notarytool submit "$OUT" "${NOTARY_ARGS[@]}" --wait
   xcrun stapler staple "$STAGE/Lens.app"
   rm -f "$OUT" && ditto -c -k --keepParent "$STAGE/Lens.app" "$OUT"
   echo "Notarized: double-click to open."

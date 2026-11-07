@@ -1,0 +1,78 @@
+# Merging a pull request into main ships it to Emma: build, sign with Sean's Developer ID,
+# notarize with Apple, publish to 1047ventures/lens-releases. Lens on her Mac then offers "Install".
+name: Release to Emma
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "What changed, in plain words for Emma"
+        required: false
+
+concurrency: release
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Install the signing certificate (temporary keychain, deleted with the runner)
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/lens.keychain-db"
+          KCPW="$(uuidgen)"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          echo "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$DEVELOPER_ID_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCPW" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          xcrun notarytool store-credentials lens-notary --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+            --team-id J55RP92WN6 --keychain "$KC"
+          echo "NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/Desktop"
+
+      - name: Work out the version and release notes
+        id: v
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          MANUAL_NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          LAST=$(gh release view --repo 1047ventures/lens-releases --json tagName -q .tagName 2>/dev/null || echo "v1.0.0")
+          IFS=. read -r MA MI PA <<< "${LAST#v}"
+          echo "version=$MA.$MI.$((PA + 1))" >> "$GITHUB_OUTPUT"
+          NOTES=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Release note:[[:space:]]*//p' | head -1)
+          [ -z "$NOTES" ] && NOTES="$MANUAL_NOTES"
+          [ -z "$NOTES" ] && NOTES="$PR_TITLE"
+          [ -z "$NOTES" ] && NOTES="Improvements and fixes."
+          { echo "notes<<EOF"; echo "$NOTES"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign, notarize and publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          git config user.name "Lens release"
+          git config user.email "lens-release@users.noreply.github.com"
+          ./release.sh "${{ steps.v.outputs.version }}" "${{ steps.v.outputs.notes }}"
