@@ -56,7 +56,8 @@ enum PremiereProjectParser {
 
         var pathToProjects: [String: [String]] = [:]
         for project in projectFiles {
-            let linked = linkedMediaPaths(prprojPath: project.path)
+            // Release each project's unzipped text before opening the next one.
+            let linked = autoreleasepool { linkedMediaPaths(prprojPath: project.path) }
             for path in linked {
                 pathToProjects[path, default: []].append(project.lastPathComponent)
             }
