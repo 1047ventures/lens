@@ -74,7 +74,7 @@ struct AskLensView: View {
                     if ai.busy {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Thinking…").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text(ai.status ?? "Thinking…").font(.system(size: 12)).foregroundStyle(Theme.muted)
                         }
                         .id("busy")
                     }

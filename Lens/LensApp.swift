@@ -2,9 +2,6 @@ import SwiftUI
 
 @main
 struct LensApp: App {
-    init() {
-        LegacyMigration.run()
-    }
 
     var body: some Scene {
         WindowGroup("Lens") {

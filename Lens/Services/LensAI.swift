@@ -49,6 +49,8 @@ final class LensAI: ObservableObject {
 
     @Published private(set) var items: [Item] = []
     @Published private(set) var busy = false
+    /// What Lens is doing right now ("Searching the web…"), shown while it works.
+    @Published private(set) var status: String?
     @Published private(set) var notes: [Note] = []
     @Published private(set) var requests: [ChangeRequest] = []
     @Published private(set) var monthSpend: Double = 0
@@ -136,30 +138,31 @@ final class LensAI: ObservableObject {
         items.append(Item(kind: .user, text: trimmed))
         messages.append(["role": "user", "content": [["type": "text", "text": "<screen>\(screenContext())</screen>\n\n\(trimmed)"]]])
         busy = true
-        defer { busy = false }
+        defer { busy = false; status = nil }
 
         do {
-            for _ in 0..<12 {   // at most 12 tool rounds per question
-                let response = try await call(key: key)
-                let content = response["content"] as? [[String: Any]] ?? []
+            for _ in 0..<12 {   // at most 12 rounds of looking things up per question
+                let (content, stop) = try await stream(key: key)
                 messages.append(["role": "assistant", "content": content])
-                for block in content where block["type"] as? String == "text" {
-                    if let t = block["text"] as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        items.append(Item(kind: .assistant, text: t))
-                    }
-                }
-                let stop = response["stop_reason"] as? String
+                status = nil
                 if stop == "refusal" {
                     items.append(Item(kind: .info, text: "Claude declined that one. Try rephrasing it."))
                     return
                 }
+                if stop == "pause_turn" { continue }   // a long web search: let it carry on
                 guard stop == "tool_use" else { return }
 
                 var results: [[String: Any]] = []
                 for block in content where block["type"] as? String == "tool_use" {
                     guard let id = block["id"] as? String, let name = block["name"] as? String else { continue }
                     let input = block["input"] as? [String: Any] ?? [:]
-                    let (text, isError) = await runTool(id: id, name: name, input: input)
+                    let (text, isError): (String, Bool)
+                    if input["_invalid"] != nil {
+                        (text, isError) = ("INVALID_JSON: the tool input was cut off or malformed. Try again.", true)
+                    } else {
+                        status = Self.statusText(for: name)
+                        (text, isError) = await runTool(id: id, name: name, input: input)
+                    }
                     var result: [String: Any] = ["type": "tool_result", "tool_use_id": id, "content": text]
                     if isError { result["is_error"] = true }
                     results.append(result)
@@ -176,10 +179,10 @@ final class LensAI: ObservableObject {
 
     // MARK: API call
 
-    private func call(key: String) async throws -> [String: Any] {
+    private func request(key: String, stream: Bool) throws -> URLRequest {
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
-        request.timeoutInterval = 300
+        request.timeoutInterval = 600
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(key, forHTTPHeaderField: "x-api-key")
         request.setValue("2026-10-21", forHTTPHeaderField: "anthropic-version")
@@ -190,9 +193,9 @@ final class LensAI: ObservableObject {
             system.append(["type": "text", "text": "What Emma has taught you (follow these):\n" +
                 notes.map { "- [\($0.id.uuidString.prefix(8))] \($0.text)" }.joined(separator: "\n")])
         }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": Self.model,
-            "max_tokens": 16000,
+            "max_tokens": stream ? 32000 : 16000,
             "system": system,
             "tools": Self.tools,
             "messages": messages,
@@ -201,22 +204,129 @@ final class LensAI: ObservableObject {
             // If Claude declines on a safety classifier, the API retries on a suitable model.
             "fallbacks": "default",
         ]
+        if stream { body["stream"] = true }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+    private func failure(status: Int, json: [String: Any]) -> AIError {
+        let message = ((json["error"] as? [String: Any])?["message"] as? String) ?? "HTTP \(status)"
+        switch status {
+        case 401: return AIError("The Claude API key isn't valid. Check it in Log-ins.")
+        case 429: return AIError("Claude is busy or the monthly limit was hit. Try again in a minute.")
+        case 529, 500...599: return AIError("Claude is having a moment. Try again shortly.")
+        default: return AIError("Claude couldn't answer: \(message)")
+        }
+    }
+
+    /// One-shot call, used for the key test.
+    private func call(key: String) async throws -> [String: Any] {
+        let (data, response) = try await URLSession.shared.data(for: request(key: key, stream: false))
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
-            let message = ((json["error"] as? [String: Any])?["message"] as? String) ?? "HTTP \(status)"
-            switch status {
-            case 401: throw AIError("The Claude API key isn't valid. Check it in Log-ins.")
-            case 429: throw AIError("Claude is busy or the monthly limit was hit. Try again in a minute.")
-            case 529, 500...599: throw AIError("Claude is having a moment. Try again shortly.")
-            default: throw AIError("Claude couldn't answer: \(message)")
-            }
-        }
+        guard status == 200 else { throw failure(status: status, json: json) }
         if let usage = json["usage"] as? [String: Any] { record(usage) }
         return json
+    }
+
+    /// Streams one turn: text appears in the panel word by word, and each step shows as it
+    /// starts. Rebuilds the full content blocks (thinking, tool calls, search results) so they
+    /// go back to the API unchanged next turn.
+    private func stream(key: String) async throws -> (content: [[String: Any]], stop: String?) {
+        let (bytes, response) = try await URLSession.shared.bytes(for: request(key: key, stream: true))
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard code == 200 else {
+            var data = Data()
+            for try await byte in bytes { data.append(byte) }
+            throw failure(status: code, json: (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:])
+        }
+
+        var blocks: [Int: [String: Any]] = [:]
+        var partialJSON: [Int: String] = [:]
+        var liveItems: [Int: UUID] = [:]
+        var usage: [String: Any] = [:]
+        var stop: String?
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data: "),
+                  let event = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(6).utf8)) as? [String: Any],
+                  let type = event["type"] as? String else { continue }
+            let index = event["index"] as? Int ?? 0
+            switch type {
+            case "message_start":
+                if let u = (event["message"] as? [String: Any])?["usage"] as? [String: Any] { usage.merge(u) { _, new in new } }
+            case "content_block_start":
+                var block = event["content_block"] as? [String: Any] ?? [:]
+                switch block["type"] as? String {
+                case "text":
+                    block["text"] = block["text"] as? String ?? ""
+                    let item = Item(kind: .assistant, text: block["text"] as? String ?? "")
+                    items.append(item)
+                    liveItems[index] = item.id
+                case "tool_use", "server_tool_use":
+                    partialJSON[index] = ""
+                    if let name = block["name"] as? String { status = Self.statusText(for: name) }
+                default: break
+                }
+                blocks[index] = block
+            case "content_block_delta":
+                guard let delta = event["delta"] as? [String: Any], var block = blocks[index] else { continue }
+                switch delta["type"] as? String {
+                case "text_delta":
+                    let piece = delta["text"] as? String ?? ""
+                    block["text"] = (block["text"] as? String ?? "") + piece
+                    if let id = liveItems[index], let i = items.firstIndex(where: { $0.id == id }) { items[i].text += piece }
+                case "input_json_delta":
+                    partialJSON[index, default: ""] += delta["partial_json"] as? String ?? ""
+                case "thinking_delta":
+                    block["thinking"] = (block["thinking"] as? String ?? "") + (delta["thinking"] as? String ?? "")
+                case "signature_delta":
+                    block["signature"] = delta["signature"]
+                case "citations_delta":
+                    var list = block["citations"] as? [Any] ?? []
+                    if let c = delta["citation"] { list.append(c) }
+                    block["citations"] = list
+                default: break
+                }
+                blocks[index] = block
+            case "content_block_stop":
+                if let json = partialJSON[index] {
+                    if json.isEmpty { blocks[index]?["input"] = [String: Any]() }
+                    else if let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] { blocks[index]?["input"] = obj }
+                    else { blocks[index]?["input"] = ["_invalid": json] }
+                }
+            case "message_delta":
+                if let reason = (event["delta"] as? [String: Any])?["stop_reason"] as? String { stop = reason }
+                if let u = event["usage"] as? [String: Any] { usage.merge(u) { _, new in new } }
+            case "error":
+                let message = ((event["error"] as? [String: Any])?["message"] as? String) ?? "the connection dropped"
+                throw AIError("Claude stopped partway: \(message)")
+            default: break
+            }
+        }
+        record(usage)
+        // Drop text blocks that stayed empty (the API rejects them when sent back) and their empty bubbles.
+        let content = blocks.keys.sorted().compactMap { i -> [String: Any]? in
+            let block = blocks[i]!
+            if block["type"] as? String == "text", (block["text"] as? String ?? "").isEmpty { return nil }
+            return block
+        }
+        items.removeAll { item in item.kind == .assistant && item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && liveItems.values.contains(item.id) }
+        return (content, stop)
+    }
+
+    static func statusText(for tool: String) -> String {
+        switch tool {
+        case "web_search": return "Searching the web…"
+        case "web_fetch": return "Reading a web page…"
+        case "list_deals", "get_deal": return "Looking through the pipeline…"
+        case "list_projects", "get_project": return "Checking projects…"
+        case "get_money": return "Checking the books…"
+        case "get_rates": return "Checking your rates…"
+        case "draft_email": return "Drafting the email…"
+        case "open_screen": return "Opening it…"
+        default: return "Getting that ready…"
+        }
     }
 
     struct AIError: LocalizedError {
@@ -235,8 +345,10 @@ final class LensAI: ObservableObject {
     private func record(_ usage: [String: Any]) {
         func n(_ k: String) -> Double { Double((usage[k] as? Int) ?? 0) }
         // Claude Opus 5.5: $4 / M input, $20 / M output, cache reads $0.20 / M, cache writes 1.25×.
+        let searches = Double(((usage["server_tool_use"] as? [String: Any])?["web_search_requests"] as? Int) ?? 0)
+        // Web searches are $10 per 1,000.
         let cost = n("input_tokens") * 4 / 1e6 + n("output_tokens") * 20 / 1e6
-            + n("cache_read_input_tokens") * 0.2 / 1e6 + n("cache_creation_input_tokens") * 5 / 1e6
+            + n("cache_read_input_tokens") * 0.2 / 1e6 + n("cache_creation_input_tokens") * 5 / 1e6 + searches * 0.01
         let month = Date().formatted(.dateTime.year().month(.twoDigits))
         if spend.month != month { spend = Spend(month: month, dollars: 0) }
         spend.dollars += cost
@@ -540,9 +652,12 @@ final class LensAI: ObservableObject {
     doesn't exist), say so and offer request_app_change with a clear title and a write-up Sean can build from: \
     what she wants, why, and an example.
     - The <screen> tag at the start of her message says what she is looking at; "this deal" means that one.
+    - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
+    history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
     """
 
     static let tools: [[String: Any]] = [
+        ["type": "web_search_20260209", "name": "web_search", "max_uses": 5],
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history.",
@@ -581,7 +696,7 @@ final class LensAI: ObservableObject {
     ]
 
     private static func tool(_ name: String, _ description: String, _ props: [String: Any], _ required: [String]) -> [String: Any] {
-        ["name": name, "description": description,
+        ["name": name, "description": description, "eager_input_streaming": true,
          "input_schema": ["type": "object", "properties": props, "required": required]]
     }
 }
