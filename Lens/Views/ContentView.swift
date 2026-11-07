@@ -98,8 +98,20 @@ struct ContentView: View {
                     Button {
                         navigator.askOpen.toggle()
                     } label: {
-                        Label("Ask Lens", systemImage: "sparkles")
+                        // Words, not just an icon, so it's obvious what it does.
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                            Text("Ask Lens").fontWeight(.semibold)
+                        }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Palette.violet.opacity(navigator.askOpen ? 0.35 : 0.2))
+                        .foregroundStyle(Theme.text)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Palette.violet.opacity(0.55)))
                     }
+                    .buttonStyle(.plain)
                     .keyboardShortcut("k", modifiers: .command)
                     .help("Ask Lens (⌘K)")
                 }
