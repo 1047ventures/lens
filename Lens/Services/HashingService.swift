@@ -25,13 +25,19 @@ enum HashingService {
         }
 
         for offset in offsets {
-            do {
-                try handle.seek(toOffset: offset)
-                let data = handle.readData(ofLength: chunkSize)
-                hasher.update(data: data)
-            } catch {
-                return nil
+            // Each chunk is released as soon as it's hashed. Without the pool, every chunk read
+            // during a scan stays in memory until the whole scan ends.
+            let ok: Bool = autoreleasepool {
+                do {
+                    try handle.seek(toOffset: offset)
+                    let data = try handle.read(upToCount: chunkSize) ?? Data()
+                    hasher.update(data: data)
+                    return true
+                } catch {
+                    return false
+                }
             }
+            if !ok { return nil }
         }
 
         return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
@@ -42,11 +48,26 @@ enum HashingService {
         defer { try? handle.close() }
 
         var hasher = SHA256()
+        var failed = false
+        // Reads the file 4 MB at a time and lets go of each piece once it's hashed. Before this,
+        // confirming duplicates kept every byte of every compared clip in memory until the scan
+        // finished, which is how a scan of three footage drives reached 20 GB.
         while true {
-            let data = handle.readData(ofLength: 4 * 1024 * 1024)
-            if data.isEmpty { break }
-            hasher.update(data: data)
+            let finished: Bool = autoreleasepool {
+                let chunk: Data?
+                do {
+                    chunk = try handle.read(upToCount: 4 * 1024 * 1024)
+                } catch {
+                    failed = true
+                    return true
+                }
+                guard let chunk, !chunk.isEmpty else { return true }
+                hasher.update(data: chunk)
+                return false
+            }
+            if finished { break }
         }
+        if failed { return nil }
         return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
     }
 
