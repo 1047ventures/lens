@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates a minimal but complete Deadweight.xcodeproj/project.pbxproj.
+Generates a minimal but complete Lens.xcodeproj/project.pbxproj.
 Run once to create the Xcode project, then open with Xcode (or build with xcodebuild).
 Adapted from ../PhotosPruner/generate_xcodeproj.py, generalized to support an
 arbitrary number of source sub-groups (Models/Services/ViewModels/Views).
@@ -12,7 +12,7 @@ import uuid
 def make_uuid():
     return uuid.uuid4().hex.upper()[:24]
 
-APP_NAME = "Deadweight"
+APP_NAME = "Lens"
 
 # ---- File references ----
 FILES = [
@@ -63,6 +63,10 @@ FILES = [
     (f"{APP_NAME}/Views/DealDetailView.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProposalBuilderView.swift",       f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/LoginsView.swift",                f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/AskLensView.swift",               f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Services/Updater.swift",                f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/LensAI.swift",                 f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/LegacyMigration.swift",        f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/Connections.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Models/Deal.swift",                     f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Services/Estimator.swift",              f"{APP_NAME}/Services"),
@@ -333,7 +337,7 @@ def build_configs():
 \t\t\t\tDEVELOPMENT_TEAM = "";
 \t\t\t\tINFOPLIST_FILE = {APP_NAME}/Info.plist;
 \t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "com.example.{APP_NAME}";
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "com.1047ventures.lens";
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = macosx;
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
@@ -351,7 +355,7 @@ def build_configs():
 \t\t\t\tDEVELOPMENT_TEAM = "";
 \t\t\t\tINFOPLIST_FILE = {APP_NAME}/Info.plist;
 \t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "com.example.{APP_NAME}";
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "com.1047ventures.lens";
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = macosx;
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;

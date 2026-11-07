@@ -1,6 +1,6 @@
 import Foundation
 
-/// Append-only log of every file action Deadweight has ever taken, grouped into
+/// Append-only log of every file action Lens has ever taken, grouped into
 /// undoable batches. This is what makes auto-apply mode safe to leave unattended.
 final class ActionLogStore {
     static let shared = ActionLogStore()
@@ -55,7 +55,7 @@ final class ActionLogStore {
 
     static var storeURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Deadweight", isDirectory: true)
+            .appendingPathComponent("Lens", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("action_log.json")
     }

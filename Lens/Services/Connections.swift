@@ -234,7 +234,7 @@ final class LoopbackReceiver: @unchecked Sendable {
 // MARK: - Log-ins
 
 enum LoginID: String, CaseIterable, Identifiable, Codable {
-    case google, calendar, drive, zoom, website, social, directories, bank, paypal, venmo, homeServer
+    case google, calendar, drive, zoom, website, social, directories, bank, paypal, venmo, claude, github, homeServer
     var id: String { rawValue }
 }
 
@@ -429,6 +429,10 @@ final class ConnectionStore: ObservableObject {
         case .bank, .paypal, .venmo:
             guard state.statementsFolder != nil else { return .todo("Needs a statements folder") }
             return isConfirmed(id.rawValue) ? .connected(gmail != nil ? "Statements + payment emails" : "Monthly statements") : .partial("Folder ready; first export pending")
+        case .claude:
+            return (Keychain.get("anthropic.apiKey") ?? "").isEmpty ? .todo("Needs an API key") : .connected("Ask Lens is on")
+        case .github:
+            return (Keychain.get("github.issuesToken") ?? "").isEmpty ? .partial("Requests go by email for now") : .connected("Requests go to GitHub")
         case .homeServer:
             return .later("Once the home server is set up")
         }

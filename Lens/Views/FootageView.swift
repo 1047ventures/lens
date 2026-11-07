@@ -5,7 +5,7 @@ enum FootageRoute: Hashable {
     case duplicates, cache, organize, retirees
 }
 
-/// The Deadweight engine, living inside the business hub: where the SSD's space is going,
+/// The footage engine (formerly Deadweight), living inside the business hub: where the SSD's space is going,
 /// one-click ways to get it back, and footage grouped by project.
 struct FootageView: View {
     @EnvironmentObject private var viewModel: ScanViewModel

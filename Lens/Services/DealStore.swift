@@ -114,7 +114,7 @@ final class DealStore: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
         if let data = try? Data(contentsOf: Self.url("deals.json")) {
             do { deals = try decoder.decode([Deal].self, from: data) }
-            catch { NSLog("Deadweight: couldn't read deals.json: \(error)") }
+            catch { NSLog("Lens: couldn't read deals.json: \(error)") }
         }
         // Merge the saved card over the defaults, so fields added in later versions keep their defaults.
         if let data = try? Data(contentsOf: Self.url("rate_card.json")),
@@ -144,7 +144,7 @@ final class DealStore: ObservableObject {
 
     static func url(_ name: String) -> URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Deadweight", isDirectory: true)
+            .appendingPathComponent("Lens", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(name)
     }

@@ -36,6 +36,8 @@ final class Navigator: ObservableObject {
     @Published var dealID: UUID?
     /// The deal whose proposal builder is open.
     @Published var builderDealID: UUID?
+    /// Whether the Ask Lens panel is open.
+    @Published var askOpen = false
 
     func open(_ section: SidebarSection) {
         self.section = section
@@ -64,6 +66,7 @@ struct ContentView: View {
     @StateObject private var projects = ProjectStore()
     @StateObject private var deals = DealStore()
     @StateObject private var logins = ConnectionStore()
+    @StateObject private var ai = LensAI()
     @StateObject private var navigator = Navigator()
 
     var body: some View {
@@ -97,14 +100,32 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.ground)
+            .inspector(isPresented: $navigator.askOpen) {
+                AskLensView()
+                    .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        navigator.askOpen.toggle()
+                    } label: {
+                        Label("Ask Lens", systemImage: "sparkles")
+                    }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .help("Ask Lens (⌘K)")
+                }
+            }
         }
         .environmentObject(viewModel)
         .environmentObject(projects)
         .environmentObject(deals)
         .environmentObject(logins)
+        .environmentObject(ai)
         .environmentObject(navigator)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
+            ai.attach(deals: deals, projects: projects, navigator: navigator)
+            Updater.shared.start()
             if !viewModel.roots.isEmpty && !viewModel.hasScanned { viewModel.scan() }
         }
         // After every scan (including the rescan an undo triggers), notice footage that came back from the server.
@@ -184,6 +205,7 @@ struct Sidebar: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
+                UpdateBanner()
                 Button {
                     navigator.open(.settings)
                 } label: {
@@ -289,6 +311,51 @@ struct ComingSoonView: View {
             }
             .padding(40)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+
+/// Shows up at the bottom of the sidebar when a new version of Lens is ready.
+struct UpdateBanner: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        if let release = updater.available {
+            Button {
+                Task { await updater.install() }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.circle.fill").font(.system(size: 18))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Lens \(release.version) is ready").font(.system(size: 12, weight: .semibold))
+                        Text(phaseText ?? "Install and restart").font(.system(size: 11)).opacity(0.8)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(Theme.teal.opacity(0.2))
+                .foregroundStyle(Theme.text)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(updater.phase == .downloading || updater.phase == .installing)
+            .help(release.notes)
+        } else if let text = phaseText {
+            Text(text).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var phaseText: String? {
+        switch updater.phase {
+        case .checking: return "Checking for updates…"
+        case .upToDate: return "Lens \(updater.currentVersion) is up to date"
+        case .downloading: return "Downloading…"
+        case .installing: return "Installing…"
+        case .failed(let message): return message
+        case .idle: return nil
         }
     }
 }

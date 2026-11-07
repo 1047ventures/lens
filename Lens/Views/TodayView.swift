@@ -145,7 +145,7 @@ struct TodayView: View {
 
         if viewModel.roots.isEmpty {
             result.append(Item(tone: .neutral, kicker: "Getting started", title: "Add Emma's drive",
-                               detail: "Point Deadweight at the SSD so it can see the footage",
+                               detail: "Point Lens at the SSD so it can see the footage",
                                actionTitle: "Go to Footage") { navigator.open(.footage) })
         } else if !viewModel.hasScanned {
             result.append(Item(tone: .neutral, kicker: "Getting started", title: "Scan the drive",

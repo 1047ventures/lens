@@ -49,7 +49,7 @@ struct ProjectDetailView: View {
                 projects.delete(project)
             }
         } message: {
-            Text("This removes the project from Deadweight. Its footage folder stays where it is.")
+            Text("This removes the project from Lens. Its footage folder stays where it is.")
         }
     }
 

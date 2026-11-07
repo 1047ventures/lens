@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Lens</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -12,20 +14,18 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>Lens</string>
-	<key>CFBundleDisplayName</key>
-	<string>Lens</string>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
-	<key>NSCalendarsUsageDescription</key>
-	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

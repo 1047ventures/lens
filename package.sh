@@ -8,17 +8,17 @@
 #   profile named "lens-notary" exists, notarizes it too, so Emma can just double-click it.
 #   Otherwise it signs locally, and Emma opens it the first time from System Settings (see below).
 # - Never includes any data: Lens starts empty on her Mac. Projects, deals and log-ins live in
-#   ~/Library/Application Support/Deadweight on each Mac, not inside the app.
+#   ~/Library/Application Support/Lens on each Mac, not inside the app.
 set -euo pipefail
 cd "${0:A:h}"
 
 BUILD="$PWD/build/release"
-APP="$BUILD/Build/Products/Release/Deadweight.app"
+APP="$BUILD/Build/Products/Release/Lens.app"
 OUT="$HOME/Desktop/Lens.zip"
 
 python3 generate_xcodeproj.py >/dev/null
 rm -rf "$BUILD"
-xcodebuild -project Deadweight.xcodeproj -scheme Deadweight -configuration Release \
+xcodebuild -project Lens.xcodeproj -scheme Lens -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath "$BUILD" \
   ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
 [[ -d "$APP" ]] || { echo "Build failed"; exit 1; }
@@ -34,7 +34,7 @@ IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Applica
 if [[ -n "$IDENTITY" ]]; then
   echo "Signing with: $IDENTITY"
   codesign --force --deep --options runtime --timestamp \
-    --entitlements Deadweight/Deadweight.entitlements --sign "$IDENTITY" "$STAGE/Lens.app"
+    --entitlements Lens/Lens.entitlements --sign "$IDENTITY" "$STAGE/Lens.app"
 else
   echo "No Developer ID certificate found: signing locally (Emma uses Open Anyway the first time)."
   codesign --force --deep --sign - "$STAGE/Lens.app"

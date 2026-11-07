@@ -88,7 +88,7 @@ final class TrustSettings: ObservableObject, Codable {
 
     static var storeURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Deadweight", isDirectory: true)
+            .appendingPathComponent("Lens", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("trust_settings.json")
     }

@@ -19,7 +19,7 @@ enum ProposalRenderer {
             try html.write(to: file, atomically: true, encoding: .utf8)
             NSWorkspace.shared.open(file)
         } catch {
-            NSLog("Deadweight: couldn't write proposal: \(error)")
+            NSLog("Lens: couldn't write proposal: \(error)")
         }
     }
 

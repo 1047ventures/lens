@@ -19,6 +19,7 @@ struct LoginsView: View {
         Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes her calls.", items: [.zoom]),
         Group(id: "Where clients find her", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
         Group(id: "Money", color: Palette.lime, note: "Read-only. Lens can't move a cent.", items: [.bank, .paypal, .venmo]),
+        Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending ideas to Sean.", items: [.claude, .github]),
         Group(id: "Coming later", color: Palette.slate, note: "", items: [.homeServer]),
     ]
 
@@ -177,6 +178,8 @@ struct LoginsView: View {
         case .social: confirm("social", "Done: switched to a professional account")
         case .directories: directoryControls
         case .bank, .paypal, .venmo: statementControls(id)
+        case .claude: ClaudeControls()
+        case .github: GitHubControls()
         case .homeServer: EmptyView()
         }
     }
@@ -372,6 +375,25 @@ struct LoginsView: View {
             never: "Venmo has no app access for personal accounts; nothing reads it directly.",
             steps: ["In the Venmo app or website: Statements → **Download CSV** each month into the statements folder.",
                     "Keep payment email notifications on."]),
+        .claude: Info(
+            name: "Claude (Ask Lens)", icon: "sparkles",
+            covers: "The assistant built into Lens: questions, drafts, changes she approves",
+            gets: ["Answers from Lens's own data: deals, projects, rates",
+                   "Proposes changes (new inquiries, discovery answers, follow-ups, rates) that wait for her Approve tap",
+                   "Remembers how she likes to work, in a list she can edit"],
+            never: "Never sends email, never moves money, never changes anything she hasn't approved.",
+            steps: ["Sign up at [console.anthropic.com](https://console.anthropic.com) (use the business email).",
+                    "Under **Billing**, add a card and set a **monthly spend limit** (around $100 is plenty to start).",
+                    "Under **API Keys**, click **Create Key**, name it Lens, and copy it.",
+                    "Paste it below and click **Save**, then **Test**."]),
+        .github: Info(
+            name: "GitHub (ideas for Sean)", icon: "lightbulb.fill",
+            covers: "When she asks Lens for a new feature, it lands straight in Sean's to-do list",
+            gets: ["Can open new Issues on Lens's private repo, and nothing else"],
+            never: "Can't see or change any code, and can't touch any other repo.",
+            steps: ["Sean: on GitHub, go to [Settings → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new).",
+                    "Repository access: **Only select repositories → 1047ventures/lens**. Permissions: **Issues → Read and write**. Nothing else.",
+                    "Generate it, paste it below on Emma's Mac, and Save. Until then, requests open an email to Sean instead."]),
         .homeServer: Info(
             name: "Home server", icon: "server.rack",
             covers: "Local AI, storage, and the phone sidekick",
@@ -419,5 +441,50 @@ private struct GoogleControls: View {
             }
         }
         .onAppear { clientID = logins.googleClientID }
+    }
+}
+
+
+private struct ClaudeControls: View {
+    @EnvironmentObject private var ai: LensAI
+    @State private var key = ""
+    @State private var testing = false
+    @State private var result: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                SecureField(ai.hasKey ? "Key saved · paste a new one to replace it" : "sk-ant-…", text: $key)
+                    .textFieldStyle(.roundedBorder).frame(width: 320)
+                Button("Save") { ai.saveKey(key); key = ""; result = nil }
+                    .buttonStyle(SecondaryButtonStyle()).disabled(key.isEmpty)
+                Button(testing ? "Testing…" : "Test") {
+                    testing = true
+                    Task {
+                        let error = await ai.testKey()
+                        result = error ?? "Works. Ask Lens is ready (⌘K)."
+                        testing = false
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle()).disabled(!ai.hasKey || testing)
+            }
+            if let result {
+                Text(result).font(.system(size: 12)).foregroundStyle(result.hasPrefix("Works") ? Theme.teal : Theme.coral)
+            }
+        }
+    }
+}
+
+private struct GitHubControls: View {
+    @EnvironmentObject private var ai: LensAI
+    @State private var token = ""
+
+    var body: some View {
+        HStack(spacing: 10) {
+            SecureField(ai.hasGitHub ? "Token saved · paste a new one to replace it" : "github_pat_…", text: $token)
+                .textFieldStyle(.roundedBorder).frame(width: 320)
+            Button("Save") { ai.saveGitHubToken(token); token = "" }
+                .buttonStyle(SecondaryButtonStyle()).disabled(token.isEmpty)
+        }
     }
 }

@@ -57,7 +57,7 @@ enum ThumbnailService {
 
     private static var cacheDirectory: URL = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Deadweight/Thumbnails", isDirectory: true)
+            .appendingPathComponent("Lens/Thumbnails", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()

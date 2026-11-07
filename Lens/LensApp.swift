@@ -1,7 +1,11 @@
 import SwiftUI
 
 @main
-struct DeadweightApp: App {
+struct LensApp: App {
+    init() {
+        LegacyMigration.run()
+    }
+
     var body: some Scene {
         WindowGroup("Lens") {
             ContentView()
@@ -11,5 +15,12 @@ struct DeadweightApp: App {
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { await Updater.shared.check() }
+                }
+            }
+        }
     }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds a realistic sample setup for Deadweight to play with:
+"""Builds a realistic sample setup for Lens to play with:
 - a 3.2 GB disk image that mounts as its own drive, "Emma SSD"
 - real video clips in project folders, loose card dumps, duplicates, Premiere cache
 - a "Home Server" folder with one archived project
@@ -9,11 +9,11 @@ import json, os, subprocess, uuid, shutil, time
 from datetime import datetime, timezone
 
 HOME = os.path.expanduser("~")
-BASE = os.path.join(HOME, "Deadweight Sample")
+BASE = os.path.join(HOME, "Lens Sample")
 IMAGE = os.path.join(BASE, "Emma SSD.sparseimage")
 SSD = "/Volumes/Emma SSD"
 SERVER = os.path.join(BASE, "Home Server")
-APP_SUPPORT = os.path.join(HOME, "Library/Application Support/Deadweight")
+APP_SUPPORT = os.path.join(HOME, "Library/Application Support/Lens")
 FFMPEG = "/opt/homebrew/bin/ffmpeg"
 
 def run(*args):
@@ -345,7 +345,7 @@ for stale in ("action_log.json",):
     p = os.path.join(APP_SUPPORT, stale)
     if os.path.exists(p):
         os.remove(p)
-run("defaults", "write", "com.example.Deadweight", "scanRootPaths", "-array", SSD)
+run("defaults", "write", "com.1047ventures.lens", "scanRootPaths", "-array", SSD)
 
 used = shutil.disk_usage(SSD)
 print(f"Emma SSD: {used.used / 1e9:.2f} GB used of {used.total / 1e9:.2f} GB ({used.used / used.total:.0%})")

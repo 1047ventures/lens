@@ -6,7 +6,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Trust level — \"I trust you\"") {
-                Text("Off (default): every batch is shown for review before anything moves. On: Deadweight applies that action type automatically on future scans, but a batch above your checkpoint below still pauses for confirmation, and every action stays undoable.")
+                Text("Off (default): every batch is shown for review before anything moves. On: Lens applies that action type automatically on future scans, but a batch above your checkpoint below still pauses for confirmation, and every action stays undoable.")
                     .foregroundColor(.secondary)
                     .font(.caption)
 
