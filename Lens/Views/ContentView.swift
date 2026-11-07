@@ -67,6 +67,7 @@ struct ContentView: View {
     @StateObject private var deals = DealStore()
     @StateObject private var logins = ConnectionStore()
     @StateObject private var ai = LensAI()
+    @StateObject private var money = MoneyStore()
     @StateObject private var navigator = Navigator()
 
     var body: some View {
@@ -80,20 +81,8 @@ struct ContentView: View {
                 case .pipeline: PipelineView()
                 case .projects: ProjectsView()
                 case .footage: FootageView()
-                case .gear:
-                    ComingSoonView(title: "Gear", summary: "Everything you own, what it's worth today, and when it was last looked after.", points: [
-                        "Gear added automatically from receipts",
-                        "Value today, which feeds into what the business is worth",
-                        "Pack lists for each shoot",
-                        "Service reminders based on how much each piece gets used"
-                    ])
-                case .money:
-                    ComingSoonView(title: "Money", summary: "Three questions every business owner should be able to answer.", points: [
-                        "Did I make money? (income statement)",
-                        "Where did the cash go? (cash flow)",
-                        "What's it all worth? (balance sheet)",
-                        "Read-only links to your bank, card, PayPal and Venmo"
-                    ])
+                case .gear: GearView()
+                case .money: MoneyView()
                 case .logins: LoginsView()
                 case .settings: SettingsView(viewModel: viewModel)
                 }
@@ -121,10 +110,11 @@ struct ContentView: View {
         .environmentObject(deals)
         .environmentObject(logins)
         .environmentObject(ai)
+        .environmentObject(money)
         .environmentObject(navigator)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
-            ai.attach(deals: deals, projects: projects, navigator: navigator)
+            ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
             Updater.shared.start()
             if !viewModel.roots.isEmpty && !viewModel.hasScanned { viewModel.scan() }
         }

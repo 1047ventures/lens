@@ -65,13 +65,15 @@ final class LensAI: ObservableObject {
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
     private weak var navigator: Navigator?
+    private weak var money: MoneyStore?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
 
     init() { load() }
 
-    func attach(deals: DealStore, projects: ProjectStore, navigator: Navigator) {
+    func attach(deals: DealStore, projects: ProjectStore, navigator: Navigator, money: MoneyStore) {
+        self.money = money
         self.deals = deals
         self.projects = projects
         self.navigator = navigator
@@ -264,6 +266,22 @@ final class LensAI: ObservableObject {
             var d = projectSummary(p)
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
             return (json(d), false)
+        case "get_money":
+            guard let money else { return ("Money isn't ready.", true) }
+            let period = MoneyStore.Period.allCases.first { $0.rawValue.lowercased() == str("period").lowercased() } ?? .thisYear
+            let inc = money.income(period), cash = money.cashFlow(period), bal = money.balance(period)
+            let open = money.receivables.filter { $0.paidOn == nil }.map { "\($0.client): \($0.label) \(Money.string($0.amount)) due \($0.due.formatted(date: .abbreviated, time: .omitted))" }
+            return (json([
+                "period": period.rawValue,
+                "revenue": inc.revenue.map { "\($0.label): \(Money.string($0.amount))" }, "total_revenue": Money.string(inc.totalRevenue),
+                "project_costs": inc.direct.map { "\($0.label): \(Money.string($0.amount))" },
+                "overhead": inc.overhead.map { "\($0.label): \(Money.string($0.amount))" },
+                "kept": Money.string(inc.net),
+                "cash_start": Money.string(cash.start), "cash_end": Money.string(cash.end), "paid_to_emma": Money.string(-cash.owner),
+                "cash_on_hand": Money.string(bal.totalCash), "clients_owe": open, "gear_worth": Money.string(bal.gear),
+                "card_balance": Money.string(bal.card), "business_worth": Money.string(bal.worth),
+                "unsorted_transactions": money.unsortedCount,
+            ]), false)
         case "get_rates":
             return (json(rateValues(deals.rates)), false)
 
@@ -531,6 +549,8 @@ final class LensAI: ObservableObject {
              ["deal_id": ["type": "string"]], ["deal_id"]),
         tool("list_projects", "List booked projects with stage, shoot date and location.", [:], []),
         tool("get_project", "One project's details and history.", ["project_id": ["type": "string"]], ["project_id"]),
+        tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
+             ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
         tool("open_screen", "Show something in Lens: a deal, a project, or a section (Today, Pipeline, Projects, Footage, Gear, Money, Log-ins).",
              ["deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),

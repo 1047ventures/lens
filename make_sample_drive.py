@@ -329,9 +329,86 @@ deals[3]["discovery"] = {
 # The won deal points at its option
 deals[5]["chosenOptionID"] = deals[5]["options"][0]["id"]
 
+# ---- money + gear -----------------------------------------------------------
+pid = {p["name"]: p["id"] for p in projects}
+def t(date, amount, desc, account, category, project=None):
+    return {"id": uid(), "date": date + "T17:00:00Z", "amount": amount, "description": desc, "account": account,
+            "category": category, "projectID": pid.get(project) if project else None, "note": None}
+txns = [
+    # September
+    t("2026-09-02", 600, "Venmo from Maria Lopez · engagement deposit", "venmo", "weddings", "Lopez Engagement"),
+    t("2026-09-05", -59.99, "ADOBE *CREATIVE CLOUD", "card", "software"),
+    t("2026-09-06", -15.00, "FRAME.IO PRO", "card", "software"),
+    t("2026-09-10", -24.99, "SQUARESPACE INC", "card", "marketing"),
+    t("2026-09-12", -165.00, "HISCOX SMALL BUSINESS INSURANCE", "checking", "insurance"),
+    t("2026-09-15", -11.99, "DROPBOX PLUS", "card", "storage"),
+    t("2026-09-18", -400, "Venmo to Jordan Reyes · second shooter, Chen", "venmo", "crew", "Chen Anniversary"),
+    t("2026-09-20", -86.40, "SHELL OIL · Estes Park", "card", "travel", "Chen Anniversary"),
+    t("2026-09-22", -1500, "Transfer to personal savings", "checking", "ownerDraw"),
+    t("2026-09-25", -16.99, "ARTLIST.IO", "card", "music"),
+    t("2026-09-28", -350, "Payment to credit card", "checking", "transfer"),
+    t("2026-09-28", 350, "Payment thank you", "card", "transfer"),
+    # October
+    t("2026-10-02", 1500, "Venmo from Sarah Hartley · wedding deposit", "venmo", "weddings", "Hartley Wedding"),
+    t("2026-10-03", 1000, "ACH ORTIZ COFFEE ROASTERS · deposit", "checking", "brand", "Ortiz Brand Film"),
+    t("2026-10-05", -59.99, "ADOBE *CREATIVE CLOUD", "card", "software"),
+    t("2026-10-06", -15.00, "FRAME.IO PRO", "card", "software"),
+    t("2026-10-07", -1998.00, "B&H PHOTO · Sony FE 24-70mm GM II", "card", "gear"),
+    t("2026-10-09", -42.50, "Lunch with Cindy + Meredith (CEJ)", "card", "meals"),
+    t("2026-10-10", -300, "Venmo to Alex Moreno · second shooter, Lopez", "venmo", "crew", "Lopez Engagement"),
+    t("2026-10-12", -24.99, "SQUARESPACE INC", "card", "marketing"),
+    t("2026-10-15", 1600, "Zelle from Wei Chen · balance", "checking", "weddings", "Chen Anniversary"),
+    t("2026-10-15", -11.99, "DROPBOX PLUS", "card", "storage"),
+    t("2026-10-18", -125.00, "LENSRENTALS · Ronin RS3 kit", "card", "rentals", "Ortiz Brand Film"),
+    t("2026-10-20", -1000, "Transfer to bank", "venmo", "transfer"),
+    t("2026-10-20", 1000, "Transfer from Venmo", "checking", "transfer"),
+    t("2026-10-22", -600, "Venmo to Jordan Reyes · camera op, Ortiz", "venmo", "crew", "Ortiz Brand Film"),
+    t("2026-10-22", -64.20, "CONOCO · Denver", "card", "travel", "Ortiz Brand Film"),
+    t("2026-10-25", -16.99, "ARTLIST.IO", "card", "music"),
+    t("2026-10-27", -2400, "Payment to credit card", "checking", "transfer"),
+    t("2026-10-27", 2400, "Payment thank you", "card", "transfer"),
+    t("2026-10-28", -2000, "Transfer to personal savings", "checking", "ownerDraw"),
+    t("2026-10-30", 450, "PayPal · headshot mini-session", "paypal", "portraits"),
+    t("2026-10-30", -13.35, "PayPal fee", "paypal", "fees"),
+    # November
+    t("2026-11-02", -59.99, "ADOBE *CREATIVE CLOUD", "card", "software"),
+    t("2026-11-04", 1100, "ACH SUMMIT GYM LLC · deposit", "checking", "brand", "Summit Gym Promo"),
+    t("2026-11-04", -189.99, "SAMSUNG T7 SHIELD 2TB", "card", "storage"),
+    t("2026-11-05", -18.75, "SQ *BLUEBIRD COFFEE BOULDER", "card", "uncategorized"),
+    t("2026-11-05", -45.12, "AMZN MKTP US*2K4", "card", "uncategorized"),
+]
+def r(project, client, label, amount, due):
+    return {"id": uid(), "projectID": pid.get(project), "client": client, "label": label, "amount": amount,
+            "due": due + "T17:00:00Z", "paidOn": None}
+receivables = [
+    r("Lopez Engagement", "Maria & Andre Lopez", "Final invoice (sent Oct 24)", 1800, "2026-11-03"),
+    r("Ortiz Brand Film", "Ortiz Coffee Roasters", "Balance on delivery", 3800, "2026-11-20"),
+    r("Summit Gym Promo", "Summit Gym", "Balance on delivery", 1100, "2026-12-04"),
+    r("Hartley Wedding", "Sarah & James Hartley", "Balance on delivery", 3700, "2026-12-18"),
+]
+def g(name, kind, bought, paid, life, shoots, service=None, note=None, serial=None):
+    return {"id": uid(), "name": name, "kind": kind, "bought": bought + "T17:00:00Z", "paid": paid, "lifeYears": life,
+            "serial": serial, "lastService": (service + "T17:00:00Z") if service else None, "serviceNote": note, "shoots": shoots}
+gear = [
+    g("Sony A7S III · body 1", "camera", "2023-03-14", 3498, 5, 41, "2026-08-12", "Sensor clean"),
+    g("Sony A7S III · body 2", "camera", "2024-01-20", 3498, 5, 28),
+    g("Sony FE 24-70mm f/2.8 GM II", "lens", "2026-10-07", 1998, 7, 2),
+    g("Sony FE 85mm f/1.4 GM", "lens", "2023-05-02", 1398, 7, 37, "2025-11-03", "Clean + check"),
+    g("DJI Mavic 3 Pro", "drone", "2024-04-11", 2199, 4, 16, "2025-09-30", "Firmware + props"),
+    g("DJI Ronin RS3 Pro", "support", "2023-05-20", 869, 5, 33, "2026-09-08", "Firmware update"),
+    g("Rode Wireless Pro", "audio", "2024-06-03", 399, 5, 19),
+    g("Aputure 300d II", "lighting", "2023-02-10", 849, 6, 22),
+    g("MacBook Pro 16\" M3 Max", "computer", "2023-11-15", 3999, 4, None),
+]
+money = {"txns": txns, "openingDate": "2026-09-01T00:00:00Z",
+         "openings": {"checking": 9800, "card": 0, "venmo": 350, "paypal": 0},
+         "rules": [], "receivables": receivables, "gear": gear}
+
 os.makedirs(APP_SUPPORT, exist_ok=True)
 with open(os.path.join(APP_SUPPORT, "projects.json"), "w") as f:
     json.dump(projects, f, indent=2)
+with open(os.path.join(APP_SUPPORT, "money.json"), "w") as f:
+    json.dump(money, f, indent=2)
 with open(os.path.join(APP_SUPPORT, "deals.json"), "w") as f:
     json.dump(deals, f, indent=2)
 with open(os.path.join(APP_SUPPORT, "rate_card.json"), "w") as f:
