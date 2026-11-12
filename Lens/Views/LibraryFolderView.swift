@@ -175,7 +175,7 @@ private struct Thumbnail: View {
         .clipped()
         .task(id: url?.path ?? assetID) {
             if let assetID {
-                image = await PhotosLibrary.image(assetID, size: CGSize(width: 440, height: 280))
+                image = await PhotosLibrary.image(assetID, size: CGSize(width: 440, height: 280), quick: true)
                 return
             }
             guard let url else { return }

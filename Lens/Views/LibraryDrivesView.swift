@@ -120,7 +120,7 @@ struct LibraryDrivesView: View {
             }
             Spacer(minLength: 12)
             if let drive {
-                if catalog.location(of: hit.folder, on: drive) != nil {
+                if drive.isPhotos || catalog.location(of: hit.folder, on: drive) != nil {
                     Text(drive.name).font(.system(size: 12)).foregroundStyle(Theme.text3)
                 } else {
                     Label("\(drive.name) · in the drawer", systemImage: "externaldrive")
@@ -140,6 +140,7 @@ struct LibraryDrivesView: View {
             SectionLabel("Your drives")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 macTile
+                photosTile
                 ForEach(catalog.outside) { drive in tile(drive) }
             }
         }
@@ -165,13 +166,42 @@ struct LibraryDrivesView: View {
         }
     }
 
+    @ViewBuilder
+    private var photosTile: some View {
+        if let photos = catalog.photos {
+            tile(photos)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Photos app", systemImage: "photo.on.rectangle").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(catalog.photosRefused
+                     ? "Lens isn't allowed into Photos. Turn it on in System Settings, Privacy and Security, Photos."
+                     : "See and search every photo and video in your Photos app. Lens only looks; it never changes anything there.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                if catalog.photosRefused {
+                    Button("Open System Settings") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!)
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                } else {
+                    Button(catalog.photosReading ? "Looking…" : "Look in Photos") { catalog.readPhotos() }
+                        .buttonStyle(SecondaryButtonStyle()).disabled(catalog.photosReading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Theme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        }
+    }
+
     private func tile(_ drive: CatalogDrive) -> some View {
         let plugged = catalog.isPlugged(drive)
         let full = drive.fractionUsed
         let barColor = full > 0.85 ? Theme.coral : full > 0.7 ? Theme.amber : (plugged ? Theme.teal : Theme.muted)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: drive.isMac ? "laptopcomputer" : plugged ? "externaldrive.fill" : "externaldrive")
+                Image(systemName: drive.isMac ? "laptopcomputer" : drive.isPhotos ? "photo.on.rectangle" : plugged ? "externaldrive.fill" : "externaldrive")
                     .foregroundStyle(plugged ? Theme.text : Theme.muted)
                 TextField("Name", text: Binding(get: { drive.name }, set: { catalog.rename(drive.id, to: $0) }))
                     .textFieldStyle(.plain)
@@ -185,8 +215,10 @@ struct LibraryDrivesView: View {
                 }
             }
             .frame(height: 5)
-            Text("\(Int((full * 100).rounded()))% full · \(ByteFormat.string(drive.free)) free")
-                .font(.system(size: 12)).foregroundStyle(full > 0.85 ? Theme.coral : Theme.text3)
+            .opacity(drive.isPhotos ? 0 : 1)
+            Text(drive.isPhotos ? "\(ByteFormat.string(drive.photoBytes + drive.videoBytes)) in all"
+                                : "\(Int((full * 100).rounded()))% full · \(ByteFormat.string(drive.free)) free")
+                .font(.system(size: 12)).foregroundStyle(!drive.isPhotos && full > 0.85 ? Theme.coral : Theme.text3)
             Text(contents(drive)).font(.system(size: 12)).foregroundStyle(Theme.text2)
             Text(status(drive, plugged: plugged)).font(.system(size: 11)).foregroundStyle(Theme.muted)
         }
@@ -199,6 +231,8 @@ struct LibraryDrivesView: View {
         .contextMenu {
             if drive.isMac {
                 Button("Look again") { catalog.scanMac() }
+            } else if drive.isPhotos {
+                Button("Look again") { catalog.readPhotos() }
             } else if plugged, let url = catalog.mounted[drive.id] {
                 Button("Read it again") {
                     if !viewModel.roots.contains(url) { viewModel.addRoot(url) }
@@ -212,6 +246,11 @@ struct LibraryDrivesView: View {
     private func contents(_ drive: CatalogDrive) -> String {
         guard drive.lastScanned != nil else { return "Not read yet" }
         var parts: [String] = []
+        if drive.isPhotos {
+            if drive.photoCount > 0 { parts.append("\(drive.photoCount.formatted()) photos") }
+            if drive.videoCount > 0 { parts.append("\(drive.videoCount.formatted()) videos") }
+            return parts.isEmpty ? "Empty" : parts.joined(separator: " · ")
+        }
         if drive.videoCount > 0 { parts.append("\(ByteFormat.string(drive.videoBytes)) video") }
         if drive.photoCount > 0 { parts.append("\(drive.photoCount.formatted()) photos") }
         return parts.isEmpty ? "No photos or video" : parts.joined(separator: " · ")
@@ -221,6 +260,7 @@ struct LibraryDrivesView: View {
         if drive.isMac {
             return catalog.macScanning ? "Looking…" : "Desktop, Downloads, Documents, Movies, Pictures"
         }
+        if drive.isPhotos { return catalog.photosReading ? "Looking…" : "Searchable by year and month" }
         if plugged { return "Plugged in" }
         return "In the drawer · last seen \(drive.lastSeen.formatted(.dateTime.month().day()))"
     }

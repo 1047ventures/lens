@@ -34,7 +34,7 @@ enum PhotosLibrary {
         var buffer = Data()
         var photos = 0, videos = 0
         var photoBytes: Int64 = 0, videoBytes: Int64 = 0
-        let month = DateFormatter(); month.dateFormat = "yyyy/MM MMMM"
+        let month = DateFormatter(); month.dateFormat = "yyyy/MMMM yyyy"
 
         let assets = PHAsset.fetchAssets(with: nil)
         assets.enumerateObjects { asset, _, _ in
@@ -70,10 +70,11 @@ enum PhotosLibrary {
         PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
     }
 
-    static func image(_ id: String, size: CGSize) async -> NSImage? {
+    /// `quick` gets the small version Photos already has on hand (for thumbnails); otherwise full quality.
+    static func image(_ id: String, size: CGSize, quick: Bool = false) async -> NSImage? {
         guard let asset = asset(id) else { return nil }
         let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
+        options.deliveryMode = quick ? .fastFormat : .highQualityFormat
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
         return await withCheckedContinuation { cont in

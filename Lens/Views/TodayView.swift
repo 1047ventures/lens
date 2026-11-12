@@ -143,7 +143,7 @@ struct TodayView: View {
     private var items: [Item] {
         var result: [Item] = []
 
-        if viewModel.roots.isEmpty && DriveCatalog.shared.drives.allSatisfy(\.isMac) {
+        if viewModel.roots.isEmpty && DriveCatalog.shared.outside.isEmpty {
             result.append(Item(tone: .neutral, kicker: "Getting started", title: "Add Emma's drive",
                                detail: "Point Lens at the SSD so it can see the footage",
                                actionTitle: "Go to Library") { navigator.open(.footage) })
