@@ -15,6 +15,8 @@ struct MoneyView: View {
     @State private var onlyUnsorted = false
     @State private var toast: String?
     @State private var importURL: URL?
+    /// Which groups in the books are open. Closed by default so only the main numbers show.
+    @AppStorage("moneyOpenGroups") private var openGroupsRaw = ""
 
     private var period: MoneyStore.Period { MoneyStore.Period(rawValue: periodRaw) ?? .thisYear }
 
@@ -104,6 +106,12 @@ struct MoneyView: View {
                 ColorLabel("The books", Palette.lime)
                 Spacer()
                 Text(period.rawValue).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Button(openGroups.isEmpty ? "Show every line" : "Main numbers only") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        openGroupsRaw = openGroups.isEmpty ? Self.allGroups.joined(separator: ",") : ""
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle())
             }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 14) {
@@ -156,8 +164,39 @@ struct MoneyView: View {
         .overlay(alignment: .top) { if style != .item { Rectangle().fill(Theme.line).frame(height: 1).offset(y: -2) } }
     }
 
-    private func heading(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted).padding(.top, 8)
+    private static let allGroups = ["Revenue", "Project costs", "Running the business", "Working",
+                                    "Investing + owner", "What you have", "What you owe"]
+
+    private var openGroups: Set<String> {
+        Set(openGroupsRaw.split(separator: ",").map(String.init))
+    }
+
+    /// A group of line items that opens and closes. Closed, it shows just its total (if it has one).
+    @ViewBuilder
+    private func group<Content: View>(_ title: String, total: Double? = nil, @ViewBuilder _ items: () -> Content) -> some View {
+        let open = openGroups.contains(title)
+        Button {
+            var set = openGroups
+            if open { set.remove(title) } else { set.insert(title) }
+            withAnimation(.easeInOut(duration: 0.2)) { openGroupsRaw = set.sorted().joined(separator: ",") }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.8)
+                Spacer(minLength: 8)
+                if !open, let total {
+                    Text(signed(total)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                }
+            }
+            .foregroundStyle(Theme.muted)
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(open ? "Hide these lines" : "Show these lines")
+        if open { items() }
     }
 
     private func cents(_ v: Double) -> String {
@@ -170,15 +209,18 @@ struct MoneyView: View {
 
     private func incomeColumn(_ i: MoneyStore.Income, pct: @escaping (Double) -> String?) -> some View {
         column("Did I make money?", "Income statement") {
-            heading("Revenue")
-            if i.revenue.isEmpty { Text("Nothing yet").font(.system(size: 12)).foregroundStyle(Theme.muted) }
-            ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
+            group("Revenue") {
+                if i.revenue.isEmpty { Text("Nothing yet").font(.system(size: 12)).foregroundStyle(Theme.muted) }
+                ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
+            }
             row("Total revenue", i.totalRevenue, .sub)
-            heading("Project costs")
-            ForEach(i.direct) { row($0.label, -$0.amount, pct: pct($0.amount)) }
+            group("Project costs", total: -i.direct.reduce(0) { $0 + $1.amount }) {
+                ForEach(i.direct) { row($0.label, -$0.amount, pct: pct($0.amount)) }
+            }
             row("Gross profit", i.gross, .sub, pct: pct(i.gross))
-            heading("Running the business")
-            ForEach(i.overhead) { row($0.label, -$0.amount, pct: pct($0.amount)) }
+            group("Running the business") {
+                ForEach(i.overhead) { row($0.label, -$0.amount, pct: pct($0.amount)) }
+            }
             row("Total overhead", -i.totalOverhead, .sub, pct: pct(i.totalOverhead))
             row("You kept", i.net, .total, pct: pct(i.net), good: i.net >= 0)
         }
@@ -187,16 +229,18 @@ struct MoneyView: View {
     private func cashColumn(_ c: MoneyStore.CashFlow) -> some View {
         column("Where did the cash go?", "Cash flow · checking, Venmo, PayPal") {
             row("Started with", c.start, .sub)
-            heading("Working")
-            row("Clients paid you", c.clientsPaid)
-            if c.projectCosts != 0 { row("Crew and project costs", c.projectCosts) }
-            if c.runningCosts != 0 { row("Running the business", c.runningCosts) }
-            if c.cardAndTransfers != 0 { row("Paid the card / moved money", c.cardAndTransfers) }
-            if c.taxes != 0 { row("Taxes", c.taxes) }
-            heading("Investing + owner")
-            if c.gear != 0 { row("Bought gear", c.gear) }
-            row("Paid to you / put in", c.owner)
-            if abs(c.unsorted) > 0.004 { row("Not sorted yet", c.unsorted) }
+            group("Working", total: c.clientsPaid + c.projectCosts + c.runningCosts + c.cardAndTransfers + c.taxes) {
+                row("Clients paid you", c.clientsPaid)
+                if c.projectCosts != 0 { row("Crew and project costs", c.projectCosts) }
+                if c.runningCosts != 0 { row("Running the business", c.runningCosts) }
+                if c.cardAndTransfers != 0 { row("Paid the card / moved money", c.cardAndTransfers) }
+                if c.taxes != 0 { row("Taxes", c.taxes) }
+            }
+            group("Investing + owner", total: c.gear + c.owner + c.unsorted) {
+                if c.gear != 0 { row("Bought gear", c.gear) }
+                row("Paid to you / put in", c.owner)
+                if abs(c.unsorted) > 0.004 { row("Not sorted yet", c.unsorted) }
+            }
             row("Ended with", c.end, .total, good: c.end >= c.start)
             row("Change", c.end - c.start)
         }
@@ -204,13 +248,15 @@ struct MoneyView: View {
 
     private func balanceColumn(_ b: MoneyStore.Balance) -> some View {
         column("What's it all worth?", "Balance sheet · end of period") {
-            heading("What you have")
-            ForEach(b.cash) { row($0.label, $0.amount) }
-            row("Clients owe you", b.owed)
-            row("Gear at today's value", b.gear)
+            group("What you have") {
+                ForEach(b.cash) { row($0.label, $0.amount) }
+                row("Clients owe you", b.owed)
+                row("Gear at today's value", b.gear)
+            }
             row("Total", b.assets, .sub)
-            heading("What you owe")
-            row("Credit card", -b.card)
+            group("What you owe", total: -b.card) {
+                row("Credit card", -b.card)
+            }
             row("Your business is worth", b.worth, .total, good: b.worth >= 0)
         }
     }
