@@ -19,7 +19,10 @@ struct CatalogDrive: Codable, Identifiable, Hashable {
     var photoCount: Int
     var photoBytes: Int64
     var projectCount: Int
+    /// "photos" for the Mac's Photos app; nil for a real drive.
+    var source: String? = nil
 
+    var isPhotos: Bool { source == "photos" }
     var fractionUsed: Double { total > 0 ? Double(max(0, total - free)) / Double(total) : 0 }
 }
 
@@ -137,6 +140,9 @@ final class DriveCatalog: ObservableObject {
     /// An outside drive that's plugged in but Lens hasn't met yet.
     @Published private(set) var newDrive: URL?
     @Published private(set) var macScanning = false
+    @Published private(set) var photosReading = false
+    /// She said no to Photos access (it can be turned on in System Settings).
+    @Published private(set) var photosRefused = PhotosLibrary.refused
     /// Called when a drive Lens already knows is plugged back in, so it can be read again.
     var onKnownDrivePlugged: ((URL) -> Void)?
 
@@ -166,8 +172,19 @@ final class DriveCatalog: ObservableObject {
     }
 
     var mac: CatalogDrive? { drives.first(where: \.isMac) }
-    var outside: [CatalogDrive] { drives.filter { !$0.isMac }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
-    func isPlugged(_ drive: CatalogDrive) -> Bool { drive.isMac || mounted[drive.id] != nil }
+    var photos: CatalogDrive? { drives.first(where: \.isPhotos) }
+    var outside: [CatalogDrive] { drives.filter { !$0.isMac && !$0.isPhotos }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+    func isPlugged(_ drive: CatalogDrive) -> Bool { drive.isMac || drive.isPhotos || mounted[drive.id] != nil }
+
+    /// Reads the Photos app (asking permission the first time).
+    func readPhotos() {
+        guard !photosReading else { return }
+        photosReading = true
+        Task {
+            if let drive = await PhotosLibrary.read() { merge([drive]) } else { photosRefused = true }
+            photosReading = false
+        }
+    }
 
     // MARK: Drives coming and going
 
@@ -176,7 +193,7 @@ final class DriveCatalog: ObservableObject {
         var found: [String: URL] = [:]
         var unknown: URL?
         for url in urls {
-            guard let info = Self.volume(for: url), !info.drive.isMac else { continue }
+            guard let info = Self.volume(for: url), !info.drive.isMac, info.drive.id != PhotosLibrary.driveID else { continue }
             found[info.drive.id] = url
             if let i = drives.firstIndex(where: { $0.id == info.drive.id }) {
                 drives[i].free = info.drive.free
@@ -265,7 +282,8 @@ final class DriveCatalog: ObservableObject {
             let path = String(parts[0])
             guard (path as NSString).deletingLastPathComponent == folderPath else { return }
             items.append(FolderItem(name: (path as NSString).lastPathComponent, size: Int64(parts[1]) ?? 0,
-                                    modified: Date(timeIntervalSince1970: TimeInterval(Int(parts[2]) ?? 0)), kind: kind, url: nil))
+                                    modified: Date(timeIntervalSince1970: TimeInterval(Int(parts[2]) ?? 0)), kind: kind, url: nil,
+                                    assetID: parts.count >= 5 ? String(parts[4]) : nil))
         }
         return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

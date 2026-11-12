@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Quartz
 import QuickLookThumbnailing
+import AVKit
 
 /// One folder from Library search, opened inside Lens: a thumbnail of every photo and video,
 /// a full preview (videos play, RAW photos show), and files she can drag straight into
@@ -37,7 +38,7 @@ struct LibraryFolderView: View {
                 .focusable()
                 .focusEffectDisabled()
                 .onKeyPress(.space) {
-                    guard let item = items.first(where: { $0.id == selected }), item.url != nil else { return .ignored }
+                    guard let item = items.first(where: { $0.id == selected }), item.canPreview else { return .ignored }
                     previewing = item
                     return .handled
                 }
@@ -46,7 +47,7 @@ struct LibraryFolderView: View {
         .background(Theme.ground)
         .task(id: "\(driveID)|\(folder)|\(folderURL != nil)") { load() }
         .sheet(item: $previewing) { item in
-            PreviewSheet(items: items.filter { $0.url != nil }, start: item)
+            PreviewSheet(items: items.filter(\.canPreview), start: item)
         }
     }
 
@@ -64,6 +65,10 @@ struct LibraryFolderView: View {
                     Button("Preview") { previewing = item }.buttonStyle(SecondaryButtonStyle())
                     Button("Open") { if let url = item.url { NSWorkspace.shared.open(url) } }
                         .buttonStyle(PrimaryButtonStyle())
+                }
+            } else if drive?.isPhotos == true {
+                if let item = items.first(where: { $0.id == selected }) {
+                    Button("Preview") { previewing = item }.buttonStyle(SecondaryButtonStyle())
                 }
             } else if let drive {
                 Label("Plug in \(drive.name) to see and open these", systemImage: "externaldrive")
@@ -87,7 +92,7 @@ struct LibraryFolderView: View {
     private func tile(_ item: FolderItem) -> some View {
         let isSelected = selected == item.id
         return VStack(alignment: .leading, spacing: 6) {
-            Thumbnail(url: item.url, kind: item.kind)
+            Thumbnail(url: item.url, assetID: item.assetID, kind: item.kind)
                 .frame(height: 110)
                 .frame(maxWidth: .infinity)
                 .background(Theme.raised)
@@ -107,7 +112,7 @@ struct LibraryFolderView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSelected ? Theme.teal.opacity(0.7) : .clear, lineWidth: 1.5))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { if item.url != nil { previewing = item } }
+        .onTapGesture(count: 2) { if item.canPreview { previewing = item } }
         .simultaneousGesture(TapGesture().onEnded { selected = item.id })
         .onDrag { item.url.map { NSItemProvider(contentsOf: $0) ?? NSItemProvider() } ?? NSItemProvider() }
         .contextMenu {
@@ -143,7 +148,10 @@ struct FolderItem: Identifiable, Hashable {
     let kind: CatalogKind
     /// Where it is right now; nil when its drive is unplugged.
     let url: URL?
-    var id: String { name }
+    /// Set for items in the Photos app.
+    var assetID: String? = nil
+    var id: String { assetID ?? name }
+    var canPreview: Bool { url != nil || assetID != nil }
 }
 
 // MARK: - Thumbnails
@@ -152,6 +160,7 @@ struct FolderItem: Identifiable, Hashable {
 /// when it scrolls away, so a folder of thousands stays light.
 private struct Thumbnail: View {
     let url: URL?
+    var assetID: String? = nil
     let kind: CatalogKind
     @State private var image: NSImage?
 
@@ -164,7 +173,11 @@ private struct Thumbnail: View {
             }
         }
         .clipped()
-        .task(id: url) {
+        .task(id: url?.path ?? assetID) {
+            if let assetID {
+                image = await PhotosLibrary.image(assetID, size: CGSize(width: 440, height: 280))
+                return
+            }
             guard let url else { return }
             let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 220, height: 140),
                                                        scale: NSScreen.main?.backingScaleFactor ?? 2,
@@ -208,6 +221,8 @@ private struct PreviewSheet: View {
             .background(Theme.panel)
             if items.indices.contains(index), let url = items[index].url {
                 QuickLookView(url: url)
+            } else if items.indices.contains(index), let id = items[index].assetID {
+                PhotosAssetView(assetID: id, isVideo: items[index].kind == .video).id(id)
             }
         }
         .frame(minWidth: 900, idealWidth: 1100, minHeight: 620, idealHeight: 760)
@@ -227,4 +242,32 @@ private struct QuickLookView: NSViewRepresentable {
         if (view.previewItem as? NSURL) as URL? != url { view.previewItem = url as NSURL }
     }
     static func dismantleNSView(_ view: QLPreviewView, coordinator: ()) { view.close() }
+}
+
+/// Full-size view of a photo or video from the Photos app.
+private struct PhotosAssetView: View {
+    let assetID: String
+    let isVideo: Bool
+    @State private var image: NSImage?
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Theme.ground
+            if let player {
+                VideoPlayer(player: player).onAppear { player.play() }.onDisappear { player.pause() }
+            } else if let image {
+                Image(nsImage: image).resizable().scaledToFit()
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            if isVideo, let item = await PhotosLibrary.playerItem(assetID) {
+                player = AVPlayer(playerItem: item)
+            } else {
+                image = await PhotosLibrary.image(assetID, size: CGSize(width: 2400, height: 2400))
+            }
+        }
+    }
 }
