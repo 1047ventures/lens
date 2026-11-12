@@ -195,7 +195,13 @@ struct LibraryDrivesView: View {
         }
     }
 
+    /// A drive's card. Clicking it opens everything on that drive.
     private func tile(_ drive: CatalogDrive) -> some View {
+        NavigationLink(value: FootageRoute.drive(id: drive.id)) { tileCard(drive) }
+            .buttonStyle(.plain)
+    }
+
+    private func tileCard(_ drive: CatalogDrive) -> some View {
         let plugged = catalog.isPlugged(drive)
         let full = drive.fractionUsed
         let barColor = full > 0.85 ? Theme.coral : full > 0.7 ? Theme.amber : (plugged ? Theme.teal : Theme.muted)
@@ -203,10 +209,12 @@ struct LibraryDrivesView: View {
             HStack(spacing: 6) {
                 Image(systemName: drive.isMac ? "laptopcomputer" : drive.isPhotos ? "photo.on.rectangle" : plugged ? "externaldrive.fill" : "externaldrive")
                     .foregroundStyle(plugged ? Theme.text : Theme.muted)
-                TextField("Name", text: Binding(get: { drive.name }, set: { catalog.rename(drive.id, to: $0) }))
-                    .textFieldStyle(.plain)
+                Text(drive.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {

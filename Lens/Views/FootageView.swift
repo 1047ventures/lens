@@ -4,6 +4,7 @@ import AppKit
 enum FootageRoute: Hashable {
     case duplicates, cache, organize, retirees
     case folder(driveID: String, path: String)
+    case drive(id: String)
 }
 
 /// The footage engine, living inside the business hub: where the SSD's space is going,
@@ -54,6 +55,7 @@ struct FootageView: View {
                     case .organize: OrganizeView(viewModel: viewModel)
                     case .retirees: ArchiveCandidatesView(viewModel: viewModel)
                     case .folder(let driveID, let path): LibraryFolderView(driveID: driveID, folder: path)
+                    case .drive(let id): LibraryDriveView(driveID: id)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -288,6 +288,24 @@ final class DriveCatalog: ObservableObject {
         return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// Every folder on a drive that holds photos or video, with totals, read from Lens's memory.
+    nonisolated static func folders(on drive: CatalogDrive) -> [DriveFolder] {
+        guard let text = try? String(contentsOf: folder.appendingPathComponent("\(drive.id).tsv"), encoding: .utf8) else { return [] }
+        var byPath: [String: DriveFolder] = [:]
+        text.enumerateLines { line, _ in
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count >= 4, let kind = CatalogKind(rawValue: String(parts[3])), kind != .project else { return }
+            let path = (String(parts[0]) as NSString).deletingLastPathComponent
+            let size = Int64(parts[1]) ?? 0
+            let date = Date(timeIntervalSince1970: TimeInterval(Int(parts[2]) ?? 0))
+            var f = byPath[path] ?? DriveFolder(path: path)
+            if kind == .video { f.videos += 1; f.videoBytes += size } else { f.photos += 1; f.photoBytes += size }
+            if date > f.newest { f.newest = date }
+            byPath[path] = f
+        }
+        return Array(byPath.values)
+    }
+
     // MARK: Search
 
     /// Finds folders and files whose path contains every word typed, on every drive, plugged in
