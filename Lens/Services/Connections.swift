@@ -9,9 +9,14 @@ import CryptoKit
 /// Secrets (Google sign-in tokens, the OAuth client) live in the Mac's Keychain, never in Lens's JSON files.
 enum Keychain {
     private static let service = "Lens"
+    /// Each saved key is read from the Mac's password store once per launch, then remembered,
+    /// so the Mac asks at most once (and never again after "Always Allow").
+    private static var cache: [String: String?] = [:]
+    private static let lock = NSLock()
 
     static func set(_ value: String, for key: String) {
         delete(key)
+        lock.lock(); cache[key] = value; lock.unlock()
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -22,6 +27,14 @@ enum Keychain {
     }
 
     static func get(_ key: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        if let cached = cache[key] { return cached }
+        let value = read(key)
+        cache[key] = value
+        return value
+    }
+
+    private static func read(_ key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -41,6 +54,7 @@ enum Keychain {
             kSecAttrAccount as String: key,
         ]
         SecItemDelete(query as CFDictionary)
+        lock.lock(); cache[key] = .some(nil); lock.unlock()
     }
 }
 

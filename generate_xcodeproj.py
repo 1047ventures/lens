@@ -340,9 +340,10 @@ def build_configs():
 \t\t\tbuildSettings = {{
 \t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = {entitlements_path};
-\t\t\t\tCODE_SIGN_STYLE = Automatic;
+\t\t\t\tCODE_SIGN_IDENTITY = "Developer ID Application";
+\t\t\t\tCODE_SIGN_STYLE = Manual;
 \t\t\t\tCOMBINE_HIDPI_IMAGES = YES;
-\t\t\t\tDEVELOPMENT_TEAM = "";
+\t\t\t\tDEVELOPMENT_TEAM = J55RP92WN6;
 \t\t\t\tINFOPLIST_FILE = {APP_NAME}/Info.plist;
 \t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "com.1047ventures.lens";
