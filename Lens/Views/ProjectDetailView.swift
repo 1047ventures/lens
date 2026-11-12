@@ -147,7 +147,7 @@ struct ProjectDetailView: View {
                         }
                     }
                 } else {
-                    Text("Scan the drive in Footage to see this project's clips.")
+                    Text("Read the drive in Library to see this project's clips.")
                         .font(.system(size: 14))
                         .foregroundStyle(Theme.text3)
                 }
@@ -160,7 +160,7 @@ struct ProjectDetailView: View {
                         NSWorkspace.shared.activateFileViewerSelecting([folder])
                     }
                     .buttonStyle(SecondaryButtonStyle())
-                    Button("Footage overview") { navigator.open(.footage) }
+                    Button("Open Library") { navigator.open(.footage) }
                         .buttonStyle(SecondaryButtonStyle())
                 }
             } else {

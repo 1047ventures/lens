@@ -6,7 +6,9 @@ enum FileScanner {
         "mp4", "mov", "mxf", "avi", "m4v", "braw", "r3d", "mts", "m2ts", "wmv", "mkv"
     ]
 
-    static func scan(roots: [URL], progress: ((String) -> Void)? = nil) -> [MediaFile] {
+    /// Returns the video files. If a catalog writer is passed, photos and project files are also
+    /// noted for Lens's drive memory, in the same walk, so a drive is only read once.
+    static func scan(roots: [URL], catalog: CatalogWriter? = nil, progress: ((String) -> Void)? = nil) -> [MediaFile] {
         var results: [MediaFile] = []
         let fm = FileManager.default
 
@@ -14,9 +16,10 @@ enum FileScanner {
             guard let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .creationDateKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
                 errorHandler: { _, _ in true }
             ) else { continue }
+            let session = catalog?.begin(root: root)
 
             // Each file's lookup is released right away; a drive with hundreds of thousands of
             // files would otherwise hold all of them in memory until the listing finishes.
@@ -35,6 +38,10 @@ enum FileScanner {
                     }
 
                     let ext = fileURL.pathExtension.lowercased()
+                    if let catalog, let session, let kind = CatalogKind.of(ext) {
+                        catalog.add(session, path: fileURL.path, size: Int64(values?.fileSize ?? 0),
+                                    modified: values?.contentModificationDate ?? Date(), kind: kind)
+                    }
                     guard videoExtensions.contains(ext) else { return nil }
 
                     progress?(fileURL.lastPathComponent)

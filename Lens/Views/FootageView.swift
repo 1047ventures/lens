@@ -13,19 +13,27 @@ struct FootageView: View {
     @EnvironmentObject private var navigator: Navigator
     @State private var path: [FootageRoute] = []
     @State private var movingAll = false
+    /// Watched so the page updates the moment a drive is plugged in or pulled out.
+    @ObservedObject private var catalog = DriveCatalog.shared
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    LibraryDrivesView()
                     drives
-                    if viewModel.hasScanned {
+                    if viewModel.hasScanned && !pluggedRoots {
+                        Text("Plug in a drive to tidy it up. Everything on your drives is still searchable above.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.text3)
+                            .panel(padding: 22)
+                    } else if viewModel.hasScanned {
                         drivePanel
                         reclaim
                         byProject
                         loose
-                    } else if !viewModel.roots.isEmpty {
+                    } else if !viewModel.pluggedRoots.isEmpty {
                         Text("Scan the drive to see where its space is going.")
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.text3)
@@ -54,13 +62,18 @@ struct FootageView: View {
 
     // MARK: - Header and drives
 
+    /// Whether any drive being tidied is plugged in right now.
+    private var pluggedRoots: Bool {
+        !viewModel.pluggedRoots.isEmpty
+    }
+
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Footage")
+                Text("Library")
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(Theme.text)
-                Text("Everything on the drive, sorted by project. Finished work goes to the home server.")
+                Text("Every photo and video, on every drive. Plug one in to tidy it up.")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.muted)
             }
@@ -77,24 +90,16 @@ struct FootageView: View {
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(viewModel.roots.isEmpty || viewModel.isScanning)
+            .disabled(viewModel.pluggedRoots.isEmpty || viewModel.isScanning)
         }
     }
 
     private var drives: some View {
         VStack(alignment: .leading, spacing: 10) {
             if viewModel.roots.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No drive added yet")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                    Text("Add Emma's SSD (or a single project folder) and scan it.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.muted)
-                }
-                .panel(padding: 22)
+                EmptyView()
             } else {
-                ForEach(viewModel.roots, id: \.self) { root in
+                ForEach(viewModel.pluggedRoots, id: \.self) { root in
                     HStack(spacing: 10) {
                         Image(systemName: "externaldrive").foregroundStyle(Theme.text3)
                         Text(root.path)

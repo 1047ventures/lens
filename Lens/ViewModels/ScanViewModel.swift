@@ -37,9 +37,9 @@ final class ScanViewModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
-        // Remember the drives between launches, skipping any that aren't plugged in right now.
+        // Remember every drive between launches, plugged in or not. Only plugged-in ones get read.
         let saved = UserDefaults.standard.stringArray(forKey: Self.rootsKey) ?? []
-        roots = saved.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+        roots = saved.map { URL(fileURLWithPath: $0) }
     }
 
     private static let rootsKey = "scanRootPaths"
@@ -66,6 +66,9 @@ final class ScanViewModel: ObservableObject {
 
     // MARK: - Roots
 
+    /// The drives and folders that are plugged in right now.
+    var pluggedRoots: [URL] { roots.filter { FileManager.default.fileExists(atPath: $0.path) } }
+
     func addRoot(_ url: URL) {
         guard !roots.contains(url) else { return }
         roots.append(url)
@@ -80,7 +83,7 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Scan
 
     func scan(runAutoApply: Bool = true) {
-        guard !roots.isEmpty, !isScanning else { return }
+        guard !pluggedRoots.isEmpty, !isScanning else { return }
         isScanning = true
         scanStatusText = "Scanning folders…"
         errorMessage = nil
@@ -88,14 +91,17 @@ final class ScanViewModel: ObservableObject {
             lastAutoRunSummary = nil
         }
 
-        let capturedRoots = roots
+        let capturedRoots = pluggedRoots
         let staleAfterDays = trustSettings.staleAfterDays
         let rulesByRoot: [String: OrganizeRule] = Dictionary(
             uniqueKeysWithValues: capturedRoots.map { ($0.path, organizeSettings.rule(for: $0)) }
         )
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            var files = FileScanner.scan(roots: capturedRoots)
+            let catalog = CatalogWriter()
+            var files = FileScanner.scan(roots: capturedRoots, catalog: catalog)
+            let remembered = catalog.finish()
+            await MainActor.run { DriveCatalog.shared.merge(remembered) }
             let projectFiles = FileScanner.findProjectFiles(roots: capturedRoots)
             PremiereProjectParser.annotateLinkedFiles(&files, projectFiles: projectFiles)
             files = await VideoMetadataService.enrichAll(files)

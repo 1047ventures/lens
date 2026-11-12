@@ -64,6 +64,8 @@ FILES = [
     (f"{APP_NAME}/Views/ProposalBuilderView.swift",       f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/LoginsView.swift",                f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/BankLoginView.swift",             f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Services/DriveCatalog.swift",           f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Views/LibraryDrivesView.swift",         f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/AskLensView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/MoneyView.swift",                 f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/GearView.swift",                  f"{APP_NAME}/Views"),

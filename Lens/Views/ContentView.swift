@@ -4,7 +4,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     case today = "Today"
     case pipeline = "Pipeline"
     case projects = "Projects"
-    case footage = "Footage"
+    case footage = "Library"
     case gear = "Gear"
     case money = "Money"
     case logins = "Log-ins"
@@ -17,7 +17,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         case .today: return "sun.max"
         case .pipeline: return "line.3.horizontal.decrease"
         case .projects: return "folder"
-        case .footage: return "film"
+        case .footage: return "photo.stack"
         case .gear: return "camera"
         case .money: return "dollarsign"
         case .logins: return "key"
@@ -135,7 +135,13 @@ struct ContentView: View {
         .task {
             ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
             Updater.shared.start()
-            if !viewModel.roots.isEmpty && !viewModel.hasScanned { viewModel.scan() }
+            // A drive Lens knows gets read again whenever it's plugged back in.
+            DriveCatalog.shared.onKnownDrivePlugged = { [weak viewModel] url in
+                guard let viewModel else { return }
+                if !viewModel.roots.contains(where: { $0.path.hasPrefix(url.path) }) { viewModel.addRoot(url) }
+                viewModel.scan()
+            }
+            if !viewModel.pluggedRoots.isEmpty && !viewModel.hasScanned { viewModel.scan() }
         }
         // After every scan (including the rescan an undo triggers), notice footage that came back from the server.
         .onChange(of: viewModel.isScanning) { _, scanning in
@@ -245,13 +251,14 @@ struct Sidebar: View {
 struct StorageMeter: View {
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
+    @ObservedObject private var catalog = DriveCatalog.shared
 
     var body: some View {
         Button {
             navigator.open(.footage)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                if let root = viewModel.roots.first, let capacity = DriveInfo.capacity(for: root) {
+                if let root = viewModel.pluggedRoots.first, let capacity = DriveInfo.capacity(for: root) {
                     HStack {
                         Text(capacity.name).foregroundStyle(Theme.text3)
                         Spacer()
@@ -270,9 +277,13 @@ struct StorageMeter: View {
                     .frame(height: 4)
                     Text("\(ByteFormat.string(capacity.free)) free")
                         .foregroundStyle(Theme.muted)
+                } else if !DriveCatalog.shared.outside.isEmpty {
+                    let count = DriveCatalog.shared.outside.count
+                    Text("\(count) drive\(count == 1 ? "" : "s") in the Library").foregroundStyle(Theme.text3)
+                    Text("Plug one in to tidy it").foregroundStyle(Theme.muted)
                 } else {
                     Text("No drive added yet").foregroundStyle(Theme.text3)
-                    Text("Add one in Footage").foregroundStyle(Theme.muted)
+                    Text("Add one in Library").foregroundStyle(Theme.muted)
                 }
             }
             .font(.system(size: 11))

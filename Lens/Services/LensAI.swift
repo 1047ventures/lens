@@ -667,7 +667,7 @@ final class LensAI: ObservableObject {
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
-        tool("open_screen", "Show something in Lens: a deal, a project, or a section (Today, Pipeline, Projects, Footage, Gear, Money, Log-ins).",
+        tool("open_screen", "Show something in Lens: a deal, a project, or a section (Today, Pipeline, Projects, Library, Gear, Money, Log-ins).",
              ["deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
         tool("draft_email", "Show Emma an email draft she can copy or open in Mail. Never sends anything.",
              ["to": ["type": "string"], "subject": ["type": "string"], "body": ["type": "string"]], ["subject", "body"]),

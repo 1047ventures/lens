@@ -58,7 +58,7 @@ struct ProjectsView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text(viewModel.roots.isEmpty
-                             ? "Create one, or add Emma's drive in Footage and import its folders as projects."
+                             ? "Create one, or add Emma's drive in Library and import its folders as projects."
                              : "Create one, or turn the drive's folders into projects with “Import from drive folders”.")
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.muted)

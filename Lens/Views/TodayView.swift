@@ -143,14 +143,14 @@ struct TodayView: View {
     private var items: [Item] {
         var result: [Item] = []
 
-        if viewModel.roots.isEmpty {
+        if viewModel.roots.isEmpty && DriveCatalog.shared.drives.allSatisfy(\.isMac) {
             result.append(Item(tone: .neutral, kicker: "Getting started", title: "Add Emma's drive",
                                detail: "Point Lens at the SSD so it can see the footage",
-                               actionTitle: "Go to Footage") { navigator.open(.footage) })
-        } else if !viewModel.hasScanned {
+                               actionTitle: "Go to Library") { navigator.open(.footage) })
+        } else if !viewModel.pluggedRoots.isEmpty && !viewModel.hasScanned {
             result.append(Item(tone: .neutral, kicker: "Getting started", title: "Scan the drive",
                                detail: "See what's on it and how much space can come back",
-                               actionTitle: "Go to Footage") { navigator.open(.footage) })
+                               actionTitle: "Go to Library") { navigator.open(.footage) })
         }
 
         for project in projects.active {
@@ -167,7 +167,7 @@ struct TodayView: View {
             if project.stage == .paid, !project.isOnServer, project.folderPath != nil {
                 result.append(Item(tone: .neutral, kicker: "Ready for the server", title: project.name,
                                    detail: "Delivered and paid — its footage can leave the SSD",
-                                   actionTitle: "Go to Footage") { navigator.open(.footage) })
+                                   actionTitle: "Go to Library") { navigator.open(.footage) })
             }
         }
 
@@ -194,7 +194,7 @@ struct TodayView: View {
                 result.append(Item(tone: .soon, kicker: full.map { "SSD \($0)" } ?? "Space to reclaim",
                                    title: "\(ByteFormat.string(reclaim)) can come back today",
                                    detail: "Premiere cache and duplicate copies",
-                                   actionTitle: "See footage") { navigator.open(.footage) })
+                                   actionTitle: "Open Library") { navigator.open(.footage) })
             }
         }
         let p = logins.progress
@@ -233,7 +233,7 @@ struct TodayView: View {
         }
         if parts.isEmpty {
             return projects.projects.isEmpty
-                ? "Start by adding Emma's drive in Footage, then turn its folders into projects."
+                ? "Start by adding Emma's drive in Library, then turn its folders into projects."
                 : "Nothing urgent today."
         }
         return parts.joined(separator: " ")
