@@ -247,6 +247,29 @@ final class DriveCatalog: ObservableObject {
         }
     }
 
+    /// Where a folder on a drive is right now, if that drive is plugged in.
+    func location(of folder: String, on drive: CatalogDrive) -> URL? {
+        let base: URL? = drive.isMac ? URL(fileURLWithPath: "/") : mounted[drive.id]
+        guard let base else { return nil }
+        let url = folder.isEmpty ? base : base.appendingPathComponent(folder)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// The photos and videos Lens remembers in one folder, for when its drive is unplugged.
+    nonisolated static func files(in folderPath: String, on drive: CatalogDrive) -> [FolderItem] {
+        guard let text = try? String(contentsOf: folder.appendingPathComponent("\(drive.id).tsv"), encoding: .utf8) else { return [] }
+        var items: [FolderItem] = []
+        text.enumerateLines { line, _ in
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count >= 4, let kind = CatalogKind(rawValue: String(parts[3])), kind != .project else { return }
+            let path = String(parts[0])
+            guard (path as NSString).deletingLastPathComponent == folderPath else { return }
+            items.append(FolderItem(name: (path as NSString).lastPathComponent, size: Int64(parts[1]) ?? 0,
+                                    modified: Date(timeIntervalSince1970: TimeInterval(Int(parts[2]) ?? 0)), kind: kind, url: nil))
+        }
+        return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     // MARK: Search
 
     /// Finds folders and files whose path contains every word typed, on every drive, plugged in

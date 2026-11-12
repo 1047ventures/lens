@@ -99,7 +99,19 @@ struct LibraryDrivesView: View {
     private func resultRow(_ hit: CatalogHit) -> some View {
         let drive = catalog.drives.first { $0.id == hit.driveID }
         let folderName = hit.folder.isEmpty ? (drive?.name ?? "") : (hit.folder as NSString).lastPathComponent
-        return HStack(spacing: 12) {
+        return NavigationLink(value: FootageRoute.folder(driveID: hit.driveID, path: hit.folder)) {
+            resultLabel(hit, drive: drive, folderName: folderName)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if let drive, let url = catalog.location(of: hit.folder, on: drive) {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+        }
+    }
+
+    private func resultLabel(_ hit: CatalogHit, drive: CatalogDrive?, folderName: String) -> some View {
+        HStack(spacing: 12) {
             Image(systemName: "folder.fill").foregroundStyle(Theme.text3)
             VStack(alignment: .leading, spacing: 2) {
                 Text(folderName).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
@@ -108,25 +120,17 @@ struct LibraryDrivesView: View {
             }
             Spacer(minLength: 12)
             if let drive {
-                if let url = location(of: hit, on: drive) {
+                if catalog.location(of: hit.folder, on: drive) != nil {
                     Text(drive.name).font(.system(size: 12)).foregroundStyle(Theme.text3)
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                        .buttonStyle(SecondaryButtonStyle())
                 } else {
-                    Label("Plug in \(drive.name)", systemImage: "externaldrive")
+                    Label("\(drive.name) · in the drawer", systemImage: "externaldrive")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
                 }
             }
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-
-    /// Where a result is right now, if its drive is plugged in.
-    private func location(of hit: CatalogHit, on drive: CatalogDrive) -> URL? {
-        let base: URL? = drive.isMac ? URL(fileURLWithPath: "/") : catalog.mounted[drive.id]
-        guard let base else { return nil }
-        let url = hit.folder.isEmpty ? base : base.appendingPathComponent(hit.folder)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        .contentShape(Rectangle())
     }
 
     // MARK: Drives
