@@ -236,6 +236,18 @@ struct Sidebar: View {
                 }
                 .buttonStyle(.plain)
                 StorageMeter()
+                // Which version this is. Click to check for a newer one.
+                Button {
+                    Task { await Updater.shared.check() }
+                } label: {
+                    Text("Lens \(Updater.shared.currentVersion)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                }
+                .buttonStyle(.plain)
+                .help("Check for updates")
             }
             .padding(12)
             .background(Theme.sidebar)
