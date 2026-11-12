@@ -38,6 +38,8 @@ final class Navigator: ObservableObject {
     @Published var builderDealID: UUID?
     /// Whether the Ask Lens panel is open.
     @Published var askOpen = false
+    /// The bank, Venmo or PayPal log-in window, when open.
+    @Published var bankLogin: LoginID?
 
     func open(_ section: SidebarSection) {
         self.section = section
@@ -115,6 +117,11 @@ struct ContentView: View {
                     .keyboardShortcut("k", modifiers: .command)
                     .help("Ask Lens (⌘K)")
                 }
+            }
+            .sheet(item: $navigator.bankLogin) { id in
+                BankLoginView(id: id, folder: logins.state.statementsFolder.map { URL(fileURLWithPath: $0) } ?? BankSite.defaultFolder)
+                    .environmentObject(logins)
+                    .environmentObject(money)
             }
         }
         .environmentObject(viewModel)

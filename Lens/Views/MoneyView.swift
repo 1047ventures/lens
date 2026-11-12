@@ -72,13 +72,26 @@ struct MoneyView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 380)
-            Button("Import statement…") { pickStatement() }.buttonStyle(SecondaryButtonStyle())
+            Menu {
+                Button("Bank + credit card") { navigator.bankLogin = .bank }
+                Button("Venmo") { navigator.bankLogin = .venmo }
+                Button("PayPal") { navigator.bankLogin = .paypal }
+                Divider()
+                Button("Import a file I already downloaded…") { pickStatement() }
+            } label: {
+                Text("Update from bank")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
         }
     }
 
     private var subtitle: String {
         let i = money.income(period)
-        if i.totalRevenue == 0 && money.txns.isEmpty { return "Import a bank, card, Venmo or PayPal statement to start the books." }
+        if i.totalRevenue == 0 && money.txns.isEmpty { return "Tap Update from bank to bring in your transactions and start the books." }
         return i.net >= 0 ? "You kept \(Money.string(i.net)) of the \(Money.string(i.totalRevenue)) that came in."
                           : "You spent \(Money.string(-i.net)) more than came in."
     }
@@ -406,7 +419,7 @@ struct MoneyView: View {
                         .foregroundStyle(a.isCash ? Theme.text2 : Theme.coral)
                 }
             }
-            Text("Read-only. Statements come in through Import or the statements folder in Log-ins; Lens can't move money.")
+            Text("Transactions come in through Update from bank. Lens only reads statements; it never moves money.")
                 .font(.system(size: 11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         }
         .panel()

@@ -303,6 +303,11 @@ final class ConnectionStore: ObservableObject {
     func field(_ key: String) -> String { state.fields[key] ?? "" }
     func setField(_ key: String, _ value: String) { state.fields[key] = value; save() }
 
+    /// When transactions last came in from this account's log-in window.
+    func lastImport(_ id: LoginID) -> Date? {
+        ISO8601DateFormatter().date(from: field("lastImport.\(id.rawValue)"))
+    }
+
     // MARK: Google
 
     var googleClientID: String { Keychain.get("google.clientID") ?? "" }
@@ -427,8 +432,10 @@ final class ConnectionStore: ObservableObject {
             if isConfirmed("directories") { return gmail != nil ? .connected("\(listed) listing\(listed == 1 ? "" : "s"), leads via Gmail") : .partial("Waiting on Google") }
             return .todo("Pick where she's listed")
         case .bank, .paypal, .venmo:
-            guard state.statementsFolder != nil else { return .todo("Needs a statements folder") }
-            return isConfirmed(id.rawValue) ? .connected(gmail != nil ? "Statements + payment emails" : "Monthly statements") : .partial("Folder ready; first export pending")
+            if let last = lastImport(id) { return .connected("Updated \(last.formatted(.dateTime.month().day()))") }
+            if isConfirmed(id.rawValue) { return .connected("Monthly statements") }
+            if id == .bank && field("bankWebsite").isEmpty { return .todo("Add her bank's website") }
+            return .todo("Log in once to pull transactions")
         case .claude:
             return (Keychain.get("anthropic.apiKey") ?? "").isEmpty ? .todo("Needs an API key") : .connected("Ask Lens is on")
         case .github:

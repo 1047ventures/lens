@@ -5,6 +5,7 @@ import SwiftUI
 /// a Mac permission prompt, or something Emma already has (like email notifications).
 struct LoginsView: View {
     @EnvironmentObject private var logins: ConnectionStore
+    @EnvironmentObject private var navigator: Navigator
     @State private var expanded: Set<LoginID> = []
 
     private struct Group: Identifiable {
@@ -18,7 +19,7 @@ struct LoginsView: View {
         Group(id: "Google account", color: Palette.blue, note: "One sign-in covers most of what Lens reads.", items: [.google, .calendar, .drive]),
         Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes her calls.", items: [.zoom]),
         Group(id: "Where clients find her", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
-        Group(id: "Money", color: Palette.lime, note: "Read-only. Lens can't move a cent.", items: [.bank, .paypal, .venmo]),
+        Group(id: "Money", color: Palette.lime, note: "She logs in on their own sites. Lens only reads statements.", items: [.bank, .paypal, .venmo]),
         Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending ideas to Sean.", items: [.claude, .github]),
         Group(id: "Coming later", color: Palette.slate, note: "", items: [.homeServer]),
     ]
@@ -263,18 +264,25 @@ struct LoginsView: View {
     }
 
     private func statementControls(_ id: LoginID) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            if id == .bank {
+                TextField("Her bank's website, e.g. chase.com", text: Binding(get: { logins.field("bankWebsite") }, set: { logins.setField("bankWebsite", $0) }))
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
+            }
             HStack(spacing: 10) {
-                if let folder = logins.state.statementsFolder {
-                    Text(folder.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text3).lineLimit(1).truncationMode(.middle)
-                    Button("Change") { logins.chooseStatementsFolder() }.buttonStyle(SecondaryButtonStyle())
-                } else {
-                    Button("Choose the statements folder") { logins.chooseStatementsFolder() }.buttonStyle(PrimaryButtonStyle())
+                Button(logins.lastImport(id) == nil ? "Log in and get transactions" : "Log in and update") {
+                    navigator.bankLogin = id
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                if let last = logins.lastImport(id) {
+                    Text("Last updated \(last.formatted(.dateTime.month().day()))").font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
             }
-            if logins.state.statementsFolder != nil {
-                confirm(id.rawValue, "Done: first statement saved there")
+            HStack(spacing: 8) {
+                Text("Keep copies of statements in:").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text((logins.state.statementsFolder ?? BankSite.defaultFolder.path).replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
+                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text3).lineLimit(1).truncationMode(.middle)
+                Button("Change") { logins.chooseStatementsFolder() }.buttonStyle(.link).font(.system(size: 12))
             }
         }
     }
@@ -355,25 +363,28 @@ struct LoginsView: View {
         .bank: Info(
             name: "Bank + credit card", icon: "building.columns.fill",
             covers: "Income, expenses and balances for the Money tab",
-            gets: ["Monthly statements (CSV) from a folder she saves them to",
+            gets: ["Checking and credit card transactions, straight into Money",
                    "Deposit and payment alert emails, once Google is connected"],
-            never: "No bank password, no access that can move money. A live bank link (Plaid) can come later if wanted.",
-            steps: ["Pick a statements folder below (inside Google Drive is handy).",
-                    "Once a month, download each account's statement as **CSV** (Download/Export in online banking) into it.",
-                    "Optional: turn on deposit and large-purchase email alerts to her Gmail."]),
+            never: "Lens never sees or saves her password. She logs in on the bank's own page; Lens only reads the statements she downloads.",
+            steps: ["Type her bank's website below and tap **Log in and get transactions**.",
+                    "Log in like normal (including the text-message code).",
+                    "Find Statements or Download transactions, pick **CSV**, and download. Lens adds it to Money and skips anything already there.",
+                    "Do it again whenever she wants fresh numbers. The bank may ask her to log in again each time."]),
         .paypal: Info(
             name: "PayPal", icon: "p.circle.fill",
             covers: "Client payments and fees",
-            gets: ["Payment received emails (already in Gmail)", "Monthly activity export for the books"],
-            never: "No PayPal password.",
-            steps: ["In PayPal: Activity → **Download** → CSV for last month, saved into the statements folder.",
+            gets: ["Payment received emails (already in Gmail)", "Activity downloads, straight into Money"],
+            never: "Lens never sees or saves her password. She logs in on PayPal's own page.",
+            steps: ["Tap **Log in and get transactions** and log in like normal.",
+                    "Tap **Go to statements**, pick CSV and the dates, and download. Lens adds it to Money.",
                     "Keep payment notification emails on."]),
         .venmo: Info(
             name: "Venmo", icon: "v.circle.fill",
             covers: "Deposits paid by Venmo, like Hartley's",
-            gets: ["Payment emails (already in Gmail)", "Monthly statement for the books"],
-            never: "Venmo has no app access for personal accounts; nothing reads it directly.",
-            steps: ["In the Venmo app or website: Statements → **Download CSV** each month into the statements folder.",
+            gets: ["Payment emails (already in Gmail)", "Statements, straight into Money"],
+            never: "Lens never sees or saves her password. She logs in on Venmo's own page.",
+            steps: ["Tap **Log in and get transactions** and log in like normal.",
+                    "Tap **Go to statements** and download the CSV. Lens adds it to Money.",
                     "Keep payment email notifications on."]),
         .claude: Info(
             name: "Claude (Ask Lens)", icon: "sparkles",
