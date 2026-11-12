@@ -110,7 +110,7 @@ struct LibraryDriveView: View {
         let total = bytes(folder)
         let biggest = max(folders.map(bytes).max() ?? 1, 1)
         return HStack(spacing: 14) {
-            Image(systemName: folder.videos > 0 ? "film.stack" : "photo.stack")
+            Image(systemName: folder.videos > 0 ? "film" : "photo.on.rectangle")
                 .font(.system(size: 16)).foregroundStyle(Theme.text3).frame(width: 22)
             VStack(alignment: .leading, spacing: 3) {
                 Text(folder.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
