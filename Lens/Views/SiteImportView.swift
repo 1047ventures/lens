@@ -37,7 +37,7 @@ struct SiteImportView: View {
                 .font(.system(size: 13)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Website").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
-                TextField("emmapionberlin.com", text: $address).textFieldStyle(.roundedBorder)
+                TextField("yoursite.com", text: $address).textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Save the photos in").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
