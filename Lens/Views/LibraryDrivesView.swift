@@ -6,6 +6,7 @@ import AppKit
 struct LibraryDrivesView: View {
     @EnvironmentObject private var viewModel: ScanViewModel
     @ObservedObject private var catalog = DriveCatalog.shared
+    @ObservedObject private var importer = SiteImporter.shared
     @State private var query = ""
     @State private var hits: [CatalogHit] = []
     @State private var searching = false
@@ -141,6 +142,8 @@ struct LibraryDrivesView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 macTile
                 photosTile
+                ForEach(catalog.sites) { site in tile(site) }
+                ForEach(runningImports, id: \.host) { job in importTile(job) }
                 ForEach(catalog.outside) { drive in tile(drive) }
             }
         }
@@ -207,7 +210,7 @@ struct LibraryDrivesView: View {
         let barColor = full > 0.85 ? Theme.coral : full > 0.7 ? Theme.amber : (plugged ? Theme.teal : Theme.muted)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: drive.isMac ? "laptopcomputer" : drive.isPhotos ? "photo.on.rectangle" : plugged ? "externaldrive.fill" : "externaldrive")
+                Image(systemName: drive.isMac ? "laptopcomputer" : drive.isPhotos ? "photo.on.rectangle" : drive.isWebsite ? "globe" : plugged ? "externaldrive.fill" : "externaldrive")
                     .foregroundStyle(plugged ? Theme.text : Theme.muted)
                 Text(drive.name)
                     .font(.system(size: 14, weight: .semibold))
@@ -223,10 +226,10 @@ struct LibraryDrivesView: View {
                 }
             }
             .frame(height: 5)
-            .opacity(drive.isPhotos ? 0 : 1)
-            Text(drive.isPhotos ? "\(ByteFormat.string(drive.photoBytes + drive.videoBytes)) in all"
+            .opacity(drive.isPhotos || drive.isWebsite ? 0 : 1)
+            Text(drive.isPhotos || drive.isWebsite ? "\(ByteFormat.string(drive.photoBytes + drive.videoBytes)) in all"
                                 : "\(Int((full * 100).rounded()))% full · \(ByteFormat.string(drive.free)) free")
-                .font(.system(size: 12)).foregroundStyle(!drive.isPhotos && full > 0.85 ? Theme.coral : Theme.text3)
+                .font(.system(size: 12)).foregroundStyle(!drive.isPhotos && !drive.isWebsite && full > 0.85 ? Theme.coral : Theme.text3)
             Text(contents(drive)).font(.system(size: 12)).foregroundStyle(Theme.text2)
             Text(status(drive, plugged: plugged)).font(.system(size: 11)).foregroundStyle(Theme.muted)
         }
@@ -241,6 +244,10 @@ struct LibraryDrivesView: View {
                 Button("Look again") { catalog.scanMac() }
             } else if drive.isPhotos {
                 Button("Look again") { catalog.readPhotos() }
+            } else if drive.isWebsite, let base = drive.basePath, let site = SiteImporter.siteURL(drive.name) {
+                Button("Check the site for new photos") {
+                    importer.start(site: site, into: URL(fileURLWithPath: base).deletingLastPathComponent())
+                }
             } else if plugged, let url = catalog.mounted[drive.id] {
                 Button("Read it again") {
                     if !viewModel.roots.contains(url) { viewModel.addRoot(url) }
@@ -264,7 +271,31 @@ struct LibraryDrivesView: View {
         return parts.isEmpty ? "No photos or video" : parts.joined(separator: " · ")
     }
 
+    private var runningImports: [SiteImporter.Job] {
+        importer.jobs.values.filter { !$0.finished }.sorted { $0.host < $1.host }
+    }
+
+    private func importTile(_ job: SiteImporter.Job) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(job.host, systemImage: "globe").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+            ProgressView(value: Double(job.pagesDone), total: Double(max(job.pagesTotal, 1)))
+            Text("Bringing it in · \(job.saved) saved").font(.system(size: 12)).foregroundStyle(Theme.text2)
+            Text(job.pagesTotal > 0 ? "Page \(job.pagesDone) of \(job.pagesTotal)" : "Finding every page…")
+                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+    }
+
     private func status(_ drive: CatalogDrive, plugged: Bool) -> String {
+        if drive.isWebsite {
+            if importer.jobs[drive.name]?.finished == false { return "Checking for new photos…" }
+            let where_ = drive.basePath.map { (($0 as NSString).deletingLastPathComponent as NSString).lastPathComponent } ?? ""
+            return plugged ? "Website · saved in \(where_)" : "Website · its drive is unplugged"
+        }
         if drive.isMac {
             return catalog.macScanning ? "Looking…" : "Desktop, Downloads, Documents, Movies, Pictures"
         }

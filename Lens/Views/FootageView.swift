@@ -15,6 +15,7 @@ struct FootageView: View {
     @EnvironmentObject private var navigator: Navigator
     @State private var path: [FootageRoute] = []
     @State private var movingAll = false
+    @State private var addingSite = false
     /// Watched so the page updates the moment a drive is plugged in or pulled out.
     @ObservedObject private var catalog = DriveCatalog.shared
 
@@ -47,6 +48,7 @@ struct FootageView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Theme.ground)
+            .sheet(isPresented: $addingSite) { SiteImportView() }
             .navigationDestination(for: FootageRoute.self) { route in
                 Group {
                     switch route {
@@ -82,6 +84,8 @@ struct FootageView: View {
                     .foregroundStyle(Theme.muted)
             }
             Spacer()
+            Button("Add a website…") { addingSite = true }
+                .buttonStyle(SecondaryButtonStyle())
             Button("Add drive…") { addDrive() }
                 .buttonStyle(SecondaryButtonStyle())
             Button {

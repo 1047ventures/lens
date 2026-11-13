@@ -21,8 +21,11 @@ struct CatalogDrive: Codable, Identifiable, Hashable {
     var projectCount: Int
     /// "photos" for the Mac's Photos app; nil for a real drive.
     var source: String? = nil
+    /// For a website brought in: the folder its photos were saved to.
+    var basePath: String? = nil
 
     var isPhotos: Bool { source == "photos" }
+    var isWebsite: Bool { source == "web" }
     var fractionUsed: Double { total > 0 ? Double(max(0, total - free)) / Double(total) : 0 }
 }
 
@@ -173,8 +176,12 @@ final class DriveCatalog: ObservableObject {
 
     var mac: CatalogDrive? { drives.first(where: \.isMac) }
     var photos: CatalogDrive? { drives.first(where: \.isPhotos) }
-    var outside: [CatalogDrive] { drives.filter { !$0.isMac && !$0.isPhotos }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
-    func isPlugged(_ drive: CatalogDrive) -> Bool { drive.isMac || drive.isPhotos || mounted[drive.id] != nil }
+    var sites: [CatalogDrive] { drives.filter(\.isWebsite).sorted { $0.name < $1.name } }
+    var outside: [CatalogDrive] { drives.filter { !$0.isMac && !$0.isPhotos && !$0.isWebsite }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+    func isPlugged(_ drive: CatalogDrive) -> Bool {
+        if let base = drive.basePath { return FileManager.default.fileExists(atPath: base) }
+        return drive.isMac || drive.isPhotos || mounted[drive.id] != nil
+    }
 
     /// Reads the Photos app (asking permission the first time).
     func readPhotos() {
@@ -266,7 +273,7 @@ final class DriveCatalog: ObservableObject {
 
     /// Where a folder on a drive is right now, if that drive is plugged in.
     func location(of folder: String, on drive: CatalogDrive) -> URL? {
-        let base: URL? = drive.isMac ? URL(fileURLWithPath: "/") : mounted[drive.id]
+        let base: URL? = drive.basePath.map { URL(fileURLWithPath: $0) } ?? (drive.isMac ? URL(fileURLWithPath: "/") : mounted[drive.id])
         guard let base else { return nil }
         let url = folder.isEmpty ? base : base.appendingPathComponent(folder)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
