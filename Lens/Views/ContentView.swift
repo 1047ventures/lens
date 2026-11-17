@@ -40,6 +40,8 @@ final class Navigator: ObservableObject {
     @Published var askOpen = false
     /// The bank, Venmo or PayPal log-in window, when open.
     @Published var bankLogin: LoginID?
+    /// Whether the one minute tour is showing.
+    @Published var touring = false
 
     func open(_ section: SidebarSection) {
         self.section = section
@@ -91,6 +93,9 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.ground)
+            .overlay(alignment: .bottomTrailing) {
+                if navigator.touring { TourCard().transition(.opacity) }
+            }
             .inspector(isPresented: $navigator.askOpen) {
                 AskLensView()
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
@@ -134,6 +139,8 @@ struct ContentView: View {
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
             ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
+            // First time Lens opens, show the tour.
+            if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.touring = true }
             Updater.shared.start()
             // A drive Lens knows gets read again whenever it's plugged back in.
             DriveCatalog.shared.onKnownDrivePlugged = { [weak viewModel] url in
@@ -248,6 +255,13 @@ struct Sidebar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Check for updates")
+                .overlay(alignment: .trailing) {
+                    Button("Take the tour") { navigator.touring = true }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.teal)
+                        .padding(.trailing, 4)
+                }
             }
             .padding(12)
             .background(Theme.sidebar)

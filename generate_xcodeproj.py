@@ -70,6 +70,7 @@ FILES = [
     (f"{APP_NAME}/Views/LibraryFolderView.swift",         f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/LibraryDriveView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/SiteImportView.swift",            f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/TourView.swift",                  f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/SiteImporter.swift",           f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/AskLensView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/MoneyView.swift",                 f"{APP_NAME}/Views"),
