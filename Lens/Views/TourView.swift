@@ -46,7 +46,7 @@ enum Tour {
 struct TourCard: View {
     @EnvironmentObject private var navigator: Navigator
     @AppStorage("tourSeen") private var tourSeen = false
-    @State private var index = 0
+    private var index: Int { min(navigator.tourStep, Tour.stops.count - 1) }
 
     private var stop: TourStop { Tour.stops[index] }
     private var isLast: Bool { index == Tour.stops.count - 1 }
@@ -99,12 +99,11 @@ struct TourCard: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.teal.opacity(0.45)))
         .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
         .padding(20)
-        .onAppear { go(0) }
     }
 
     private func go(_ i: Int) {
         withAnimation(.easeInOut(duration: 0.2)) {
-            index = i
+            navigator.tourStep = i
             let s = Tour.stops[i]
             navigator.askOpen = s.opensAsk
             if let section = s.section { navigator.open(section) }

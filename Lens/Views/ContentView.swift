@@ -42,6 +42,15 @@ final class Navigator: ObservableObject {
     @Published var bankLogin: LoginID?
     /// Whether the one minute tour is showing.
     @Published var touring = false
+    /// Which stop of the tour is showing.
+    @Published var tourStep = 0
+
+    func startTour() {
+        tourStep = 0
+        askOpen = false
+        section = .today
+        touring = true
+    }
 
     func open(_ section: SidebarSection) {
         self.section = section
@@ -140,7 +149,7 @@ struct ContentView: View {
         .task {
             ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
             // First time Lens opens, show the tour.
-            if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.touring = true }
+            if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
             Updater.shared.start()
             // A drive Lens knows gets read again whenever it's plugged back in.
             DriveCatalog.shared.onKnownDrivePlugged = { [weak viewModel] url in
@@ -256,7 +265,7 @@ struct Sidebar: View {
                 .buttonStyle(.plain)
                 .help("Check for updates")
                 .overlay(alignment: .trailing) {
-                    Button("Take the tour") { navigator.touring = true }
+                    Button("Take the tour") { navigator.startTour() }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.teal)
