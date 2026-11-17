@@ -33,7 +33,7 @@ enum Tour {
                  body: "Money adds up what came in, what went out, and what to save for taxes. Log in to your bank, Venmo or PayPal once and Lens fills it in. Gear keeps your kit and what it's worth."),
         TourStop(section: .logins, opensAsk: false, icon: "key",
                  title: "Log-ins",
-                 body: "Connect your email, calendar and bank here, one time each. Passwords stay locked on this Mac. Lens only reads, it never pays or posts anything."),
+                 body: "Connect your email, calendar and bank here, one time each. You sign in on their own page, so Lens never sees your passwords. It only reads, it never pays or posts anything."),
         TourStop(section: nil, opensAsk: true, icon: "sparkles",
                  title: "Ask Lens",
                  body: "Not sure where something is? Ask in plain words, like \"who haven't I replied to?\" or \"what did I make in March?\" Lens checks with you before it changes anything."),
