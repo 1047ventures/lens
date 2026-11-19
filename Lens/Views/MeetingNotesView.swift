@@ -3,7 +3,10 @@ import SwiftUI
 /// The Zoom meeting summaries on a deal or project, newest first. Long summaries fold up.
 struct MeetingNotesList: View {
     @EnvironmentObject private var zoom: ZoomNotes
+    @EnvironmentObject private var projects: ProjectStore
     let notes: [MeetingNote]
+    /// The project these notes are on, so it isn't offered in "Move to".
+    var projectID: UUID? = nil
     @State private var open: Set<String> = []
     @State private var reading: MeetingNote?
 
@@ -42,6 +45,18 @@ struct MeetingNotesList: View {
                             Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 12))
                         }
                         Spacer()
+                        let others = projects.active.filter { $0.id != projectID }
+                        if !others.isEmpty {
+                            Menu("Move to…") {
+                                ForEach(others) { p in
+                                    Button(p.name) { zoom.move(note, toProject: p.id) }
+                                }
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .font(.system(size: 12))
+                            .help("Put this note on another project. Lens remembers, so calls with the same people go there too.")
+                        }
                         Button("Wrong place?") { zoom.unassign(note) }
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
                             .help("Take this note off and pick where it goes")
@@ -232,6 +247,11 @@ struct UnmatchedNotesPanel: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
+                if let id = zoom.suggestedProject(for: note), let p = projects.project(id: id) {
+                    Button("Add to \(p.name)") { zoom.assign(note, toProject: id) }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .help("Lens thinks this call is about \(p.name)")
+                }
                 Button("Not for a client") { zoom.dismiss(note) }.buttonStyle(SecondaryButtonStyle())
                 Menu {
                     let open = deals.deals.filter { $0.stage.isOpen }.sorted { $0.lastTouch > $1.lastTouch }

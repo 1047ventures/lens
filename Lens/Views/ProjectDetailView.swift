@@ -1,14 +1,17 @@
 import SwiftUI
 import AppKit
 
-/// One project's hub: where it is in the lifecycle, its footage, and its story so far.
+/// One project's hub: where it is in the lifecycle, and everything for it in one place, in tabs:
+/// Overview, People, Meeting notes, Emails, Proposal and files, Hours, Money.
 struct ProjectDetailView: View {
     let project: Project
     @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var zoom: ZoomNotes
+    @State private var tab: ProjectTab = .overview
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var money: MoneyStore
-    @EnvironmentObject private var deals: DealStore
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var moving = false
@@ -30,21 +33,34 @@ struct ProjectDetailView: View {
 
                 header
                 stageTrack
-                let books = self.books
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 28) {
-                            ProjectTimePanel(project: project, books: books)
-                            ProjectMoneyPanel(project: project, books: books)
-                            footagePanel; story
+                tabBar
+                switch tab {
+                case .overview:
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 28) {
+                            VStack(alignment: .leading, spacing: 28) { footagePanel; story }
+                                .frame(minWidth: 420)
+                            VStack(alignment: .leading, spacing: 28) { details; atAGlance }.frame(width: 300)
                         }
-                        .frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 28) { details; PeoplePanel(target: .project(project.id)); meetingNotes; emails }.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance }
                     }
+                case .people:
+                    VStack(alignment: .leading, spacing: 28) {
+                        ProjectPeopleTab(project: project)
+                        PeoplePanel(target: .project(project.id))
+                    }
+                case .notes: ProjectNotesTab(project: project)
+                case .emails: ProjectEmailsTab(project: project)
+                case .proposal: ProjectProposalTab(project: project)
+                case .hours:
                     VStack(alignment: .leading, spacing: 28) {
                         ProjectTimePanel(project: project, books: books)
+                        ProjectHoursTab(project: project)
+                    }
+                case .money:
+                    VStack(alignment: .leading, spacing: 28) {
                         ProjectMoneyPanel(project: project, books: books)
-                        footagePanel; story; details; PeoplePanel(target: .project(project.id)); meetingNotes; emails
+                        ProjectMoneyTab(project: project)
                     }
                 }
             }
@@ -63,6 +79,79 @@ struct ProjectDetailView: View {
         } message: {
             Text("This removes the project from Lens. Its footage folder stays where it is.")
         }
+    }
+
+    // MARK: - Tabs
+
+    private func count(_ t: ProjectTab) -> Int? {
+        switch t {
+        case .people: return project.people?.count ?? 0
+        case .notes: return project.meetingNotes?.count ?? 0
+        case .emails: return project.emails?.count ?? 0
+        case .proposal:
+            return (project.documents?.count ?? 0) + (deals.deals.contains { $0.projectID == project.id } ? 1 : 0)
+        case .overview, .hours, .money: return nil
+        }
+    }
+
+    private var tabBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(ProjectTab.allCases) { t in
+                    let label = count(t).map { "\(t.rawValue) · \($0)" } ?? t.rawValue
+                    let waiting = t == .notes ? zoom.suggestions(for: project.id).count : 0
+                    Button {
+                        tab = t
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(label)
+                            if waiting > 0 {
+                                Text("\(waiting) new")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Palette.violet.opacity(0.25))
+                                    .foregroundStyle(Palette.violet)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .font(.system(size: 13, weight: tab == t ? .semibold : .medium))
+                        .foregroundStyle(tab == t ? Theme.text : Theme.muted)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(tab == t ? Theme.raised : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(tab == t ? .isSelected : [])
+                }
+            }
+        }
+        .padding(4)
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.line))
+    }
+
+    /// A short list on Overview of what's in the other tabs, each one tap away.
+    private var atAGlance: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel("In this project")
+            ForEach([ProjectTab.people, .notes, .emails, .proposal]) { t in
+                Button { tab = t } label: {
+                    HStack {
+                        Text(t.rawValue).foregroundStyle(Theme.text2)
+                        Spacer()
+                        Text("\(count(t) ?? 0)").foregroundStyle(Theme.muted)
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
+                    }
+                    .font(.system(size: 13))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .panel(padding: 20)
     }
 
     // MARK: - Header and lifecycle
@@ -219,6 +308,7 @@ struct ProjectDetailView: View {
             detailRow("Client", project.client)
             detailRow("Shoot", project.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "")
             detailRow("Location", project.location)
+            detailRow("Keywords", (project.keywords ?? []).joined(separator: ", "))
             detailRow("Price", books.price.map { Money.string($0) } ?? "")
             HStack(spacing: 10) {
                 Button("Edit details") { editing = true }
@@ -229,26 +319,6 @@ struct ProjectDetailView: View {
             .padding(.top, 4)
         }
         .panel(padding: 20)
-    }
-
-    @ViewBuilder private var meetingNotes: some View {
-        if let notes = project.meetingNotes, !notes.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionLabel("Meeting notes · \(notes.count)")
-                MeetingNotesList(notes: notes)
-            }
-            .panel(padding: 20)
-        }
-    }
-
-    @ViewBuilder private var emails: some View {
-        if let threads = project.emails, !threads.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionLabel("Emails · \(threads.count)")
-                EmailThreadsList(threads: threads)
-            }
-            .panel(padding: 20)
-        }
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

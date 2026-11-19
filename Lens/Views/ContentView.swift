@@ -197,7 +197,7 @@ struct ContentView: View {
             gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai, people: people)
             gmail.start()
             // Zoom AI summaries, straight from Zoom (or from Gmail until Zoom is connected): attach each to its deal or project.
-            zoom.attach(deals: deals, projects: projects, logins: logins)
+            zoom.attach(deals: deals, projects: projects, logins: logins, ai: ai)
             ai.attachZoom(zoom)
             logins.importZoomClient()
             zoom.start()

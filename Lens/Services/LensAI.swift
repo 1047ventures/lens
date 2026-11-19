@@ -109,6 +109,24 @@ final class LensAI: ObservableObject {
     /// One request, separate from the Ask Lens chat; the answer comes back as JSON matching `emailSchema`.
     /// Nothing is changed here: Emma still taps Add on each suggestion.
     func sortEmails(_ payload: String) async throws -> [[String: Any]] {
+        guard let answer = try await structured(system: Self.emailPrompt, schema: Self.emailSchema, payload: payload) else {
+            throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
+        }
+        return answer["threads"] as? [[String: Any]] ?? []
+    }
+
+    /// Picks the project each Zoom summary belongs to, from Emma's open projects (or none).
+    /// One request, separate from the Ask Lens chat. Nothing is changed here: ZoomNotes only
+    /// places a note when Claude is sure, and otherwise suggests it for Emma to add with one tap.
+    func placeNotes(_ payload: String) async throws -> [[String: Any]] {
+        guard let answer = try await structured(system: Self.notesPrompt, schema: Self.notesSchema, payload: payload) else {
+            throw AIError("Claude's answer about your Zoom notes didn't come through. Lens will try again later.")
+        }
+        return answer["notes"] as? [[String: Any]] ?? []
+    }
+
+    /// One request that answers in JSON matching `schema`. Nil when the answer can't be read.
+    private func structured(system: String, schema: [String: Any], payload: String) async throws -> [String: Any]? {
         guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else { throw AIError("Connect Claude in Log-ins first.") }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
@@ -120,9 +138,9 @@ final class LensAI: ObservableObject {
         let body: [String: Any] = [
             "model": Self.model,
             "max_tokens": 16000,
-            "system": [["type": "text", "text": Self.emailPrompt, "cache_control": ["type": "ephemeral"]]],
+            "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
             "messages": [["role": "user", "content": payload]],
-            "output_config": ["effort": "low", "format": ["type": "json_schema", "schema": Self.emailSchema]],
+            "output_config": ["effort": "low", "format": ["type": "json_schema", "schema": schema]],
             "fallbacks": "default",
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -131,14 +149,43 @@ final class LensAI: ObservableObject {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw failure(status: status, json: json) }
         if let usage = json["usage"] as? [String: Any] { record(usage) }
-        guard (json["stop_reason"] as? String) != "refusal" else { return [] }
+        guard (json["stop_reason"] as? String) != "refusal" else { return [:] }
         let text = (json["content"] as? [[String: Any]] ?? [])
             .filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined()
-        guard let answer = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
-            throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
-        }
-        return answer["threads"] as? [[String: Any]] ?? []
+        return try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
     }
+
+    private static let notesPrompt = """
+    You help Emma, a freelance filmmaker and videographer, file the Zoom AI summaries of her calls in her business app (Lens).
+    You get new call summaries and her open projects. Each project has a name, client, keywords, the people on it
+    (with roles like Director, Interviewee, Producer) and the titles of calls already filed there.
+    For every summary, pick the one project it is about, or "" when it is about none of them (personal calls,
+    other businesses, a brand-new client). Use who was on the call, the people and places mentioned, the meeting
+    title, the project names and keywords, and earlier calls in the same series.
+    sure: true only when the summary clearly belongs to that project and to no other. When two projects fit,
+    or the link is a guess, set sure to false. Never invent ids: project_id must be one of the ids given, or "".
+    """
+
+    private static let notesSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "notes": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "note_id": ["type": "string"],
+                        "project_id": ["type": "string"],
+                        "sure": ["type": "boolean"],
+                    ],
+                    "required": ["note_id", "project_id", "sure"],
+                    "additionalProperties": false,
+                ],
+            ],
+        ],
+        "required": ["notes"],
+        "additionalProperties": false,
+    ]
 
     private static let emailPrompt = """
     You help Emma, a freelance filmmaker and videographer, keep her business app (Lens) in step with her Gmail.
@@ -556,9 +603,36 @@ final class LensAI: ObservableObject {
             var d = projectSummary(p)
             d.merge(projectBooks(p)) { _, new in new }
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
-            if let notes = p.meetingNotes, !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes) }
+            if let people = p.people, !people.isEmpty {
+                d["people"] = people.map { "\($0.name) (\($0.role.isEmpty ? "no role set" : $0.role)) \($0.email)" }
+            }
+            if let keywords = p.keywords, !keywords.isEmpty { d["keywords"] = keywords }
+            // Every call on the project, so questions across all of it ("what did the directors ask for?") can be answered.
+            if let notes = p.meetingNotes, !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes, limit: 40, length: 3000) }
             if let emails = p.emails, !emails.isEmpty {
                 d["emails"] = emails.map { "\($0.lastDate.formatted(date: .abbreviated, time: .omitted)) \($0.subject) (latest from \($0.from)): \($0.snippet)" }
+            }
+            if let files = p.documents, !files.isEmpty {
+                d["files"] = files.map { "\($0.kind): \($0.name) (\($0.location))" }
+            }
+            if let deal = deals.deals.first(where: { $0.projectID == p.id }) {
+                var proposal = dealDetail(deal)
+                proposal.removeValue(forKey: "meeting_notes")   // already listed above
+                proposal.removeValue(forKey: "emails")
+                proposal["headline"] = deal.story.headline
+                proposal["logline"] = deal.story.logline
+                proposal["why"] = deal.story.why
+                proposal["pillars"] = deal.story.pillars.map { "\($0.title): \($0.text)" }
+                d["proposal_deal"] = proposal
+            }
+            if let money {
+                let txns = money.txns.filter { $0.projectID == p.id }
+                if !txns.isEmpty {
+                    d["money_in"] = Money.string(txns.filter { $0.amount > 0 }.reduce(0) { $0 + $1.amount })
+                    d["money_out"] = Money.string(-txns.filter { $0.amount < 0 }.reduce(0) { $0 + $1.amount })
+                }
+                let owed = money.receivables.filter { $0.projectID == p.id && $0.paidOn == nil }
+                if !owed.isEmpty { d["still_owed"] = owed.map { "\($0.label) \(Money.string($0.amount)) due \(day($0.due))" } }
             }
             return (json(d), false)
         case "get_money":
@@ -869,8 +943,8 @@ final class LensAI: ObservableObject {
     }
 
     /// Zoom AI summaries of calls, newest first, so Ask Lens can answer "what did they want on our call?".
-    private func meetingNotes(_ notes: [MeetingNote]) -> [String] {
-        notes.prefix(8).map { "[\($0.id)] \($0.date.formatted(date: .abbreviated, time: .omitted)) Zoom call \"\($0.title)\": \($0.fullText.prefix(4000))" }
+    private func meetingNotes(_ notes: [MeetingNote], limit: Int = 8, length: Int = 4000) -> [String] {
+        notes.prefix(limit).map { "[\($0.id)] \($0.date.formatted(date: .abbreviated, time: .omitted)) Zoom call \"\($0.title)\": \($0.fullText.prefix(length))" }
     }
 
     /// Every meeting note Lens has, with where it lives ("Deal: Smith · Wedding film", "Not placed").
@@ -1036,7 +1110,7 @@ final class LensAI: ObservableObject {
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
         tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what Emma keeps.", [:], []),
-        tool("get_project", "One project's details, history, emails, Zoom call summaries (meeting_notes), time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour).", ["project_id": ["type": "string"]], ["project_id"]),
+        tool("get_project", "Everything in one project: details, history, the people on it with their roles (director, interviewee…), every Zoom call summary (meeting_notes), emails, the proposal from its deal (proposal_deal), attached files, time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour). Use it for questions across a whole project.", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),

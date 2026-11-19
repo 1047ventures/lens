@@ -92,6 +92,7 @@ FILES = [
     (f"{APP_NAME}/Services/ZoomNotes.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomAPI.swift",                f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/MeetingNotesView.swift",          f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/ProjectTabsView.swift",           f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/Connections.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Models/Deal.swift",                     f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Services/Estimator.swift",              f"{APP_NAME}/Services"),

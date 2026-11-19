@@ -157,6 +157,8 @@ struct EmailThread: Codable, Hashable, Identifiable {
     var lastDate: Date
     var messageCount: Int
     var link: String        // opens the conversation in Gmail
+    /// Everyone on the conversation except Emma, as "Name <email>". Optional so older saved links still load.
+    var people: [String]? = nil
 }
 
 /// A Zoom AI Companion summary of a call, attached to a deal or project. It comes either straight
@@ -174,6 +176,8 @@ struct MeetingNote: Codable, Hashable, Identifiable {
     var sections: [MeetingNoteSection]?
     var nextSteps: [String]?
     var people: [MeetingPerson]?
+    /// Email addresses of the people on the call, when the summary email lists them. Optional so older notes still load.
+    var attendees: [String]? = nil
 
     var fromZoom: Bool { source == "zoom" }
 

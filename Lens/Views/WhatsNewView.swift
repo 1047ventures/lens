@@ -13,6 +13,16 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("1.0.36", [
+            Item(icon: "folder.fill", title: "Everything for a project in one place",
+                 detail: "Each project now has tabs for People, Meeting notes, Emails, Proposal and files, Hours and Money, with a count on each."),
+            Item(icon: "person.2.fill", title: "People on a project",
+                 detail: "Add the directors, interviewees and crew to a project. Their Zoom notes and emails land there, and Lens suggests people it has seen."),
+            Item(icon: "video.fill", title: "Zoom notes find the right project",
+                 detail: "Lens looks at who was on the call, the meeting name and your project keywords. If it isn't sure, tap Add to put a note on the project, or Move to send it elsewhere. Lens remembers."),
+            Item(icon: "doc.richtext.fill", title: "Your proposal on the project",
+                 detail: "Open, print or save the proposal as a PDF from the project, and add contracts, treatments and call sheets from Drive or your Mac."),
+        ]),
         ("1.0.35", [
             Item(icon: "video.fill", title: "Connect Zoom",
                  detail: "In Log-ins, click Connect Zoom and Lens reads every full Zoom AI summary, old and new, with next steps and who was there. Nothing to upload."),

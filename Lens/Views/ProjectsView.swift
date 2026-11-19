@@ -169,6 +169,7 @@ struct ProjectEditor: View {
     @State private var shootDate = Date()
     @State private var stage: ProjectStage = .lead
     @State private var folderPath: String?
+    @State private var keywords = ""
     @State private var priceText = ""
 
     var body: some View {
@@ -179,6 +180,8 @@ struct ProjectEditor: View {
                 TextField("Name", text: $name, prompt: Text("Hartley wedding"))
                 TextField("Client", text: $client)
                 TextField("Location", text: $location)
+                TextField("Keywords", text: $keywords, prompt: Text("CU, documentary"))
+                    .help("Words that show a Zoom call or email is about this project, separated by commas")
                 TextField("Price", text: $priceText, prompt: Text("Leave empty to use the won deal's price"))
                 Toggle("Has a shoot date", isOn: $hasDate)
                 if hasDate {
@@ -219,6 +222,7 @@ struct ProjectEditor: View {
         shootDate = initial.shootDate ?? Date()
         stage = initial.stage
         folderPath = initial.folderPath
+        keywords = (initial.keywords ?? []).joined(separator: ", ")
         priceText = initial.price.map { String(Int($0.rounded())) } ?? ""
     }
 
@@ -241,6 +245,8 @@ struct ProjectEditor: View {
         project.shootDate = hasDate ? shootDate : nil
         project.stage = stage
         project.folderPath = folderPath
+        let words = keywords.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        project.keywords = words.isEmpty ? nil : words
         project.price = MoneyStore.parseAmount(priceText).flatMap { $0 > 0 ? $0 : nil }
         if stageChanged { project.events.append(ProjectEvent(text: "Moved to \(stage.label)")) }
         onSave(project)

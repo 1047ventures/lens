@@ -35,6 +35,32 @@ struct ProjectEvent: Codable, Identifiable, Hashable {
     }
 }
 
+/// Someone working on or appearing in a project: the client, directors, interviewees, crew.
+/// Meeting notes and emails that involve any of them land on the project.
+struct ProjectPerson: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var email: String
+    var role: String
+
+    static let roles = ["Client", "Director", "Producer", "Interviewee", "Crew", "Editor", "Planning"]
+}
+
+/// A contract, treatment, call sheet or other file for a project: a link to Google Drive or
+/// the web, or a file on Emma's Mac. Lens only remembers where it is; the file stays put.
+struct ProjectFile: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var kind: String
+    /// A web address, or the full path of a file on the Mac.
+    var location: String
+    var added = Date()
+
+    var isWebLink: Bool { location.lowercased().hasPrefix("http") }
+
+    static let kinds = ["Contract", "Treatment", "Call sheet", "Script", "Release form", "Other"]
+}
+
 /// A gig. Footage, history and (later) money and gear all hang off this.
 struct Project: Codable, Identifiable, Hashable {
     let id: UUID
@@ -56,6 +82,12 @@ struct Project: Codable, Identifiable, Hashable {
     var emails: [EmailThread]?
     /// Zoom meeting summaries for this project. Optional so older saved projects still load.
     var meetingNotes: [MeetingNote]?
+    /// The people on this project. Optional so older saved projects still load.
+    var people: [ProjectPerson]?
+    /// Words that point to this project in meeting titles and notes ("CU", "documentary").
+    var keywords: [String]?
+    /// Contracts, treatments, call sheets and other files. Optional so older saved projects still load.
+    var documents: [ProjectFile]?
     /// Hours spent on this project. Optional so older saved projects still load.
     var timeEntries: [TimeEntry]?
     /// When the running timer started, if it's running. Saved so it survives quitting Lens.
