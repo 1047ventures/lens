@@ -52,6 +52,8 @@ struct Project: Codable, Identifiable, Hashable {
     /// Proof for future proposals.
     var testimonial: String?
     var portfolioURL: String?
+    /// Gmail conversations about this project. Optional so older saved projects still load.
+    var emails: [EmailThread]?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {

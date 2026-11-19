@@ -96,6 +96,7 @@ final class DealStore: ObservableObject {
         project.events = d.events
             + d.milestones.map { ProjectEvent(text: "Planned: \($0.phase) · \($0.when)") }
             + [ProjectEvent(text: "Booked: \(option.name) (\(option.tagline)) at \(Money.string(estimate.total))")]
+        project.emails = d.emails
         projects.add(project)
 
         d.stage = .won
@@ -105,6 +106,20 @@ final class DealStore: ObservableObject {
         d.events.append(ProjectEvent(text: "Won with \(option.name) · \(Money.string(estimate.total))"))
         update(d)
         return project.id
+    }
+
+    /// Links a Gmail conversation to a deal, or refreshes it if it's already linked.
+    func attachEmail(_ thread: EmailThread, to dealID: UUID) {
+        guard var d = deal(id: dealID) else { return }
+        var list = d.emails ?? []
+        if let i = list.firstIndex(where: { $0.id == thread.id }) {
+            guard list[i] != thread else { return }
+            list[i] = thread
+        } else {
+            list.append(thread)
+        }
+        d.emails = list.sorted { $0.lastDate > $1.lastDate }
+        update(d)
     }
 
     // MARK: - Persistence

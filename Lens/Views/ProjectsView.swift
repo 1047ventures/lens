@@ -52,6 +52,8 @@ struct ProjectsView: View {
                         .foregroundStyle(Theme.text3)
                 }
 
+                EmailSuggestionsPanel(place: .projects)
+
                 if projects.projects.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No projects yet")

@@ -84,6 +84,7 @@ struct ContentView: View {
     @StateObject private var ai = LensAI()
     @StateObject private var money = MoneyStore()
     @StateObject private var navigator = Navigator()
+    @StateObject private var gmail = GmailSync()
     @State private var whatsNew: [WhatsNew.Item] = []
 
     var body: some View {
@@ -156,9 +157,13 @@ struct ContentView: View {
         .environmentObject(ai)
         .environmentObject(money)
         .environmentObject(navigator)
+        .environmentObject(gmail)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
             ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
+            // Look through Gmail now and every hour for new inquiries and booked work.
+            gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai)
+            gmail.start()
             // First time Lens opens, show the tour.
             if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
             Updater.shared.start()
@@ -171,6 +176,10 @@ struct ContentView: View {
             if !viewModel.pluggedRoots.isEmpty && !viewModel.hasScanned { viewModel.scan() }
         }
         // After every scan (including the rescan an undo triggers), notice footage that came back from the server.
+        // Once Google is connected, look at email straight away rather than waiting for the hourly check.
+        .onChange(of: logins.gmailReady) { _, ready in
+            if ready { Task { await gmail.check() } }
+        }
         .onChange(of: viewModel.isScanning) { _, scanning in
             if !scanning { projects.reconcileArchives() }
         }

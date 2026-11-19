@@ -148,6 +148,17 @@ struct Contact: Codable, Hashable, Identifiable {
     var email: String
 }
 
+/// A Gmail conversation linked to a deal or project, so opening it shows who said what.
+struct EmailThread: Codable, Hashable, Identifiable {
+    var id: String          // Gmail's thread id
+    var subject: String
+    var from: String        // who wrote the latest message
+    var snippet: String     // the start of the latest message
+    var lastDate: Date
+    var messageCount: Int
+    var link: String        // opens the conversation in Gmail
+}
+
 struct Milestone: Codable, Hashable, Identifiable {
     var id = UUID()
     var phase: String
@@ -255,6 +266,8 @@ struct Deal: Codable, Identifiable, Hashable {
     var expiresOn: Date?
     var nameChecked: Bool?
     var shortProposal: Bool?
+    /// Gmail conversations about this deal. Optional so older saved deals still load.
+    var emails: [EmailThread]?
 
     var disc: Discovery {
         get { discovery ?? Discovery() }

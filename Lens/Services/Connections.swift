@@ -535,6 +535,9 @@ final class ConnectionStore: ObservableObject {
          ("Calendar", grantedScope("calendar.readonly"))]
     }
 
+    /// Signed in with permission to read Gmail.
+    var gmailReady: Bool { googleConnected && grantedScope("gmail.readonly") }
+
     var googleCalendarReady: Bool { googleConnected && grantedScope("calendar.readonly") }
 
     /// Signed in before Calendar was added: Google has to be asked again.

@@ -100,6 +100,91 @@ final class LensAI: ObservableObject {
         do { _ = try await call(key: key); return nil } catch { return error.localizedDescription }
     }
 
+    /// Sorts recent Gmail conversations for the email suggestions (Pipeline and Projects).
+    /// One request, separate from the Ask Lens chat; the answer comes back as JSON matching `emailSchema`.
+    /// Nothing is changed here: Emma still taps Add on each suggestion.
+    func sortEmails(_ payload: String) async throws -> [[String: Any]] {
+        guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else { throw AIError("Connect Claude in Log-ins first.") }
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(key, forHTTPHeaderField: "x-api-key")
+        request.setValue("2026-10-21", forHTTPHeaderField: "anthropic-version")
+        request.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
+        let body: [String: Any] = [
+            "model": Self.model,
+            "max_tokens": 16000,
+            "system": [["type": "text", "text": Self.emailPrompt, "cache_control": ["type": "ephemeral"]]],
+            "messages": [["role": "user", "content": payload]],
+            "output_config": ["effort": "low", "format": ["type": "json_schema", "schema": Self.emailSchema]],
+            "fallbacks": "default",
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw failure(status: status, json: json) }
+        if let usage = json["usage"] as? [String: Any] { record(usage) }
+        guard (json["stop_reason"] as? String) != "refusal" else { return [] }
+        let text = (json["content"] as? [[String: Any]] ?? [])
+            .filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined()
+        guard let answer = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
+            throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
+        }
+        return answer["threads"] as? [[String: Any]] ?? []
+    }
+
+    private static let emailPrompt = """
+    You help Emma, a freelance filmmaker and videographer, keep her business app (Lens) in step with her Gmail.
+    You get recent email conversations plus the deals (possible gigs) and projects (booked gigs) already in Lens.
+    Sort every conversation into exactly one kind:
+    - "inquiry": someone new asking about hiring Emma (a shoot, a film, a video, availability, a quote). Website
+      contact-form emails and lead emails from directories (The Knot, WeddingWire, Thumbtack, Zola, Yelp, Google
+      Business Profile) count, even when they come from a no-reply address: take the real person's name and email
+      from the message body or Reply-To.
+    - "project": booked or clearly agreed work she is actively emailing about (planning a shoot, delivering a film,
+      invoices for a job) that is not already in Lens.
+    - "existing": about a deal or project already in Lens. Put its id in existing_id.
+    - "other": everything else (newsletters, receipts, personal mail, notifications, spam, her own reminders).
+    When unsure between inquiry or project and other, choose other. Never invent details: use "" when unknown.
+    title: a short name for the job, like "Hartley wedding film" or "Bloom Co. brand video".
+    client: the person or organisation. wants: one or two plain sentences on what they want.
+    event_date: the shoot or event date as YYYY-MM-DD, or "". source: one of Email, Website form, The Knot,
+    WeddingWire, Thumbtack, Zola, Yelp, Google, Referral, Instagram.
+    """
+
+    private static let emailSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "threads": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "thread_id": ["type": "string"],
+                        "kind": ["type": "string", "enum": ["inquiry", "project", "existing", "other"]],
+                        "existing_id": ["type": "string"],
+                        "person": ["type": "string"],
+                        "email": ["type": "string"],
+                        "client": ["type": "string"],
+                        "title": ["type": "string"],
+                        "wants": ["type": "string"],
+                        "event_date": ["type": "string"],
+                        "location": ["type": "string"],
+                        "budget": ["type": "string"],
+                        "source": ["type": "string"],
+                    ],
+                    "required": ["thread_id", "kind", "existing_id", "person", "email", "client", "title", "wants",
+                                 "event_date", "location", "budget", "source"],
+                    "additionalProperties": false,
+                ],
+            ],
+        ],
+        "required": ["threads"],
+        "additionalProperties": false,
+    ]
+
     func newConversation() {
         guard !busy else { return }
         items = []
@@ -411,6 +496,9 @@ final class LensAI: ObservableObject {
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
+            if let emails = p.emails, !emails.isEmpty {
+                d["emails"] = emails.map { "\($0.lastDate.formatted(date: .abbreviated, time: .omitted)) \($0.subject) (latest from \($0.from)): \($0.snippet)" }
+            }
             return (json(d), false)
         case "get_money":
             guard let money else { return ("Money isn't ready.", true) }
@@ -610,6 +698,9 @@ final class LensAI: ObservableObject {
         out["next_steps"] = d.nextSteps.map { ($0.done ? "[done] " : "") + $0.text }
         out["proposal_sections_done"] = "\(BuilderStep.progress(d)) of \(BuilderStep.allCases.count)"
         out["history"] = d.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
+        if let emails = d.emails, !emails.isEmpty {
+            out["emails"] = emails.map { "\($0.lastDate.formatted(date: .abbreviated, time: .omitted)) \($0.subject) (latest from \($0.from)): \($0.snippet)" }
+        }
         return out
     }
 
