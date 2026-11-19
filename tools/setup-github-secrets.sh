@@ -9,8 +9,9 @@ SIGNING="$HOME/Desktop/Lens signing"
 echo "Setting up the secrets GitHub needs to build Emma's requests and ship updates."
 echo
 
-echo "1/3  Anthropic API key for the coding agent (console.anthropic.com → API Keys; make a separate one named 'Lens GitHub'):"
-read -rs VALUE; echo; gh secret set ANTHROPIC_API_KEY -R "$REPO" --body "$VALUE"; unset VALUE
+echo "1/3  Your Claude Max sign-in for the coding agent. In a second Terminal tab run:  claude setup-token"
+echo "     Approve it in the browser, then paste the long token it prints here:"
+read -rs VALUE; echo; gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$REPO" --body "$VALUE"; unset VALUE
 
 echo "     Copying your signing certificate to GitHub (nothing to type)..."
 P12PW=$(/usr/bin/openssl rand -base64 24)
