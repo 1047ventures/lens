@@ -5,6 +5,7 @@ import SwiftUI
 struct GearView: View {
     @EnvironmentObject private var money: MoneyStore
     @State private var editing: GearItem?
+    @State private var fromPhoto = false
 
     var body: some View {
         let items = money.gear.sorted { $0.value() > $1.value() }
@@ -19,6 +20,8 @@ struct GearView: View {
                             .font(.system(size: 14)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
+                    Button("Add from photo") { fromPhoto = true }
+                        .buttonStyle(SecondaryButtonStyle())
                     Button("Add gear") {
                         editing = GearItem(name: "", kind: .camera, bought: Date(), paid: 0, lifeYears: 5)
                     }
@@ -69,12 +72,16 @@ struct GearView: View {
                         Button { editing = item } label: {
                             HStack {
                                 HStack(spacing: 10) {
-                                    Image(systemName: item.kind.icon).foregroundStyle(Palette.gold).frame(width: 18)
+                                    if let f = item.photoFile, let img = NSImage(contentsOf: GearIdentifier.photoURL(f)) {
+                                        Image(nsImage: img).resizable().scaledToFill().frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 5))
+                                    } else {
+                                        Image(systemName: item.kind.icon).foregroundStyle(Palette.gold).frame(width: 28)
+                                    }
                                     Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 Text(item.bought.formatted(.dateTime.month(.abbreviated).year())).font(.system(size: 12)).foregroundStyle(Theme.text3).frame(width: 84, alignment: .leading)
-                                Text(Money.string(item.paid)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 84, alignment: .trailing)
+                                Text((item.paidIsEstimate == true ? "~" : "") + Money.string(item.paid)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 84, alignment: .trailing)
                                 Text(Money.string(item.value())).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 92, alignment: .trailing)
                                 Text(serviceText(item)).font(.system(size: 12)).foregroundStyle(item.needsService ? Theme.amber : Theme.text3)
                                     .lineLimit(1).frame(width: 170, alignment: .leading).padding(.leading, 18)
@@ -98,6 +105,7 @@ struct GearView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(item: $editing) { item in GearEditor(item: item) }
+        .sheet(isPresented: $fromPhoto) { GearPhotoImportView() }
     }
 
     private func tile(_ label: String, _ value: String, _ tone: Color) -> some View {
@@ -131,7 +139,10 @@ private struct GearEditor: View {
                 TextField("Name", text: $item.name, prompt: Text("Sony A7S III"))
                 Picker("Type", selection: $item.kind) { ForEach(GearItem.Kind.allCases) { Text($0.label).tag($0) } }
                 DatePicker("Bought", selection: $item.bought, displayedComponents: .date)
-                TextField("Paid", value: $item.paid, format: .currency(code: "USD").precision(.fractionLength(0)))
+                TextField("Paid", value: Binding(get: { item.paid }, set: { item.paid = $0; item.paidIsEstimate = nil }), format: .currency(code: "USD").precision(.fractionLength(0)))
+                if item.paidIsEstimate == true {
+                    Text("This is a rough used price from a photo. Type what you really paid if you know it.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
                 Stepper("Useful life: \(Int(item.lifeYears)) years", value: $item.lifeYears, in: 1...15)
                 TextField("Serial number", text: Binding(get: { item.serial ?? "" }, set: { item.serial = $0.isEmpty ? nil : $0 }))
                 Stepper("Shoots: \(item.shoots ?? 0)", value: Binding(get: { item.shoots ?? 0 }, set: { item.shoots = $0 }), in: 0...999)

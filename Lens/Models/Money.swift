@@ -135,6 +135,10 @@ struct GearItem: Codable, Identifiable, Hashable {
     var lastService: Date?
     var serviceNote: String?
     var shoots: Int?
+    /// File name of the photo kept with this item (in Application Support/Lens/GearPhotos).
+    var photoFile: String?
+    /// True when `paid` is a rough used-value guess from a photo, not a real receipt.
+    var paidIsEstimate: Bool?
 
     func value(at date: Date = Date()) -> Double {
         let years = max(0, date.timeIntervalSince(bought) / (365.25 * 86400))

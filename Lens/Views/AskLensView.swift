@@ -362,7 +362,6 @@ struct AskLensView: View {
         focused = true
     }
 
-    private var canSend: Bool { ai.hasKey && !ai.busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private func send() {
         guard canSend else { return }
