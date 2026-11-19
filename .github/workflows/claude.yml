@@ -9,11 +9,17 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Emma's request (issue number) to build again"
+        required: true
 
 jobs:
   build-request:
     # Only Emma's (or Sean's) requests get built. The repo is public, so a stranger's issue is ignored.
     if: |
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'issues' && startsWith(github.event.issue.title, '[Emma]') &&
       (github.event.issue.user.login == 'EmmaPion-Berlin' || github.event.issue.user.login == '1047ventures')
     runs-on: macos-15
@@ -34,7 +40,7 @@ jobs:
           track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
-            ISSUE: #${{ github.event.issue.number }}
+            ISSUE: #${{ github.event.issue.number || github.event.inputs.issue }}
 
             Emma, who uses Lens every day, asked for a change through Ask Lens. Read the issue,
             then read CLAUDE.md and follow it.
@@ -44,7 +50,7 @@ jobs:
             2. Otherwise implement it on a new branch, matching the existing design and copy style.
             3. Regenerate the project if you added files, and make sure it compiles with the build
                command in CLAUDE.md. Fix any errors.
-            4. Open a pull request with `gh pr create` that says "Closes #${{ github.event.issue.number }}".
+            4. Open a pull request with `gh pr create` that says "Closes #${{ github.event.issue.number || github.event.inputs.issue }}".
                In the description, explain in two or three plain sentences what changed and how
                Emma will notice it, and end with one line starting "Release note:" written for Emma.
           claude_args: |
@@ -54,7 +60,7 @@ jobs:
       - name: Ship it to Emma (builds again, merges and releases if it compiles)
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || github.event.inputs.issue }}
         run: |
           PR=$(gh pr list --state open --json number,body --jq ".[] | select(.body | test(\"(Closes|Fixes) #$ISSUE\\\\b\")) | .number" | head -1)
           if [ -n "$PR" ]; then gh workflow run ship-emma.yml --ref main -f pr="$PR"; fi
