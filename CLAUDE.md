@@ -30,3 +30,12 @@ changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
 - Money and Gear: `Models/Money.swift`, `Services/MoneyStore.swift`, `Views/MoneyView.swift`, `Views/GearView.swift`.
 - Ask Lens: `Services/LensAI.swift` (tools, prompt), `Views/AskLensView.swift`.
 - Log-ins: `Services/Connections.swift`, `Views/LoginsView.swift`. Updates: `Services/Updater.swift`.
+
+## Working from Emma's Mac
+Emma can change Lens herself with Claude Code. When the person at the keyboard is Emma (not Sean):
+- Work on a new branch named `emma/<short-topic>`, never on `main`. Pull `main` first.
+- Check it compiles (command above), then commit, push the branch and open a pull request with
+  `gh pr create`. Describe the change in plain words. Sean reviews and publishes.
+- Never run `release.sh` or `package.sh`, and never try to sign or notarize. Only Sean's Mac can.
+- She sees the change in the app after Sean publishes it and Lens updates itself.
+- Explain things to her in plain English, no jargon. She knows the app, not the code.
