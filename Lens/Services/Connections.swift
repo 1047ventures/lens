@@ -71,19 +71,78 @@ enum GoogleAuth {
         "https://www.googleapis.com/auth/gmail.compose",
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/calendar.readonly",
     ]
 
+    static let calendarScope = "https://www.googleapis.com/auth/calendar.readonly"
+
+    /// `message` is already plain English for Emma; `code` keeps Google's own wording for Get help.
     struct Failure: LocalizedError {
         let message: String
+        var code: String? = nil
         var errorDescription: String? { message }
     }
 
-    static func signIn(clientID: String, clientSecret: String) async throws -> (email: String, refreshToken: String) {
+    /// One plain sentence plus the one thing to try, for any error that can come out of Google sign-in.
+    static func explain(code: String) -> Failure {
+        switch code {
+        case "access_denied":
+            return Failure(message: "Google sign-in was cancelled, or Lens wasn't allowed in. Click Sign in with Google again and press Allow on every screen.", code: code)
+        case "invalid_client", "unauthorized_client", "deleted_client":
+            return Failure(message: "Lens's Google setup isn't working. Ask Claude to set up Google for Lens again.", code: code)
+        case "redirect_uri_mismatch", "invalid_request", "state_mismatch":
+            return Failure(message: "Google's reply didn't make it back to Lens. Click Sign in with Google and try once more.", code: code)
+        case "timeout":
+            return Failure(message: "Lens stopped waiting for Google. Click Sign in with Google and finish signing in within a few minutes.", code: code)
+        case "invalid_grant":
+            return Failure(message: "Your Google sign-in has expired. Click Sign in with Google to connect again.", code: code)
+        case "no_refresh_token":
+            return Failure(message: "Google didn't give Lens lasting access. Remove Lens at myaccount.google.com/permissions, then sign in again.", code: code)
+        case "network":
+            return Failure(message: "Lens couldn't reach Google. Check your internet connection, then try again.", code: code)
+        default:
+            return Failure(message: "Google sign-in didn't work this time. Try again, or tap Get help.", code: code)
+        }
+    }
+
+    static func explain(_ error: Error) -> Failure {
+        if let failure = error as? Failure { return failure }
+        if error is URLError { return explain(code: "network") }
+        return explain(code: "unknown")
+    }
+
+    /// A short-lived access token for Google's APIs, made from the saved refresh token. Cached until it nearly expires.
+    private static var cachedToken: (token: String, expires: Date)?
+
+    static func accessToken(clientID: String, clientSecret: String, refreshToken: String) async throws -> String {
+        if let cached = cachedToken, cached.expires > Date().addingTimeInterval(60) { return cached.token }
+        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formBody([
+            "client_id": clientID, "client_secret": clientSecret,
+            "refresh_token": refreshToken, "grant_type": "refresh_token",
+        ])
+        let data: Data
+        do { (data, _) = try await URLSession.shared.data(for: request) } catch { throw explain(error) }
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        guard let token = json["access_token"] as? String else {
+            throw explain(code: (json["error"] as? String) ?? "unknown")
+        }
+        let lifetime = (json["expires_in"] as? Double) ?? 3000
+        cachedToken = (token, Date().addingTimeInterval(lifetime))
+        return token
+    }
+
+    static func clearCachedToken() { cachedToken = nil }
+
+    static func signIn(clientID: String, clientSecret: String) async throws -> (email: String, refreshToken: String, scope: String) {
         let verifier = randomString(64)
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL
         let state = randomString(24)
 
-        let receiver = try await LoopbackReceiver.start()
+        let receiver: LoopbackReceiver
+        do { receiver = try await LoopbackReceiver.start() } catch { throw explain(code: "redirect_uri_mismatch") }
         let redirect = "http://127.0.0.1:\(receiver.port)"
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         components.queryItems = [
@@ -101,12 +160,8 @@ enum GoogleAuth {
         _ = await MainActor.run { NSWorkspace.shared.open(url) }
 
         let query = try await receiver.waitForRedirect()
-        if let error = query["error"] {
-            throw Failure(message: error == "access_denied" ? "Sign-in was cancelled." : "Google said: \(error)")
-        }
-        guard query["state"] == state, let code = query["code"] else {
-            throw Failure(message: "Google's reply didn't match this sign-in. Try again.")
-        }
+        if let error = query["error"] { throw explain(code: error) }
+        guard query["state"] == state, let code = query["code"] else { throw explain(code: "state_mismatch") }
 
         // Swap the one-time code for tokens
         var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
@@ -116,22 +171,23 @@ enum GoogleAuth {
             "code": code, "client_id": clientID, "client_secret": clientSecret,
             "redirect_uri": redirect, "grant_type": "authorization_code", "code_verifier": verifier,
         ])
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let data: Data
+        do { (data, _) = try await URLSession.shared.data(for: request) } catch { throw explain(error) }
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         guard let access = json["access_token"] as? String else {
-            let reason = (json["error_description"] as? String) ?? (json["error"] as? String) ?? "no details"
-            throw Failure(message: "Google didn't accept the sign-in (\(reason)). Check the client ID and secret.")
+            throw explain(code: (json["error"] as? String) ?? "unknown")
         }
-        guard let refresh = json["refresh_token"] as? String else {
-            throw Failure(message: "Google didn't grant lasting access. Remove Lens at myaccount.google.com/permissions and try again.")
-        }
+        guard let refresh = json["refresh_token"] as? String else { throw explain(code: "no_refresh_token") }
+        let granted = (json["scope"] as? String) ?? ""
+        clearCachedToken()
 
         // Which account just signed in
         var who = URLRequest(url: URL(string: "https://openidconnect.googleapis.com/v1/userinfo")!)
         who.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
-        let (info, _) = try await URLSession.shared.data(for: who)
+        let info: Data
+        do { (info, _) = try await URLSession.shared.data(for: who) } catch { throw explain(error) }
         let email = ((try? JSONSerialization.jsonObject(with: info) as? [String: Any])?["email"] as? String) ?? "Google account"
-        return (email, refresh)
+        return (email, refresh, granted)
     }
 
     /// Tells Google to forget Lens's access. Best effort: the local tokens are removed either way.
@@ -161,6 +217,98 @@ private extension Data {
     var base64URL: String {
         base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+/// Reads Emma's Google Calendar (read-only) through Google's Calendar API.
+enum GoogleCalendarAPI {
+    struct Calendar { let id: String; let name: String }
+
+    private static func get(_ path: String, query: [URLQueryItem] = [], token: String) async throws -> [String: Any] {
+        var components = URLComponents(string: "https://www.googleapis.com/calendar/v3/" + path)!
+        components.queryItems = query.isEmpty ? nil : query
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let data: Data
+        do { (data, _) = try await URLSession.shared.data(for: request) } catch { throw GoogleAuth.explain(error) }
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if json["error"] != nil { throw GoogleAuth.explain(code: "calendar_unavailable") }
+        return json
+    }
+
+    static func calendars(token: String) async throws -> [Calendar] {
+        let json = try await get("users/me/calendarList", query: [URLQueryItem(name: "minAccessRole", value: "reader")], token: token)
+        let items = json["items"] as? [[String: Any]] ?? []
+        return items.compactMap { item in
+            guard let id = item["id"] as? String, (item["selected"] as? Bool) ?? true else { return nil }
+            return Calendar(id: id, name: (item["summaryOverride"] as? String) ?? (item["summary"] as? String) ?? id)
+        }
+    }
+
+    static func events(calendar: Calendar, from: Date, to: Date, token: String) async throws -> [LensCalendarEvent] {
+        let iso = ISO8601DateFormatter()
+        let json = try await get("calendars/\(calendar.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendar.id)/events", query: [
+            URLQueryItem(name: "timeMin", value: iso.string(from: from)),
+            URLQueryItem(name: "timeMax", value: iso.string(from: to)),
+            URLQueryItem(name: "singleEvents", value: "true"),
+            URLQueryItem(name: "orderBy", value: "startTime"),
+            URLQueryItem(name: "maxResults", value: "250"),
+        ], token: token)
+        let dayFormat = DateFormatter()
+        dayFormat.dateFormat = "yyyy-MM-dd"
+        dayFormat.locale = Locale(identifier: "en_US_POSIX")
+        func parse(_ block: [String: Any]?) -> (Date, Bool)? {
+            if let text = block?["dateTime"] as? String, let date = iso.date(from: text) { return (date, false) }
+            if let text = block?["date"] as? String, let date = dayFormat.date(from: text) { return (date, true) }
+            return nil
+        }
+        return (json["items"] as? [[String: Any]] ?? []).compactMap { item in
+            guard (item["status"] as? String) != "cancelled",
+                  let start = parse(item["start"] as? [String: Any]),
+                  let end = parse(item["end"] as? [String: Any]) else { return nil }
+            return LensCalendarEvent(id: (item["id"] as? String) ?? UUID().uuidString,
+                                     title: (item["summary"] as? String) ?? "Busy",
+                                     start: start.0, end: end.0, allDay: start.1, calendar: calendar.name,
+                                     location: item["location"] as? String)
+        }
+    }
+}
+
+/// One calendar event, from Google or (as a fallback) the Mac's Calendar app.
+struct LensCalendarEvent: Identifiable {
+    let id: String
+    let title: String
+    let start: Date
+    let end: Date
+    let allDay: Bool
+    let calendar: String
+    let location: String?
+}
+
+/// Finds the Google client file Claude downloads for Lens, keeps its two values in the Keychain, and trashes the file.
+enum GoogleClientFile {
+    @discardableResult
+    static func importIfNeeded() -> Bool {
+        if let id = Keychain.get("google.clientID"), !id.isEmpty, Keychain.get("google.clientSecret") != nil { return false }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let folders = [home.appendingPathComponent("Downloads"), home.appendingPathComponent("Library/Application Support/Lens")]
+        for folder in folders {
+            let names = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).sorted()
+            for name in names where name.hasPrefix("client_secret_") && name.hasSuffix(".json") {
+                let url = folder.appendingPathComponent(name)
+                guard let data = try? Data(contentsOf: url),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let block = json["installed"] as? [String: Any],
+                      let id = (block["client_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
+                      let secret = (block["client_secret"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !secret.isEmpty
+                else { continue }
+                Keychain.set(id, for: "google.clientID")
+                Keychain.set(secret, for: "google.clientSecret")
+                try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -196,7 +344,7 @@ final class LoopbackReceiver: @unchecked Sendable {
         }
         // Give up after five minutes so a forgotten browser tab doesn't leave Lens waiting forever.
         receiver.queue.asyncAfter(deadline: .now() + 300) { [weak receiver] in
-            receiver?.finish(.failure(GoogleAuth.Failure(message: "Sign-in timed out. Try again.")))
+            receiver?.finish(.failure(GoogleAuth.explain(code: "timeout")))
         }
         return receiver
     }
@@ -281,6 +429,8 @@ struct LoginState: Codable {
     var statementsFolder: String?
     var googleEmail: String?
     var googleConnectedAt: Date?
+    /// Which permissions Google actually granted at the last sign-in (space separated).
+    var googleScopes: String?
 }
 
 @MainActor
@@ -290,12 +440,16 @@ final class ConnectionStore: ObservableObject {
     @Published private(set) var calendarNames: [String] = []
     @Published var googleBusy = false
     @Published var googleError: String?
+    /// Google's own wording for the last error, only passed along to Ask Lens.
+    @Published var googleErrorCode: String?
+    @Published private(set) var googleCalendarNames: [String] = []
 
     private let eventStore = EKEventStore()
 
     init() {
         load()
         refreshCalendar()
+        Task { await refreshGoogleCalendars() }
     }
 
     // MARK: Whose accounts
@@ -331,31 +485,66 @@ final class ConnectionStore: ObservableObject {
         return isOwner(email) && Keychain.get("google.refreshToken") != nil
     }
 
-    func saveGoogleClient(id: String, secret: String) {
-        Keychain.set(id.trimmingCharacters(in: .whitespacesAndNewlines), for: "google.clientID")
-        Keychain.set(secret.trimmingCharacters(in: .whitespacesAndNewlines), for: "google.clientSecret")
-        objectWillChange.send()
+    /// Picks up the client file Claude downloaded, if there is one and no client is saved yet.
+    func importGoogleClient() {
+        if GoogleClientFile.importIfNeeded() { objectWillChange.send() }
     }
 
+    private func grantedScope(_ suffix: String) -> Bool {
+        (state.googleScopes ?? "").split(separator: " ").contains { $0.hasSuffix(suffix) }
+    }
+
+    /// What the current sign-in covers. Docs rides on the Drive permission Lens already asks for.
+    var googleCovers: [(name: String, on: Bool)] {
+        [("Gmail", grantedScope("gmail.readonly")), ("Drive", grantedScope("drive.file")),
+         ("Sheets", grantedScope("spreadsheets.readonly")), ("Docs", grantedScope("drive.file")),
+         ("Calendar", grantedScope("calendar.readonly"))]
+    }
+
+    var googleCalendarReady: Bool { googleConnected && grantedScope("calendar.readonly") }
+
+    /// Signed in before Calendar was added: Google has to be asked again.
+    var googleNeedsNewSignIn: Bool { googleConnected && !grantedScope("calendar.readonly") }
+
     func signInWithGoogle() async {
-        guard let secret = Keychain.get("google.clientSecret") else { return }
+        importGoogleClient()
+        guard hasGoogleClient, let secret = Keychain.get("google.clientSecret") else { return }
         googleBusy = true
         googleError = nil
+        googleErrorCode = nil
         defer { googleBusy = false }
         do {
             let result = try await GoogleAuth.signIn(clientID: googleClientID, clientSecret: secret)
             guard isOwner(result.email) else {
                 await GoogleAuth.revoke(result.refreshToken)
-                googleError = "That was \(result.email). Lens only connects to \(ownerEmail). Sign in again as Emma."
+                googleError = "That was \(result.email), but Lens connects to \(ownerEmail). Click Sign in with Google again and pick \(ownerEmail)."
+                googleErrorCode = "wrong_account"
                 return
             }
             Keychain.set(result.refreshToken, for: "google.refreshToken")
             state.googleEmail = result.email
             state.googleConnectedAt = Date()
+            state.googleScopes = result.scope
             save()
+            await refreshGoogleCalendars()
         } catch {
-            googleError = error.localizedDescription
+            let failure = GoogleAuth.explain(error)
+            googleError = failure.message
+            googleErrorCode = failure.code
         }
+    }
+
+    /// Plain-English question for the Get help button.
+    var googleHelpQuestion: String {
+        "Google sign-in in Lens isn't working. Lens showed: \"\(googleError ?? "an error")\"" +
+        (googleErrorCode.map { " (code: \($0))" } ?? "") + ". What should I do next?"
+    }
+
+    func googleAccessToken() async throws -> String {
+        guard let secret = Keychain.get("google.clientSecret"), let refresh = Keychain.get("google.refreshToken") else {
+            throw GoogleAuth.explain(code: "invalid_grant")
+        }
+        return try await GoogleAuth.accessToken(clientID: googleClientID, clientSecret: secret, refreshToken: refresh)
     }
 
     func disconnectGoogle() async {
@@ -363,6 +552,9 @@ final class ConnectionStore: ObservableObject {
         Keychain.delete("google.refreshToken")
         state.googleEmail = nil
         state.googleConnectedAt = nil
+        state.googleScopes = nil
+        googleCalendarNames = []
+        GoogleAuth.clearCachedToken()
         save()
     }
 
@@ -371,6 +563,30 @@ final class ConnectionStore: ObservableObject {
     func requestCalendar() async {
         _ = try? await eventStore.requestFullAccessToEvents()
         refreshCalendar()
+    }
+
+    func refreshGoogleCalendars() async {
+        guard googleCalendarReady, let token = try? await googleAccessToken(),
+              let calendars = try? await GoogleCalendarAPI.calendars(token: token) else { return }
+        googleCalendarNames = calendars.map(\.name).sorted()
+    }
+
+    /// Her events between two dates. Uses Google Calendar when signed in; the Mac's Calendar app only otherwise.
+    func calendarEvents(from: Date, to: Date) async -> [LensCalendarEvent] {
+        if googleCalendarReady, let token = try? await googleAccessToken(),
+           let calendars = try? await GoogleCalendarAPI.calendars(token: token) {
+            var all: [LensCalendarEvent] = []
+            for calendar in calendars.prefix(10) {
+                all += (try? await GoogleCalendarAPI.events(calendar: calendar, from: from, to: to, token: token)) ?? []
+            }
+            return all.sorted { $0.start < $1.start }
+        }
+        guard calendarAccess == .fullAccess else { return [] }
+        let predicate = eventStore.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return eventStore.events(matching: predicate).map {
+            LensCalendarEvent(id: $0.eventIdentifier ?? UUID().uuidString, title: $0.title ?? "Busy", start: $0.startDate,
+                              end: $0.endDate, allDay: $0.isAllDay, calendar: $0.calendar.title, location: $0.location)
+        }.sorted { $0.start < $1.start }
     }
 
     func refreshCalendar() {
@@ -421,9 +637,16 @@ final class ConnectionStore: ObservableObject {
         let gmail = googleConnected ? state.googleEmail : nil
         switch id {
         case .google:
+            if googleNeedsNewSignIn { return .partial("Sign in again to add Calendar") }
             if googleConnected { return .connected(gmail ?? "") }
-            return hasGoogleClient ? .partial("Ready to sign in") : .todo("One-time setup, then sign in")
+            return hasGoogleClient ? .todo("Ready to sign in") : .todo("Not set up on this Mac yet")
         case .calendar:
+            if googleCalendarReady {
+                let n = googleCalendarNames.count
+                return .connected(n > 0 ? "\(n) calendar\(n == 1 ? "" : "s") from Google" : "From Google")
+            }
+            if googleNeedsNewSignIn { return .partial("Sign in with Google again") }
+            if googleConnected { return .partial("Sign in with Google again") }
             switch calendarAccess {
             case .fullAccess: return .connected("\(calendarNames.count) calendar\(calendarNames.count == 1 ? "" : "s")")
             case .denied, .restricted: return .todo("Blocked in System Settings")

@@ -46,7 +46,24 @@ struct LoginsView: View {
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { logins.refreshCalendar() }
+        .onAppear {
+            logins.importGoogleClient()
+            logins.refreshCalendar()
+            if !logins.googleConnected || logins.googleNeedsNewSignIn { expanded.insert(.google) }
+            Task { await logins.refreshGoogleCalendars() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            logins.importGoogleClient()
+            logins.refreshCalendar()
+        }
+    }
+
+    /// The most useful account still to connect: Google first, then the rest in order.
+    private var nextUp: LoginID? {
+        LoginID.allCases.first { id in
+            let s = logins.status(id)
+            return !s.isConnected && !s.isLater
+        }
     }
 
     private var header: some View {
@@ -71,6 +88,20 @@ struct LoginsView: View {
                 }
                 .frame(width: 240, height: 6)
                 Text("\(p.done) of \(p.total) connected").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+            }
+            if let next = nextUp, let info = Self.info[next] {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.right.circle.fill").foregroundStyle(Theme.amber)
+                    Text("Next: \(info.name)").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(next == .google ? "This one unlocks email, Calendar and project folders." : info.covers)
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    Button("Open") { expanded.insert(next) }.buttonStyle(SecondaryButtonStyle())
+                }
+                .padding(12)
+                .background(Theme.amber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text("Everything that can be connected is connected.").font(.system(size: 13)).foregroundStyle(Theme.teal)
             }
         }
     }
@@ -194,6 +225,19 @@ struct LoginsView: View {
 
     @ViewBuilder
     private var calendarControls: some View {
+        if logins.googleCalendarReady {
+            Text(logins.googleCalendarNames.prefix(6).joined(separator: " · ") + (logins.googleCalendarNames.count > 6 ? " …" : ""))
+                .font(.system(size: 12)).foregroundStyle(Theme.text3)
+        } else if logins.googleNeedsNewSignIn {
+            Text("Sign in with Google again (above) to add your Calendar.")
+                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+        } else {
+            macCalendarControls
+        }
+    }
+
+    @ViewBuilder
+    private var macCalendarControls: some View {
         switch logins.calendarAccess {
         case .fullAccess:
             Text(logins.calendarNames.prefix(6).joined(separator: " · ") + (logins.calendarNames.count > 6 ? " …" : ""))
@@ -300,26 +344,23 @@ struct LoginsView: View {
 
     static let info: [LoginID: Info] = [
         .google: Info(
-            name: "Google (Gmail, Drive, Sheets)", icon: "envelope.fill",
-            covers: "Inquiries, client threads, Zoom summaries, payment emails, project folders",
+            name: "Google (Gmail, Drive, Sheets, Docs, Calendar)", icon: "envelope.fill",
+            covers: "Inquiries, client threads, Zoom summaries, payment emails, project folders, her calendar",
             gets: ["Reads her email to find inquiries and attach client threads to projects",
                    "Writes reply drafts she reviews and sends herself",
-                   "Creates shared project folders (only touches files Lens made)",
-                   "Reads the intake form's answer sheet"],
-            never: "Never sends email on its own, never deletes mail, never sees her password.",
-            steps: ["Open the [Google Cloud console](https://console.cloud.google.com/) and create a project called **Lens**.",
-                    "Under APIs & Services → Library, turn on the **Gmail API**, **Google Drive API** and **Google Sheets API**.",
-                    "Under OAuth consent screen: choose External, name it Lens, add her Gmail as a test user, then set publishing status to **In production** so the sign-in doesn't expire weekly.",
-                    "Under Credentials → Create credentials → **OAuth client ID** → Desktop app. Paste the client ID and secret below.",
-                    "Click **Sign in with Google** and sign in as Emma. Google will warn the app isn't verified (it's private to you two): Advanced → Go to Lens."]),
+                   "Creates shared project folders and documents (only touches files Lens made)",
+                   "Reads the intake form's answer sheet",
+                   "Reads her Google Calendar to spot clashes and suggest times"],
+            never: "Never sends email on its own, never deletes mail, never changes her calendar, never sees her password.",
+            steps: ["Click **Sign in with Google** and sign in as Emma."]),
         .calendar: Info(
             name: "Calendar", icon: "calendar",
             covers: "Shoots, calls and milestones, plus clash checks when proposing dates",
             gets: ["Sees her events to spot clashes and suggest call times",
                    "Adds shoot days and milestones when a deal is won"],
             never: "Never deletes or changes events it didn't create.",
-            steps: ["Make sure her Google Calendar shows in the Mac **Calendar** app (Calendar → Settings → Accounts → add Google).",
-                    "Click **Allow calendar access** below and approve the Mac's prompt."]),
+            steps: ["Sign in with Google above. Your Google Calendar comes with it.",
+                    "Only if you don't use Google Calendar: click **Allow calendar access** below to use the Mac's Calendar app instead."]),
         .drive: Info(
             name: "Google Drive for desktop", icon: "externaldrive.fill.badge.icloud",
             covers: "Where shared project folders and statements live",
@@ -414,44 +455,61 @@ struct LoginsView: View {
     ]
 }
 
-/// Google needs a client ID and secret (from her own Google Cloud project) before the sign-in button works.
+/// One button. The Google client arrives on its own (Claude puts it on this Mac), so Emma never sees setup.
 private struct GoogleControls: View {
     @EnvironmentObject private var logins: ConnectionStore
-    @State private var clientID = ""
-    @State private var secret = ""
+    @EnvironmentObject private var navigator: Navigator
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if logins.googleConnected {
+                HStack(spacing: 14) {
+                    ForEach(logins.googleCovers, id: \.name) { item in
+                        Text("\(item.name) \(item.on ? "✓" : "–")")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(item.on ? Theme.teal : Theme.muted)
+                    }
+                }
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
-                    Text("Signed in as \(logins.state.googleEmail ?? "")").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(logins.state.googleEmail ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Button("Disconnect") { Task { await logins.disconnectGoogle() } }.buttonStyle(SecondaryButtonStyle())
                 }
+                if logins.googleNeedsNewSignIn {
+                    Text("Lens now also reads Google Calendar. Sign in once more to allow it.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.amber)
+                    signInButton("Sign in with Google again")
+                }
+            } else if logins.hasGoogleClient {
+                Text("Google will warn that it hasn't checked Lens. Click Advanced, then Go to Lens.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                signInButton("Sign in with Google")
             } else {
-                HStack(spacing: 10) {
-                    TextField("Client ID", text: $clientID).textFieldStyle(.roundedBorder).frame(width: 260)
-                    SecureField("Client secret", text: $secret).textFieldStyle(.roundedBorder).frame(width: 180)
-                    Button("Save") { logins.saveGoogleClient(id: clientID, secret: secret) }
-                        .buttonStyle(SecondaryButtonStyle())
-                        .disabled(clientID.isEmpty || secret.isEmpty)
-                }
-                HStack(spacing: 12) {
-                    Button(logins.googleBusy ? "Waiting for Google…" : "Sign in with Google") {
-                        Task { await logins.signInWithGoogle() }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(!logins.hasGoogleClient || logins.googleBusy)
-                    if logins.hasGoogleClient && !logins.googleBusy {
-                        Text("Client saved in the Keychain").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                    }
-                }
-                if let error = logins.googleError {
-                    Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral)
+                Text("Google sign-in isn't set up on this Mac yet. Ask Claude to set up Google for Lens.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                Button("Get help") { ask("Google sign-in isn't set up on this Mac yet. Please set up Google for Lens.") }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            if let error = logins.googleError {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                    Button("Get help") { ask(logins.googleHelpQuestion) }.buttonStyle(SecondaryButtonStyle())
                 }
             }
         }
-        .onAppear { clientID = logins.googleClientID }
+    }
+
+    private func signInButton(_ title: String) -> some View {
+        Button(logins.googleBusy ? "Waiting for Google…" : title) {
+            Task { await logins.signInWithGoogle() }
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(logins.googleBusy)
+    }
+
+    private func ask(_ question: String) {
+        navigator.askDraft = question
+        navigator.askOpen = true
     }
 }
 
