@@ -483,7 +483,12 @@ private struct GoogleControls: View {
             } else if logins.hasGoogleClient {
                 Text("Google will warn that it hasn't checked Lens. Click Advanced, then Go to Lens.")
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                signInButton("Sign in with Google")
+                HStack(spacing: 10) {
+                    signInButton("Sign in with Google")
+                    Button("Start Google over") { Task { await logins.startGoogleOver() } }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .help("Forgets Lens's saved Google setup, so a new Google file can be used.")
+                }
             } else {
                 Text("Google sign-in isn't set up on this Mac yet. Ask Claude to set up Google for Lens.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text2)

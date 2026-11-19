@@ -87,7 +87,7 @@ enum GoogleAuth {
     static func explain(code: String) -> Failure {
         switch code {
         case "access_denied":
-            return Failure(message: "Google sign-in was cancelled, or Lens wasn't allowed in. Click Sign in with Google again and press Allow on every screen.", code: code)
+            return Failure(message: "Google didn't let Lens in. If Google said Lens is \"being tested\", Lens is still using an older Google setup: ask Claude to download the Google file again into Downloads, then click Sign in with Google. Otherwise, click Sign in with Google and press Allow on every screen.", code: code)
         case "invalid_client", "unauthorized_client", "deleted_client":
             return Failure(message: "Lens's Google setup isn't working. Ask Claude to set up Google for Lens again.", code: code)
         case "redirect_uri_mismatch", "invalid_request", "state_mismatch":
@@ -289,7 +289,6 @@ struct LensCalendarEvent: Identifiable {
 enum GoogleClientFile {
     @discardableResult
     static func importIfNeeded() -> Bool {
-        if let id = Keychain.get("google.clientID"), !id.isEmpty, Keychain.get("google.clientSecret") != nil { return false }
         let home = FileManager.default.homeDirectoryForCurrentUser
         let folders = [home.appendingPathComponent("Downloads"), home.appendingPathComponent("Library/Application Support/Lens")]
         for folder in folders {
@@ -486,8 +485,35 @@ final class ConnectionStore: ObservableObject {
     }
 
     /// Picks up the client file Claude downloaded, if there is one and no client is saved yet.
+    /// A new file always wins over an older saved setup, and the old sign-in is forgotten with it.
     func importGoogleClient() {
-        if GoogleClientFile.importIfNeeded() { objectWillChange.send() }
+        let before = googleClientID
+        guard GoogleClientFile.importIfNeeded() else { return }
+        if !before.isEmpty && before != googleClientID { forgetGoogleSignIn() }
+        googleError = nil
+        googleErrorCode = nil
+        objectWillChange.send()
+    }
+
+    private func forgetGoogleSignIn() {
+        Keychain.delete("google.refreshToken")
+        state.googleEmail = nil
+        state.googleConnectedAt = nil
+        state.googleScopes = nil
+        googleCalendarNames = []
+        GoogleAuth.clearCachedToken()
+        save()
+    }
+
+    /// Forgets the saved Google setup and sign-in, so Google can be set up again from scratch.
+    func startGoogleOver() async {
+        if let token = Keychain.get("google.refreshToken") { await GoogleAuth.revoke(token) }
+        forgetGoogleSignIn()
+        Keychain.delete("google.clientID")
+        Keychain.delete("google.clientSecret")
+        googleError = nil
+        googleErrorCode = nil
+        objectWillChange.send()
     }
 
     private func grantedScope(_ suffix: String) -> Bool {
