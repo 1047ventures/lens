@@ -86,14 +86,26 @@ final class Updater: ObservableObject {
             phase = .installing
             try verify(newApp)
 
-            let current = Bundle.main.bundleURL
-            var trashed: NSURL?
-            try FileManager.default.trashItem(at: current, resultingItemURL: &trashed)
+            let current = Self.installTarget()
+            let fm = FileManager.default
+            try? fm.createDirectory(at: current.deletingLastPathComponent(), withIntermediateDirectories: true)
+            // Move the old copy out of the way: Trash when the drive has one, otherwise a temp folder.
+            var oldCopy: URL?
+            if fm.fileExists(atPath: current.path) {
+                var trashed: NSURL?
+                if (try? fm.trashItem(at: current, resultingItemURL: &trashed)) != nil {
+                    oldCopy = trashed as URL?
+                } else {
+                    let aside = work.appendingPathComponent("Lens-old.app")
+                    try fm.moveItem(at: current, to: aside)
+                    oldCopy = aside
+                }
+            }
             do {
-                try FileManager.default.moveItem(at: newApp, to: current)
+                try fm.moveItem(at: newApp, to: current)
             } catch {
                 // Put the old version back if the swap fails.
-                if let old = trashed as URL? { try? FileManager.default.moveItem(at: old, to: current) }
+                if let old = oldCopy { try? fm.moveItem(at: old, to: current) }
                 throw error
             }
 
@@ -106,6 +118,17 @@ final class Updater: ObservableObject {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Where the new version goes. Normally it replaces the running copy. But when Lens was
+    /// opened straight from Downloads, macOS runs it from a hidden locked copy that can't be
+    /// changed, so the update goes into the Applications folder instead.
+    static func installTarget() -> URL {
+        let running = Bundle.main.bundleURL
+        let locked = running.path.contains("/AppTranslocation/")
+            || !FileManager.default.isWritableFile(atPath: running.deletingLastPathComponent().path)
+        guard locked else { return running }
+        return URL(fileURLWithPath: "/Applications/Lens.app")
     }
 
     // MARK: - Checks
