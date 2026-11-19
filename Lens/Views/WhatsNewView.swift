@@ -13,6 +13,16 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("1.0.37", [
+            Item(icon: "person.crop.circle.badge.plus", title: "People add themselves",
+                 detail: "Anyone who emails you about work, fills in your website form, messages you on Instagram or Facebook, or joins a Zoom call now goes in People by itself."),
+            Item(icon: "person.crop.rectangle.stack.fill", title: "Scan a business card",
+                 detail: "Back from an event? Tap Scan a card in People or Today, take a photo with your iPhone or drop in photos, and Lens adds everyone with their card on their page."),
+            Item(icon: "square.and.arrow.down.fill", title: "Bring in LinkedIn, Facebook and Instagram",
+                 detail: "In People, tap Bring in people and follow the two steps. Lens adds your connections and the people you've messaged with."),
+            Item(icon: "clock.arrow.circlepath", title: "Added recently",
+                 detail: "The top of People shows who Lens added in the last two weeks and where from. Keep, Edit or Remove each one. Doubles are merged for you."),
+        ]),
         ("1.0.36", [
             Item(icon: "tray.full.fill", title: "Lens files things by itself",
                  detail: "Zoom notes, emails and people that clearly belong to a project now go there without a tap."),

@@ -101,7 +101,10 @@ FILES = [
     (f"{APP_NAME}/Services/ProposalRenderer.swift",       f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Models/Person.swift",                   f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Services/PeopleStore.swift",            f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/PeopleImport.swift",           f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/CardReader.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/PeopleView.swift",                f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/PeopleBringInViews.swift",        f"{APP_NAME}/Views"),
 ]
 
 SWIFT_FILES = [f for f, _ in FILES if f.endswith(".swift")]

@@ -1,13 +1,17 @@
 import Foundation
 
 /// Everyone Emma works with, kept in people.json. Lens fills it in by itself from deal contacts,
-/// project clients and two-way Gmail conversations, and merges obvious duplicates. Emma can add,
-/// edit, merge, split and remove people by hand; anything she removes or ignores stays gone.
+/// project clients and people, two-way Gmail conversations, website form emails, Instagram and Facebook
+/// message emails and Zoom calls, and merges obvious duplicates (same email, or same name and company).
+/// People Lens adds by itself show in "Added recently" for two weeks, where Emma can Keep, Edit or Remove
+/// them. She can also bring in LinkedIn and Facebook or Instagram downloads, and scan business cards.
+/// Emma can add, edit, merge, split and remove people by hand; anything she removes stays gone.
 @MainActor
 final class PeopleStore: ObservableObject {
     @Published private(set) var people: [Person] = []
-    /// People found in Gmail who aren't in People yet.
-    @Published private(set) var suggestions: [PersonSuggestion] = []
+    /// Left over from older versions, which asked before adding people found in Gmail. Now always empty:
+    /// anything in an older file is added on load.
+    private var suggestions: [PersonSuggestion] = []
 
     /// Emails and names Emma removed or ignored, so Lens doesn't bring them back.
     private var hidden: Set<String> = []
@@ -15,16 +19,20 @@ final class PeopleStore: ObservableObject {
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
     private weak var money: MoneyStore?
+    private weak var logins: ConnectionStore?
+    /// Emma's own addresses, seen while reading Gmail, so she never becomes a person.
+    private var myEmails: Set<String> = []
 
     /// Quiet for this many days while on an open deal: worth a check-in.
     static let quietAfterDays = 30
 
     init() { load() }
 
-    func attach(deals: DealStore, projects: ProjectStore, money: MoneyStore) {
+    func attach(deals: DealStore, projects: ProjectStore, money: MoneyStore, logins: ConnectionStore? = nil) {
         self.deals = deals
         self.projects = projects
         self.money = money
+        self.logins = logins
         sync(deals: deals.deals, projects: projects.projects)
     }
 
@@ -134,43 +142,116 @@ final class PeopleStore: ObservableObject {
         return fresh.id
     }
 
-    // MARK: - Suggestions from Gmail
+    // MARK: - Added recently
 
-    func accept(_ s: PersonSuggestion) {
-        suggestions.removeAll { $0.id == s.id }
-        var p = Person(name: s.name.isEmpty ? s.email : s.name, emails: [s.email])
-        p.met = "Email"
-        if let t = s.thread { p.threads = [t] }
-        if let i = people.firstIndex(where: { Person.nameKey($0.name) == Person.nameKey(p.name) && $0.emails.isEmpty }) {
-            people[i] = Self.combined(people[i], p)
-        } else {
-            people.append(p)
+    /// People Lens added by itself in the last two weeks that Emma hasn't kept yet, newest first.
+    var recentlyAdded: [Person] {
+        let now = Date()
+        return people.filter { $0.isRecentlyAdded(now: now) }.sorted { ($0.addedOn ?? .distantPast) > ($1.addedOn ?? .distantPast) }
+    }
+
+    func keep(_ person: Person) {
+        guard let i = people.firstIndex(where: { $0.id == person.id }) else { return }
+        people[i].reviewed = true
+        save()
+    }
+
+    func keepAll() {
+        let now = Date()
+        for i in people.indices where people[i].isRecentlyAdded(now: now) { people[i].reviewed = true }
+        save()
+    }
+
+    /// Emma's own email addresses: never a person.
+    func isMine(_ email: String) -> Bool {
+        let e = email.lowercased()
+        return myEmails.contains(e) || e == ConnectionStore.defaultOwnerEmail || e == logins?.ownerEmail
+    }
+
+    private func isHidden(_ p: Person) -> Bool {
+        if !p.emails.isEmpty { return p.emails.contains(where: hidden.contains) }
+        let key = Person.nameKey(p.name)
+        return !key.isEmpty && hidden.contains("name:" + key)
+    }
+
+    /// Adds someone Lens found, or fills in the blanks on the person already here. Returns true if anything changed.
+    @discardableResult
+    private func absorb(_ incoming: Person) -> Bool {
+        if let i = people.firstIndex(where: { Self.isSame($0, incoming) }) {
+            let merged = Self.combined(people[i], incoming)
+            guard merged != people[i] else { return false }
+            people[i] = merged
+            return true
         }
-        save()
+        people.append(incoming)
+        return true
     }
 
-    func ignore(_ s: PersonSuggestion) {
-        suggestions.removeAll { $0.id == s.id }
-        hidden.insert(s.email)
-        save()
+    struct BringInResult {
+        var added = 0
+        /// Already in People (any missing details were filled in).
+        var alreadyHere = 0
+        /// People Emma removed before, left out.
+        var leftOut = 0
     }
+
+    /// People from a LinkedIn or Meta download, or from business cards. New people are added, people
+    /// already here get any missing details filled in. With `respectRemoved`, people Emma removed stay out.
+    @discardableResult
+    func bringIn(_ incoming: [Person], respectRemoved: Bool = true) -> BringInResult {
+        var result = BringInResult()
+        for var p in incoming {
+            p.name = p.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            p.emails = Self.cleanEmails(p.emails).filter { !isMine($0) }
+            guard !p.name.isEmpty || !p.emails.isEmpty else { continue }
+            if p.name.isEmpty { p.name = p.emails[0] }
+            if respectRemoved {
+                guard !isHidden(p) else { result.leftOut += 1; continue }
+            } else {
+                hidden.subtract(p.emails)
+                hidden.remove("name:" + Person.nameKey(p.name))
+            }
+            let before = people.count
+            absorb(p)
+            if people.count > before { result.added += 1 } else { result.alreadyHere += 1 }
+        }
+        people = Self.mergeDuplicates(people)
+        save()
+        return result
+    }
+
+    /// Adds someone from a business card (or fills in the person already here) and returns who they ended up as.
+    @discardableResult
+    func addFromCard(_ p: Person) -> UUID? {
+        bringIn([p], respectRemoved: false)
+        return people.first { $0.id == p.id }?.id ?? people.first { Self.isSame($0, p) }?.id
+    }
+
+    // MARK: - People from Gmail, Instagram, Facebook and Zoom
 
     /// Called for each Gmail conversation Lens reads. People already in Lens get the conversation on their page.
-    /// Real people who wrote to Emma in a two-way conversation (or one on a deal or project) are suggested.
+    /// Real people who wrote to Emma about work (a two-way conversation, one on a deal or project, or a website
+    /// form) are added by themselves.
     func noteThread(_ thread: GmailAPI.Thread, link: EmailThread, me: String, onFile: Bool) {
+        if !me.isEmpty { myEmails.insert(me.lowercased()) }
         var everyone: [String: String] = [:]   // email → name
         var senders = Set<String>()
         for m in thread.messages {
             for (raw, isSender) in [(m.from, true), (m.replyTo, true), (m.to, false)] {
                 for part in raw.split(separator: ",") {
                     let a = GmailAPI.parseAddress(String(part))
-                    guard a.email.contains("@"), a.email != me, !Self.isAutomated(a.email) else { continue }
+                    guard a.email.contains("@"), a.email != me, !isMine(a.email), !Self.isAutomated(a.email) else { continue }
                     if everyone[a.email] == nil || everyone[a.email] == a.email { everyone[a.email] = a.name }
                     if isSender { senders.insert(a.email) }
                 }
             }
         }
         let emmaWrote = thread.messages.contains { GmailAPI.parseAddress($0.from).email == me }
+        // A website form or a wedding directory sent it: the person is in Reply-To.
+        let formSource: String? = thread.messages.lazy.compactMap { m -> String? in
+            let domain = GmailAPI.parseAddress(m.from).email.split(separator: "@").last.map(String.init) ?? ""
+            return GmailSync.leadSenders.first { domain == $0.domain || domain.hasSuffix("." + $0.domain) }?.source
+        }.first
         var changed = false
         for (email, name) in everyone {
             if let i = people.firstIndex(where: { $0.emails.contains(email) }) {
@@ -183,21 +264,94 @@ final class PeopleStore: ObservableObject {
                 }
                 people[i].threads = Array(list.sorted { $0.lastDate > $1.lastDate }.prefix(40))
                 changed = true
-            } else if senders.contains(email), emmaWrote || onFile, !hidden.contains(email) {
+            } else if senders.contains(email), emmaWrote || onFile || formSource != nil, !hidden.contains(email) {
                 let clean = name == email ? "" : name
-                if let k = suggestions.firstIndex(where: { $0.email == email }) {
-                    if (suggestions[k].thread?.lastDate ?? .distantPast) < link.lastDate { suggestions[k].thread = link; changed = true }
-                } else {
-                    suggestions.append(PersonSuggestion(name: clean, email: email, thread: link))
-                    changed = true
-                }
+                var p = Person(name: clean.isEmpty ? email : clean, emails: [email], automatic: true)
+                p.threads = [link]
+                let website = formSource == "Website form"
+                p.met = website ? "Website" : (formSource ?? "Email")
+                p.addedFrom = website ? "your website" : (formSource ?? "Gmail")
+                p.addedOn = Date()
+                if absorb(p) { changed = true }
             }
         }
-        if changed {
-            suggestions.sort { ($0.thread?.lastDate ?? $0.found) > ($1.thread?.lastDate ?? $1.found) }
-            if suggestions.count > 60 { suggestions = Array(suggestions.prefix(60)) }
-            save()
+        if changed { save() }
+    }
+
+    /// Instagram and Facebook email Emma when someone messages her ("Jordan Reyes sent you a message").
+    /// Those people are added with where they wrote from. Names only: these emails don't share addresses.
+    func noteSocial(_ thread: GmailAPI.Thread) {
+        var changed = false
+        for m in thread.messages {
+            let from = GmailAPI.parseAddress(m.from)
+            let domain = from.email.split(separator: "@").last.map { String($0).lowercased() } ?? ""
+            let site: String
+            if domain.contains("instagram") { site = "Instagram" }
+            else if domain == "facebookmail.com" || domain.hasSuffix(".facebookmail.com") || domain.contains("facebook") { site = "Facebook" }
+            else { continue }
+            guard let found = Self.socialSender(subject: m.subject, fromName: from.name == from.email ? "" : from.name) else { continue }
+            var p = Person(name: found.name, automatic: true)
+            if let handle = found.handle, site == "Instagram" { p.link = "@" + handle }
+            p.met = site
+            p.addedFrom = site
+            p.addedOn = Date()
+            guard !isHidden(p) else { continue }
+            // Already here with this handle: nothing to add.
+            if !p.link.isEmpty, people.contains(where: { $0.link.lowercased() == p.link.lowercased() }) { continue }
+            if absorb(p) { changed = true }
         }
+        if changed { save() }
+    }
+
+    /// Who wrote, from an Instagram or Facebook message email. Nil when it isn't about a message.
+    static func socialSender(subject: String, fromName: String) -> (name: String, handle: String?)? {
+        let s = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = ["^(.+?) (?:sent you a message|sent you messages|wants to send you a message|messaged you|replied to your story|sent you a photo|sent you a video)",
+                        "^(?:new message from|message from|you have a new message from) (.+?)$",
+                        "^(.+?) \\(@[A-Za-z0-9._]+\\) (?:sent|wants|messaged)"]
+        var raw: String?
+        for pattern in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                  let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+                  let r = Range(m.range(at: 1), in: s) else { continue }
+            raw = String(s[r])
+            break
+        }
+        let generic = ["facebook", "instagram", "messenger", "meta", "someone", "a friend", "you"]
+        if raw == nil, !fromName.isEmpty, !generic.contains(fromName.lowercased()), s.lowercased().contains("message") {
+            raw = fromName
+        }
+        guard var name = raw?.trimmingCharacters(in: .whitespaces), !name.isEmpty, !generic.contains(name.lowercased()) else { return nil }
+        // "Jordan Reyes (@jordanreyes)" or "@jordanreyes" or "jordanreyes".
+        var handle: String?
+        let handlePattern = try? NSRegularExpression(pattern: "@([A-Za-z0-9._]+)")
+        if let m = handlePattern?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)), let r = Range(m.range(at: 1), in: s) {
+            handle = String(s[r])
+        }
+        if let open = name.firstIndex(of: "(") { name = String(name[..<open]).trimmingCharacters(in: .whitespaces) }
+        if name.hasPrefix("@") { name.removeFirst() }
+        if !name.contains(" "), name.range(of: "^[a-z0-9._]+$", options: .regularExpression) != nil { handle = handle ?? name }
+        guard name.count <= 60, !name.isEmpty else { return nil }
+        return (name, handle)
+    }
+
+    /// Everyone on a Zoom call (with an email) becomes a person, unless they're already here.
+    func noteMeetings(_ notes: [MeetingNote]) {
+        var changed = false
+        for n in notes {
+            var found: [(name: String, email: String)] = (n.people ?? []).map { ($0.name, $0.email.lowercased()) }
+            found += (n.attendees ?? []).map { ("", $0.lowercased()) }
+            for (name, email) in found where email.contains("@") && !isMine(email) && !Self.isAutomated(email) && !hidden.contains(email) {
+                if people.contains(where: { $0.emails.contains(email) }) { continue }
+                let clean = name.trimmingCharacters(in: .whitespaces)
+                var p = Person(name: clean.isEmpty ? email : clean, emails: [email], automatic: true)
+                p.met = "Zoom"
+                p.addedFrom = "a Zoom call"
+                p.addedOn = Date()
+                if absorb(p) { changed = true }
+            }
+        }
+        if changed { save() }
     }
 
     /// No-reply senders, newsletters, notifications and services: never people.
@@ -242,7 +396,7 @@ final class PeopleStore: ObservableObject {
                 let rawEmail = contact.email.trimmingCharacters(in: .whitespaces).lowercased()
                 let email = rawEmail.contains("@") ? rawEmail : ""
                 let name = contact.name.trimmingCharacters(in: .whitespaces).isEmpty ? email : contact.name.trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty, !hide(email: email, name: name), email.isEmpty || !Self.isAutomated(email) else { continue }
+                guard !name.isEmpty, !hide(email: email, name: name), email.isEmpty || (!Self.isAutomated(email) && !isMine(email)) else { continue }
                 let i: Int
                 if let found = find(email: email, name: name) {
                     i = found
@@ -250,6 +404,8 @@ final class PeopleStore: ObservableObject {
                     var p = Person(name: name, emails: email.isEmpty ? [] : [email], automatic: true)
                     p.met = deal.source
                     p.createdAt = deal.createdAt
+                    p.addedFrom = "a deal"
+                    p.addedOn = Date()
                     list.append(p)
                     i = list.count - 1
                 }
@@ -266,6 +422,36 @@ final class PeopleStore: ObservableObject {
                 } else if deal.stage.isOpen, !p.has(.client), !p.has(.lead), p.tags.isEmpty {
                     p.addTag(PersonTag.lead.rawValue)
                 }
+                list[i] = p
+            }
+        }
+
+        // The people Emma (or Lens) put on each project.
+        for project in projects {
+            for person in project.people ?? [] {
+                let rawEmail = person.email.trimmingCharacters(in: .whitespaces).lowercased()
+                let email = rawEmail.contains("@") ? rawEmail : ""
+                let trimmed = person.name.trimmingCharacters(in: .whitespaces)
+                let name = trimmed.isEmpty ? email : trimmed
+                guard !name.isEmpty, !hide(email: email, name: name), email.isEmpty || (!Self.isAutomated(email) && !isMine(email)) else { continue }
+                let i: Int
+                if let found = find(email: email, name: name) {
+                    i = found
+                } else {
+                    var p = Person(name: name, emails: email.isEmpty ? [] : [email], automatic: true)
+                    p.createdAt = project.createdAt
+                    p.addedFrom = "a project"
+                    p.addedOn = Date()
+                    list.append(p)
+                    i = list.count - 1
+                }
+                var p = list[i]
+                if !email.isEmpty, !p.emails.contains(email) { p.emails.append(email) }
+                if p.name.contains("@"), !trimmed.isEmpty, !trimmed.contains("@") { p.name = trimmed }
+                if p.role.isEmpty, person.role != "Client" { p.role = person.role }
+                if person.role == "Client" { p.addTag(PersonTag.client.rawValue); p.tags.removeAll { $0 == PersonTag.lead.rawValue } }
+                if !p.unlinked.contains(project.id), !p.projectIDs.contains(project.id) { p.projectIDs.append(project.id) }
+                Self.tagFromRole(&p)
                 list[i] = p
             }
         }
@@ -290,6 +476,8 @@ final class PeopleStore: ObservableObject {
             var p = Person(name: client, automatic: true)
             p.projectIDs = [project.id]
             p.createdAt = project.createdAt
+            p.addedFrom = "a project"
+            p.addedOn = Date()
             if project.stage.rawValue >= ProjectStage.booked.rawValue { p.addTag(PersonTag.client.rawValue) }
             list.append(p)
         }
@@ -299,6 +487,8 @@ final class PeopleStore: ObservableObject {
             people = list
             save()
         }
+        // Everyone on the Zoom calls filed on these deals and projects.
+        noteMeetings(deals.flatMap { $0.meetingNotes ?? [] } + projects.flatMap { $0.meetingNotes ?? [] })
     }
 
     private static func tagFromRole(_ p: inout Person) {
@@ -308,7 +498,17 @@ final class PeopleStore: ObservableObject {
         }
     }
 
-    /// Same email, or the same name where at most one of them has an email: one person.
+    /// Same email, the same name and company, or the same name where at most one of them has an email: one person.
+    static func isSame(_ a: Person, _ b: Person) -> Bool {
+        guard !keptApart(a, b) else { return false }
+        if !Set(a.emails).isDisjoint(with: b.emails) { return true }
+        let name = Person.nameKey(a.name)
+        guard !name.isEmpty, name == Person.nameKey(b.name) else { return false }
+        if a.emails.isEmpty || b.emails.isEmpty { return true }
+        let company = Person.nameKey(a.company)
+        return !company.isEmpty && company == Person.nameKey(b.company)
+    }
+
     private static func mergeDuplicates(_ input: [Person]) -> [Person] {
         var list = input
         var i = 0
@@ -316,10 +516,7 @@ final class PeopleStore: ObservableObject {
             var j = i + 1
             while j < list.count {
                 let a = list[i], b = list[j]
-                let sharesEmail = !Set(a.emails).isDisjoint(with: b.emails)
-                let sameName = !Person.nameKey(a.name).isEmpty && Person.nameKey(a.name) == Person.nameKey(b.name)
-                    && (a.emails.isEmpty || b.emails.isEmpty)
-                if (sharesEmail || sameName) && !keptApart(a, b) {
+                if isSame(a, b) {
                     list[i] = combined(a, b)
                     list.remove(at: j)
                 } else {
@@ -353,6 +550,14 @@ final class PeopleStore: ObservableObject {
         p.notSame = (p.notSame + b.notSame.filter { !p.notSame.contains($0) }).filter { $0 != a.id && $0 != b.id }
         p.automatic = a.automatic && b.automatic
         p.createdAt = min(a.createdAt, b.createdAt)
+        if p.addedFrom == nil { p.addedFrom = b.addedFrom }
+        // Only "added recently" if both were: someone already in People stays out of that list.
+        if let x = a.addedOn, let y = b.addedOn { p.addedOn = min(x, y) } else { p.addedOn = nil }
+        if a.reviewed == true || b.reviewed == true { p.reviewed = true }
+        let photos = (a.cardPhotos ?? []) + (b.cardPhotos ?? []).filter { !(a.cardPhotos ?? []).contains($0) }
+        p.cardPhotos = photos.isEmpty ? nil : photos
+        if p.metOn == nil { p.metOn = b.metOn }
+        if p.connectedOn == nil { p.connectedOn = b.connectedOn }
         return p
     }
 
@@ -459,7 +664,7 @@ final class PeopleStore: ObservableObject {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return sorted }
         return sorted.filter { p in
-            ([p.name, p.company, p.role, p.phone, p.link, p.met, p.notes] + p.emails + p.tags)
+            ([p.name, p.company, p.role, p.phone, p.link, p.met, p.notes, p.addedFrom ?? ""] + p.emails + p.tags)
                 .contains { $0.localizedCaseInsensitiveContains(q) }
         }
     }
@@ -541,6 +746,19 @@ final class PeopleStore: ObservableObject {
             people = (saved.people ?? []).compactMap(\.value)
             suggestions = (saved.suggestions ?? []).compactMap(\.value)
             hidden = Set(saved.hidden ?? [])
+            // Older versions asked before adding people found in Gmail. Add any still waiting.
+            if !suggestions.isEmpty {
+                for s in suggestions where !hidden.contains(s.email) {
+                    var p = Person(name: s.name.isEmpty ? s.email : s.name, emails: [s.email], automatic: true)
+                    p.met = "Email"
+                    p.addedFrom = "Gmail"
+                    p.addedOn = Date()
+                    if let t = s.thread { p.threads = [t] }
+                    absorb(p)
+                }
+                suggestions = []
+                save()
+            }
         } catch {
             NSLog("Lens: couldn't read people.json: \(error)")
             // Keep a copy so nothing is lost if a later save overwrites it.

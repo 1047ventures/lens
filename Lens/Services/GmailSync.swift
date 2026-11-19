@@ -236,12 +236,24 @@ final class GmailSync: ObservableObject {
                 max: 20, token: token) where !found.contains(where: { $0.id == extra.id }) {
                 found.append(extra)
             }
+            // Instagram and Facebook email Emma when someone messages her. Those land in Social, so look for them too.
+            for extra in try await GmailAPI.threadIDs(
+                matching: "newer_than:21d \(skip) {from:facebookmail.com from:instagram.com from:mail.instagram.com} {subject:message subject:messaged subject:messages}",
+                max: 15, token: token) where !found.contains(where: { $0.id == extra.id }) {
+                found.append(extra)
+            }
 
             var fresh: [(GmailAPI.Thread, EmailThread)] = []
             for item in found where seen[item.id] != item.history {
                 guard fresh.count < 30 else { break }   // the rest wait for the next check
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard !thread.messages.isEmpty else { seen[item.id] = item.history; continue }
+                // Someone messaged Emma on Instagram or Facebook: they go in People.
+                if Self.isSocial(thread) {
+                    people?.noteSocial(thread)
+                    seen[item.id] = item.history
+                    continue
+                }
                 let link = threadLink(thread, me: me)
                 // Already linked to a deal or project: just bring the conversation up to date.
                 if linkKnown(link, deals: deals, projects: projects) || linkByMemory(link, deals: deals, projects: projects)
@@ -276,6 +288,14 @@ final class GmailSync: ObservableObject {
             problem = (error as? LocalizedError)?.errorDescription ?? "Lens couldn't check your email just now."
         }
         save()
+    }
+
+    /// An Instagram or Facebook notification email.
+    static func isSocial(_ thread: GmailAPI.Thread) -> Bool {
+        guard let first = thread.messages.first else { return false }
+        let domain = GmailAPI.parseAddress(first.from).email.split(separator: "@").last.map { String($0).lowercased() } ?? ""
+        return domain == "facebookmail.com" || domain.hasSuffix(".facebookmail.com")
+            || domain == "instagram.com" || domain.hasSuffix(".instagram.com")
     }
 
     private func threadLink(_ thread: GmailAPI.Thread, me: String) -> EmailThread {
