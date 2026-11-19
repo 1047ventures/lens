@@ -521,6 +521,7 @@ final class LensAI: ObservableObject {
         case "get_project":
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
+            d.merge(projectBooks(p)) { _, new in new }
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
             if let notes = p.meetingNotes, !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes) }
             if let emails = p.emails, !emails.isEmpty {
@@ -840,8 +841,34 @@ final class LensAI: ObservableObject {
     }
 
     private func projectSummary(_ p: Project) -> [String: Any] {
-        ["project_id": p.id.uuidString, "name": p.name, "client": p.client, "stage": p.stage.label,
-         "shoot_date": p.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "", "location": p.location]
+        var d: [String: Any] = ["project_id": p.id.uuidString, "name": p.name, "client": p.client, "stage": p.stage.label,
+                                "shoot_date": p.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "", "location": p.location,
+                                "hours_total": (p.totalHours * 10).rounded() / 10]
+        if p.isTiming { d["timer_running"] = true }
+        if let money, let deals {
+            let b = ProjectBooks.make(p, money: money, deals: deals)
+            d["spent"] = b.spent
+            if let price = b.price { d["price"] = price }
+            if let keep = b.keep { d["what_she_keeps"] = keep }
+        }
+        return d
+    }
+
+    /// Hours and money for one project, for questions like "how many hours on X?" or "what have I spent on it?".
+    private func projectBooks(_ p: Project) -> [String: Any] {
+        var time: [String: Any] = ["total_hours": (p.totalHours * 10).rounded() / 10,
+                                   "this_week_hours": (p.hoursThisWeek * 10).rounded() / 10,
+                                   "by_type": Dictionary(uniqueKeysWithValues: p.hoursByKind.map { ($0.kind.label, ($0.hours * 10).rounded() / 10) }),
+                                   "entries": p.times.prefix(40).map { "\(day($0.date)) \($0.kind.label) \(format($0.hours)) h\($0.note.map { ": \($0)" } ?? "")" }]
+        if let started = p.timerStartedAt { time["timer_running_since"] = started.formatted(date: .abbreviated, time: .shortened) }
+        guard let money, let deals else { return ["time": time] }
+        let b = ProjectBooks.make(p, money: money, deals: deals)
+        var m: [String: Any] = ["spent": b.spent, "received": b.received,
+                                "expenses": b.expenses.map { "\(day($0.date)) \($0.description) (\($0.category.label)) \(Money.string(-$0.amount))" }]
+        if let price = b.price { m["price"] = price }
+        if let keep = b.keep { m["what_she_keeps"] = keep }
+        if let perHour = b.perHour { m["kept_per_hour_so_far"] = (perHour * 100).rounded() / 100 }
+        return ["time": time, "money": m]
     }
 
     static let rateFields: [String: WritableKeyPath<RateCard, Double>] = [
@@ -924,6 +951,8 @@ final class LensAI: ObservableObject {
     offers the update (bottom left) usually within an hour. Tell her that. If it can't be built, Sean follows up.
     - She can attach photos, PDFs and files, or paste a link. Read them directly (use web_fetch for links). \
     Photos of gear, receipts, contracts, shot lists, client briefs: work from what's actually in them.
+    - Hours and spending on a project ("how many hours on the CU documentary?", "what have I spent on it?"): \
+    find it with list_projects, then get_project and answer from its time and money.
     - The <screen> tag at the start of her message says what she is looking at; "this deal" means that one.
     - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
     history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
@@ -942,8 +971,8 @@ final class LensAI: ObservableObject {
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
-        tool("list_projects", "List booked projects with stage, shoot date and location.", [:], []),
-        tool("get_project", "One project's details, history, emails and Zoom call summaries (meeting_notes).", ["project_id": ["type": "string"]], ["project_id"]),
+        tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what Emma keeps.", [:], []),
+        tool("get_project", "One project's details, history, emails, Zoom call summaries (meeting_notes), time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour).", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),

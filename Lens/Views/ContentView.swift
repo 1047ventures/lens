@@ -296,6 +296,7 @@ struct Sidebar: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
+                RunningTimerBadge()
                 UpdateBanner()
                 Button {
                     navigator.open(.settings)

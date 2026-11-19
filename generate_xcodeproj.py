@@ -32,6 +32,7 @@ FILES = [
     (f"{APP_NAME}/Models/OrganizeSettings.swift",         f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Models/ScanOverview.swift",             f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Models/Project.swift",                  f"{APP_NAME}/Models"),
+    (f"{APP_NAME}/Models/TimeEntry.swift",                f"{APP_NAME}/Models"),
 
     (f"{APP_NAME}/Services/FileScanner.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/HashingService.swift",         f"{APP_NAME}/Services"),
@@ -57,6 +58,7 @@ FILES = [
     (f"{APP_NAME}/Views/ArchiveCandidatesView.swift",     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/SettingsView.swift",              f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ThumbnailImageView.swift",        f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/ProjectTimeMoneyView.swift",     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/Theme.swift",                     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/TodayView.swift",                 f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectsView.swift",              f"{APP_NAME}/Views"),
