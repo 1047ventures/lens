@@ -84,6 +84,7 @@ struct ContentView: View {
     @StateObject private var ai = LensAI()
     @StateObject private var money = MoneyStore()
     @StateObject private var navigator = Navigator()
+    @State private var whatsNew: [WhatsNew.Item] = []
 
     var body: some View {
         NavigationSplitView {
@@ -133,6 +134,14 @@ struct ContentView: View {
                     .keyboardShortcut("k", modifiers: .command)
                     .help("Ask Lens (⌘K)")
                 }
+            }
+            .sheet(isPresented: Binding(get: { !whatsNew.isEmpty }, set: { if !$0 { whatsNew = []; WhatsNew.markSeen() } })) {
+                WhatsNewView(items: whatsNew)
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(1))
+                whatsNew = WhatsNew.unseen()
+                if whatsNew.isEmpty { WhatsNew.markSeen() }
             }
             .sheet(item: $navigator.bankLogin) { id in
                 BankLoginView(id: id, folder: logins.state.statementsFolder.map { URL(fileURLWithPath: $0) } ?? BankSite.defaultFolder)

@@ -48,6 +48,7 @@ FILES = [
     (f"{APP_NAME}/ViewModels/ScanViewModel.swift",        f"{APP_NAME}/ViewModels"),
 
     (f"{APP_NAME}/Views/ContentView.swift",               f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/WhatsNewView.swift",              f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/DuplicatesView.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/CacheCleanupView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/CleanupExplainedView.swift",      f"{APP_NAME}/Views"),
