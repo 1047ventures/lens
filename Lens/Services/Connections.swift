@@ -84,7 +84,12 @@ enum GoogleAuth {
     }
 
     /// One plain sentence plus the one thing to try, for any error that can come out of Google sign-in.
-    static func explain(code: String) -> Failure {
+    static func explain(code: String, description: String? = nil) -> Failure {
+        // Google's "being tested" or "not verified" refusal: the saved setup belongs to an older Google project.
+        if code == "access_denied", let text = description?.lowercased(),
+           ["being tested", "testing", "test user", "verification"].contains(where: text.contains) {
+            return Failure(message: "Google is still using an older setup. Download the Google file again into Downloads and click Sign in again.")
+        }
         switch code {
         case "access_denied":
             return Failure(message: "Google didn't let Lens in. If Google said Lens is \"being tested\", Lens is still using an older Google setup: ask Claude to download the Google file again into Downloads, then click Sign in with Google. Otherwise, click Sign in with Google and press Allow on every screen.", code: code)
@@ -160,7 +165,7 @@ enum GoogleAuth {
         _ = await MainActor.run { NSWorkspace.shared.open(url) }
 
         let query = try await receiver.waitForRedirect()
-        if let error = query["error"] { throw explain(code: error) }
+        if let error = query["error"] { throw explain(code: error, description: query["error_description"]) }
         guard query["state"] == state, let code = query["code"] else { throw explain(code: "state_mismatch") }
 
         // Swap the one-time code for tokens
@@ -484,12 +489,15 @@ final class ConnectionStore: ObservableObject {
         return isOwner(email) && Keychain.get("google.refreshToken") != nil
     }
 
-    /// Picks up the client file Claude downloaded, if there is one and no client is saved yet.
+    /// Picks up the client file Claude downloaded, if there is one.
     /// A new file always wins over an older saved setup, and the old sign-in is forgotten with it.
     func importGoogleClient() {
         let before = googleClientID
         guard GoogleClientFile.importIfNeeded() else { return }
-        if !before.isEmpty && before != googleClientID { forgetGoogleSignIn() }
+        if !before.isEmpty && before != googleClientID {
+            if let token = Keychain.get("google.refreshToken") { Task { await GoogleAuth.revoke(token) } }
+            forgetGoogleSignIn()
+        }
         googleError = nil
         googleErrorCode = nil
         objectWillChange.send()
