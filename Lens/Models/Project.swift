@@ -56,6 +56,16 @@ struct Project: Codable, Identifiable, Hashable {
     var emails: [EmailThread]?
     /// Zoom meeting summaries for this project. Optional so older saved projects still load.
     var meetingNotes: [MeetingNote]?
+    /// Hours spent on this project. Optional so older saved projects still load.
+    var timeEntries: [TimeEntry]?
+    /// When the running timer started, if it's running. Saved so it survives quitting Lens.
+    var timerStartedAt: Date?
+    /// What the running timer is counting (Shoot, Edit…).
+    var timerKind: TimeKind?
+    /// Zoom calls and calendar events Emma said not to count as time.
+    var skippedTimeSources: [String]?
+    /// What Emma is charging, when it isn't already on a won deal in Pipeline.
+    var price: Double?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {

@@ -69,13 +69,15 @@ final class LensAI: ObservableObject {
     private weak var navigator: Navigator?
     private weak var money: MoneyStore?
     private weak var zoom: ZoomNotes?
+    private weak var people: PeopleStore?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
 
     init() { load() }
 
-    func attach(deals: DealStore, projects: ProjectStore, navigator: Navigator, money: MoneyStore) {
+    func attach(deals: DealStore, projects: ProjectStore, navigator: Navigator, money: MoneyStore, people: PeopleStore? = nil) {
+        self.people = people
         self.money = money
         self.deals = deals
         self.projects = projects
@@ -440,6 +442,7 @@ final class LensAI: ObservableObject {
         case "get_gear": return "Checking your gear…"
         case "get_library", "search_library": return "Looking through your drives…"
         case "get_rates": return "Checking your rates…"
+        case "list_people", "get_person": return "Looking through People…"
         case "draft_email": return "Drafting the email…"
         case "open_screen": return "Opening it…"
         case "search_meeting_notes", "get_meeting_note": return "Reading your meeting notes…"
@@ -551,6 +554,7 @@ final class LensAI: ObservableObject {
         case "get_project":
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
+            d.merge(projectBooks(p)) { _, new in new }
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
             if let notes = p.meetingNotes, !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes) }
             if let emails = p.emails, !emails.isEmpty {
@@ -575,10 +579,48 @@ final class LensAI: ObservableObject {
             ]), false)
         case "get_rates":
             return (json(rateValues(deals.rates)), false)
+        case "list_people":
+            guard let people else { return ("People isn't ready.", true) }
+            let tag = str("tag"), query = str("query"), on = str("on")
+            var list = people.search(query)
+            // Also find people whose emails or Zoom notes mention the words ("the festival").
+            if !query.isEmpty {
+                for p in people.sorted where !list.contains(where: { $0.id == p.id }) {
+                    let hit = people.meetingNotes(for: p).contains { $0.title.localizedCaseInsensitiveContains(query) || $0.summary.localizedCaseInsensitiveContains(query) }
+                        || people.emails(for: p).contains { $0.subject.localizedCaseInsensitiveContains(query) || $0.snippet.localizedCaseInsensitiveContains(query) }
+                    if hit { list.append(p) }
+                }
+            }
+            if !tag.isEmpty { list = list.filter { p in p.tags.contains { $0.caseInsensitiveCompare(tag) == .orderedSame } } }
+            if !on.isEmpty {
+                list = list.filter { p in
+                    people.deals(for: p).contains { $0.title.localizedCaseInsensitiveContains(on) || $0.client.localizedCaseInsensitiveContains(on) }
+                        || people.projects(for: p).contains { $0.name.localizedCaseInsensitiveContains(on) || $0.client.localizedCaseInsensitiveContains(on) }
+                }
+            }
+            if let quiet = input["quiet_days"] as? Int ?? (input["quiet_days"] as? Double).map(Int.init) {
+                list = list.filter { (people.daysQuiet($0) ?? Int.max) >= quiet }
+            }
+            if input["follow_up_due"] as? Bool == true { list = list.filter { $0.isFollowUpDue() } }
+            return (json(list.prefix(80).map { personSummary($0, people) }), false)
+        case "get_person":
+            guard let people, let p = findPerson(str("person_id")) else { return ("No person with that id.", true) }
+            var d = personSummary(p, people)
+            d["phone"] = p.phone
+            d["link"] = p.link
+            d["notes"] = p.notes
+            d["deals"] = people.deals(for: p).map { "\($0.title) (\(stageKey($0.stage)), deal_id \($0.id.uuidString))" }
+            d["projects"] = people.projects(for: p).map { "\($0.name) (\($0.stage.label), project_id \($0.id.uuidString))" }
+            d["paid"] = people.payments(for: p).map { "\(day($0.date)) \(Money.string($0.amount)) \($0.label)" }
+            d["timeline"] = people.timeline(for: p).prefix(40).map { "\(day($0.date)) \($0.title): \($0.detail.prefix(300))" }
+            let notes = people.meetingNotes(for: p)
+            if !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes) }
+            return (json(d), false)
 
         // ---- Showing things (harmless)
         case "open_screen":
-            if let deal = findDeal(str("deal_id")) { navigator?.openDeal(deal.id) }
+            if let person = findPerson(str("person_id")) { navigator?.openPerson(person.id) }
+            else if let deal = findDeal(str("deal_id")) { navigator?.openDeal(deal.id) }
             else if let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) { navigator?.openProject(p.id) }
             else if let section = SidebarSection.allCases.first(where: { $0.rawValue.lowercased() == str("section").lowercased() }) { navigator?.open(section) }
             else { return ("Nothing to open with that.", true) }
@@ -632,6 +674,47 @@ final class LensAI: ObservableObject {
             guard await ask(id: id, tool: name, summary: "Change \(field.replacingOccurrences(of: "_", with: " ")) from \(format(old)) to \(format(value))") else { return ("Emma skipped this.", false) }
             deals.rates[keyPath: path] = value
             return ("Saved.", false)
+        case "add_person":
+            guard let people else { return ("People isn't ready.", true) }
+            let personName = str("name")
+            guard !personName.isEmpty else { return ("A name is needed.", true) }
+            var p = Person(name: personName, emails: str("email").isEmpty ? [] : [str("email").lowercased()])
+            p.phone = str("phone"); p.company = str("company"); p.role = str("role"); p.link = str("link")
+            p.met = str("met"); p.notes = str("notes")
+            p.tags = (input["tags"] as? [String] ?? []).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let extra = [p.subtitle, p.tags.joined(separator: ", ")].filter { !$0.isEmpty }.joined(separator: " · ")
+            guard await ask(id: id, tool: name, summary: "Add \(personName) to People" + (extra.isEmpty ? "" : " (\(extra))")) else { return ("Emma skipped this.", false) }
+            people.add(p)
+            return ("Added. person_id \(p.id.uuidString)", false)
+        case "update_person":
+            guard let people, var p = findPerson(str("person_id")) else { return ("No person with that id.", true) }
+            let fields: [(String, WritableKeyPath<Person, String>)] = [
+                ("name", \.name), ("phone", \.phone), ("company", \.company), ("role", \.role), ("link", \.link), ("met", \.met)]
+            var changes: [String] = []
+            for (key, path) in fields where !str(key).isEmpty { p[keyPath: path] = str(key); changes.append(key) }
+            if !str("add_email").isEmpty, !p.emails.contains(str("add_email").lowercased()) { p.emails.append(str("add_email").lowercased()); changes.append("email") }
+            for t in input["add_tags"] as? [String] ?? [] where !t.isEmpty { p.addTag(t); changes.append("tag \(t)") }
+            for t in input["remove_tags"] as? [String] ?? [] { p.tags.removeAll { $0.caseInsensitiveCompare(t) == .orderedSame }; changes.append("remove tag \(t)") }
+            if !str("add_note").isEmpty { p.notes = p.notes.isEmpty ? str("add_note") : p.notes + "\n\n" + str("add_note"); changes.append("note") }
+            guard !changes.isEmpty else { return ("Nothing to update.", true) }
+            guard await ask(id: id, tool: name, summary: "Update \(p.name): \(changes.joined(separator: ", "))") else { return ("Emma skipped this.", false) }
+            people.update(p)
+            return ("Updated.", false)
+        case "set_follow_up":
+            guard let people, let p = findPerson(str("person_id")) else { return ("No person with that id.", true) }
+            let clear = input["clear"] as? Bool == true
+            guard clear || date(str("date")) != nil else { return ("Give a date as YYYY-MM-DD, or clear: true.", true) }
+            let when = date(str("date"))
+            let summary = clear ? "Clear the follow-up for \(p.name)"
+                : "Follow up with \(p.name) on \(when!.formatted(date: .abbreviated, time: .omitted))" + (str("note").isEmpty ? "" : ": \(str("note"))")
+            guard await ask(id: id, tool: name, summary: summary) else { return ("Emma skipped this.", false) }
+            people.setFollowUp(clear ? nil : when, note: str("note"), for: p)
+            return ("Done.", false)
+        case "log_person_touch":
+            guard let people, let p = findPerson(str("person_id")) else { return ("No person with that id.", true) }
+            guard await ask(id: id, tool: name, summary: "Log with \(p.name): \(str("note"))") else { return ("Emma skipped this.", false) }
+            people.logTouch(str("note"), for: p)
+            return ("Logged.", false)
         case "remember":
             let note = str("note")
             guard !note.isEmpty else { return ("Empty note.", true) }
@@ -699,6 +782,9 @@ final class LensAI: ObservableObject {
             parts.append("Looking at deal \"\(deal.title)\" (deal_id \(deal.id.uuidString))")
             if navigator.builderDealID == deal.id { parts.append("in the proposal builder") }
         }
+        if navigator.section == .people, let person = people?.person(id: navigator.personID) {
+            parts.append("Looking at \(person.name) in People (person_id \(person.id.uuidString))")
+        }
         if navigator.section == .projects, let p = projects?.project(id: navigator.projectID) {
             parts.append("Looking at project \"\(p.name)\" (project_id \(p.id.uuidString))")
         }
@@ -711,6 +797,26 @@ final class LensAI: ObservableObject {
         }
         parts.append("Today is \(Date().formatted(date: .complete, time: .shortened))")
         return parts.joined(separator: ". ")
+    }
+
+    private func findPerson(_ id: String) -> Person? {
+        guard !id.isEmpty, let people else { return nil }
+        return people.people.first { $0.id.uuidString == id }
+            ?? people.people.first { $0.name.localizedCaseInsensitiveCompare(id) == .orderedSame || $0.emails.contains(id.lowercased()) }
+    }
+
+    private func personSummary(_ p: Person, _ people: PeopleStore) -> [String: Any] {
+        var d: [String: Any] = ["person_id": p.id.uuidString, "name": p.name, "emails": p.emails, "company": p.company,
+                                "role": p.role, "tags": p.tags, "met": p.met]
+        if let last = people.lastInTouch(p) { d["last_in_touch"] = day(last) }
+        if let f = p.followUp { d["follow_up"] = day(f) + (p.followUpNote.isEmpty ? "" : ": \(p.followUpNote)") }
+        let open = people.deals(for: p).filter { $0.stage.isOpen }.map(\.title)
+        if !open.isEmpty { d["open_deals"] = open }
+        let projects = people.projects(for: p).map(\.name)
+        if !projects.isEmpty { d["projects"] = projects }
+        let paid = people.totalPaid(by: p)
+        if paid > 0 { d["paid_total"] = Money.string(paid) }
+        return d
     }
 
     private func findDeal(_ id: String) -> Deal? {
@@ -796,8 +902,34 @@ final class LensAI: ObservableObject {
                                                  "that", "this", "was", "were", "our", "call", "meeting", "zoom", "who", "when", "how"]
 
     private func projectSummary(_ p: Project) -> [String: Any] {
-        ["project_id": p.id.uuidString, "name": p.name, "client": p.client, "stage": p.stage.label,
-         "shoot_date": p.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "", "location": p.location]
+        var d: [String: Any] = ["project_id": p.id.uuidString, "name": p.name, "client": p.client, "stage": p.stage.label,
+                                "shoot_date": p.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "", "location": p.location,
+                                "hours_total": (p.totalHours * 10).rounded() / 10]
+        if p.isTiming { d["timer_running"] = true }
+        if let money, let deals {
+            let b = ProjectBooks.make(p, money: money, deals: deals)
+            d["spent"] = b.spent
+            if let price = b.price { d["price"] = price }
+            if let keep = b.keep { d["what_she_keeps"] = keep }
+        }
+        return d
+    }
+
+    /// Hours and money for one project, for questions like "how many hours on X?" or "what have I spent on it?".
+    private func projectBooks(_ p: Project) -> [String: Any] {
+        var time: [String: Any] = ["total_hours": (p.totalHours * 10).rounded() / 10,
+                                   "this_week_hours": (p.hoursThisWeek * 10).rounded() / 10,
+                                   "by_type": Dictionary(uniqueKeysWithValues: p.hoursByKind.map { ($0.kind.label, ($0.hours * 10).rounded() / 10) }),
+                                   "entries": p.times.prefix(40).map { "\(day($0.date)) \($0.kind.label) \(format($0.hours)) h\($0.note.map { ": \($0)" } ?? "")" }]
+        if let started = p.timerStartedAt { time["timer_running_since"] = started.formatted(date: .abbreviated, time: .shortened) }
+        guard let money, let deals else { return ["time": time] }
+        let b = ProjectBooks.make(p, money: money, deals: deals)
+        var m: [String: Any] = ["spent": b.spent, "received": b.received,
+                                "expenses": b.expenses.map { "\(day($0.date)) \($0.description) (\($0.category.label)) \(Money.string(-$0.amount))" }]
+        if let price = b.price { m["price"] = price }
+        if let keep = b.keep { m["what_she_keeps"] = keep }
+        if let perHour = b.perHour { m["kept_per_hour_so_far"] = (perHour * 100).rounded() / 100 }
+        return ["time": time, "money": m]
     }
 
     static let rateFields: [String: WritableKeyPath<RateCard, Double>] = [
@@ -862,7 +994,8 @@ final class LensAI: ObservableObject {
     static let systemPrompt = """
     You are Lens, the assistant built into Emma's business app. Emma Pion-Berlin is a videographer and \
     photographer in Colorado (Visual Storytelling). Lens runs her pipeline (inquiries to booked gigs), \
-    proposals, projects, footage, money and log-ins. Sean built Lens for her.
+    proposals, projects, people (her clients, directors, interviewees, crew, vendors and leads), footage, money \
+    and log-ins. Sean built Lens for her.
 
     How to work:
     - Look things up with the tools instead of guessing. Never invent clients, numbers or dates.
@@ -879,9 +1012,13 @@ final class LensAI: ObservableObject {
     offers the update (bottom left) usually within an hour. Tell her that. If it can't be built, Sean follows up.
     - She can attach photos, PDFs and files, or paste a link. Read them directly (use web_fetch for links). \
     Photos of gear, receipts, contracts, shot lists, client briefs: work from what's actually in them.
+    - Hours and spending on a project ("how many hours on the CU documentary?", "what have I spent on it?"): \
+    find it with list_projects, then get_project and answer from its time and money.
     - The <screen> tag at the start of her message says what she is looking at; "this deal" means that one.
     - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
     history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
+    - People: list_people and get_person know everyone she works with, when she was last in touch, their deals, \
+    projects, emails, Zoom notes and what they've paid. For a check-in to several people, write one draft_email each.
     """
 
     static let tools: [[String: Any]] = [
@@ -898,13 +1035,33 @@ final class LensAI: ObservableObject {
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
-        tool("list_projects", "List booked projects with stage, shoot date and location.", [:], []),
-        tool("get_project", "One project's details, history, emails and Zoom call summaries (meeting_notes).", ["project_id": ["type": "string"]], ["project_id"]),
+        tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what Emma keeps.", [:], []),
+        tool("get_project", "One project's details, history, emails, Zoom call summaries (meeting_notes), time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour).", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
-        tool("open_screen", "Show something in Lens: a deal, a project, or a section (Today, Pipeline, Projects, Library, Gear, Money, Log-ins).",
-             ["deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
+        tool("open_screen", "Show something in Lens: a person, a deal, a project, or a section (Today, Pipeline, People, Projects, Library, Gear, Money, Log-ins).",
+             ["person_id": ["type": "string"], "deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
+        tool("list_people", "Everyone in People with tags, company, last time in touch, follow-up date, open deals and projects. All filters optional: query matches names, companies, notes, and also email subjects and Zoom notes (\"the festival\"); tag (Client, Director, Interviewee, Crew, Vendor, Lead); on = a deal or project name; quiet_days = not in touch for at least that many days; follow_up_due.",
+             ["query": ["type": "string"], "tag": ["type": "string"], "on": ["type": "string"],
+              "quiet_days": ["type": "integer"], "follow_up_due": ["type": "boolean"]], []),
+        tool("get_person", "Everything about one person: details, notes, deals, projects, what they've paid, Zoom notes and their whole timeline.",
+             ["person_id": ["type": "string"]], ["person_id"]),
+        tool("add_person", "Add someone to People. Emma approves first.",
+             ["name": ["type": "string"], "email": ["type": "string"], "phone": ["type": "string"], "company": ["type": "string"],
+              "role": ["type": "string"], "link": ["type": "string", "description": "Instagram or website"],
+              "met": ["type": "string", "description": "How she met them: Referral, Website, Instagram, Email, Event…"],
+              "tags": ["type": "array", "items": ["type": "string"]], "notes": ["type": "string"]], ["name"]),
+        tool("update_person", "Change a person's details, add an email, add or remove tags, or add a note. Only the fields given change. Emma approves first.",
+             ["person_id": ["type": "string"], "name": ["type": "string"], "phone": ["type": "string"], "company": ["type": "string"],
+              "role": ["type": "string"], "link": ["type": "string"], "met": ["type": "string"], "add_email": ["type": "string"],
+              "add_tags": ["type": "array", "items": ["type": "string"]], "remove_tags": ["type": "array", "items": ["type": "string"]],
+              "add_note": ["type": "string"]], ["person_id"]),
+        tool("set_follow_up", "Set (or clear) the date to follow up with someone; it shows on Today when due. Emma approves first.",
+             ["person_id": ["type": "string"], "date": ["type": "string", "description": "YYYY-MM-DD"], "note": ["type": "string"],
+              "clear": ["type": "boolean"]], ["person_id"]),
+        tool("log_person_touch", "Record that Emma was in touch with someone (a call, coffee, a chat at an event). Emma approves first.",
+             ["person_id": ["type": "string"], "note": ["type": "string"]], ["person_id", "note"]),
         tool("draft_email", "Show Emma an email draft she can copy or open in Mail. Never sends anything.",
              ["to": ["type": "string"], "subject": ["type": "string"], "body": ["type": "string"]], ["subject", "body"]),
         tool("create_inquiry", "Add a new inquiry to the pipeline (for example from a pasted DM or email). Emma approves first.",

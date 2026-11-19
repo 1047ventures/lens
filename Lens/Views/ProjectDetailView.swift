@@ -7,11 +7,14 @@ struct ProjectDetailView: View {
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var money: MoneyStore
+    @EnvironmentObject private var deals: DealStore
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var moving = false
 
     private var files: [MediaFile] { project.files(in: viewModel.allFiles) }
+    private var books: ProjectBooks { ProjectBooks.make(project, money: money, deals: deals) }
 
     var body: some View {
         ScrollView {
@@ -27,13 +30,22 @@ struct ProjectDetailView: View {
 
                 header
                 stageTrack
+                let books = self.books
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 28) { footagePanel; story }
-                            .frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 28) { details; meetingNotes; emails }.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) {
+                            ProjectTimePanel(project: project, books: books)
+                            ProjectMoneyPanel(project: project, books: books)
+                            footagePanel; story
+                        }
+                        .frame(minWidth: 420)
+                        VStack(alignment: .leading, spacing: 28) { details; PeoplePanel(target: .project(project.id)); meetingNotes; emails }.frame(width: 300)
                     }
-                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; meetingNotes; emails }
+                    VStack(alignment: .leading, spacing: 28) {
+                        ProjectTimePanel(project: project, books: books)
+                        ProjectMoneyPanel(project: project, books: books)
+                        footagePanel; story; details; PeoplePanel(target: .project(project.id)); meetingNotes; emails
+                    }
                 }
             }
             .padding(.horizontal, 48)
@@ -207,6 +219,7 @@ struct ProjectDetailView: View {
             detailRow("Client", project.client)
             detailRow("Shoot", project.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "")
             detailRow("Location", project.location)
+            detailRow("Price", books.price.map { Money.string($0) } ?? "")
             HStack(spacing: 10) {
                 Button("Edit details") { editing = true }
                     .buttonStyle(SecondaryButtonStyle())

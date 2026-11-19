@@ -146,6 +146,67 @@ final class MoneyStore: ObservableObject {
         save()
     }
 
+    // MARK: - Projects
+
+    /// Money out that belongs to a project (not card payments, transfers or money paid to Emma).
+    static func expenses(in list: [Txn]) -> [Txn] {
+        list.filter { $0.amount < 0 && ![.transfer, .owner, .taxes].contains($0.category.group) }
+            .sorted { $0.date > $1.date }
+    }
+
+    /// Adds an expense Emma typed in, with an optional receipt kept alongside the books.
+    func addExpense(amount: Double, date: Date, description: String, category: MoneyCategory,
+                    account: MoneyAccount, projectID: UUID?, receipt: URL?) {
+        var t = Txn(date: date, amount: -abs(amount), description: description, account: account,
+                    category: category, projectID: projectID)
+        t.addedByHand = true
+        if let receipt { t.receiptFile = Self.keepReceipt(receipt, id: t.id) }
+        data.txns.append(t)
+        save()
+    }
+
+    /// Only for expenses typed in by hand; statement lines stay in the books.
+    func deleteHandAdded(_ txn: Txn) {
+        guard txn.addedByHand == true else { return }
+        data.txns.removeAll { $0.id == txn.id }
+        if let file = txn.receiptFile { try? FileManager.default.removeItem(at: Self.receiptsFolder.appendingPathComponent(file)) }
+        save()
+    }
+
+    static var receiptsFolder: URL {
+        let dir = DealStore.url("Receipts")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static func receiptURL(_ txn: Txn) -> URL? {
+        txn.receiptFile.map { receiptsFolder.appendingPathComponent($0) }
+    }
+
+    private static func keepReceipt(_ url: URL, id: UUID) -> String? {
+        let name = "\(id.uuidString).\(url.pathExtension.isEmpty ? "jpg" : url.pathExtension.lowercased())"
+        do {
+            try FileManager.default.copyItem(at: url, to: receiptsFolder.appendingPathComponent(name))
+            return name
+        } catch {
+            NSLog("Lens: couldn't keep receipt: \(error)")
+            return nil
+        }
+    }
+
+    /// The one open project a transaction clearly belongs to: its name or client is in the
+    /// description, or (for crew, rentals, travel and music) it's within a day of the shoot.
+    /// Nil when it's unclear or already on a project.
+    static func suggestedProject(for t: Txn, in projects: [Project]) -> Project? {
+        guard t.projectID == nil, t.category != .gear,
+              [.income, .direct, .overhead, .unsorted].contains(t.category.group) else { return nil }
+        let byName = projects.filter { $0.matches(t.description) }
+        if byName.count == 1 { return byName[0] }
+        guard byName.isEmpty, t.category.group == .direct else { return nil }
+        let byDate = projects.filter { p in p.shootDate.map { abs($0.timeIntervalSince(t.date)) < 36 * 3600 } ?? false }
+        return byDate.count == 1 ? byDate[0] : nil
+    }
+
     func markPaid(_ r: Receivable, on date: Date = Date()) {
         guard let i = data.receivables.firstIndex(where: { $0.id == r.id }) else { return }
         data.receivables[i].paidOn = date
