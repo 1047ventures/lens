@@ -39,12 +39,12 @@ struct ProjectDetailView: View {
                             footagePanel; story
                         }
                         .frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 28) { details; meetingNotes; emails }.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) { details; PeoplePanel(target: .project(project.id)); meetingNotes; emails }.frame(width: 300)
                     }
                     VStack(alignment: .leading, spacing: 28) {
                         ProjectTimePanel(project: project, books: books)
                         ProjectMoneyPanel(project: project, books: books)
-                        footagePanel; story; details; meetingNotes; emails
+                        footagePanel; story; details; PeoplePanel(target: .project(project.id)); meetingNotes; emails
                     }
                 }
             }
