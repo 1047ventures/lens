@@ -1,0 +1,92 @@
+import SwiftUI
+
+/// "What's new" card shown once after an update, so Emma hears about improvements without hunting.
+/// To announce something, add a line to the newest entry in `WhatsNew.notes` (or a new entry for a
+/// new version). Each line is a short title and one plain sentence.
+enum WhatsNew {
+    struct Item: Identifiable {
+        let icon: String
+        let title: String
+        let detail: String
+        var id: String { title }
+    }
+
+    /// Newest first. `since` is the first version the lines apply to.
+    static let notes: [(since: String, items: [Item])] = [
+        ("1.0.18", [
+            Item(icon: "mic.fill", title: "Talk instead of type",
+                 detail: "Tap the microphone in Ask Lens and just say what you need."),
+            Item(icon: "paperclip", title: "Show Ask Lens your files",
+                 detail: "Drop in photos, PDFs or documents, or paste a link, and ask about them."),
+            Item(icon: "envelope.fill", title: "Google in one click",
+                 detail: "Sign in with Google once in Log-ins and Lens can use your Gmail, Drive, Sheets, Docs and Calendar."),
+            Item(icon: "camera.fill", title: "Add gear from a photo",
+                 detail: "In Gear, choose Add from photo and Lens fills in what it sees."),
+            Item(icon: "sparkles", title: "See what cleanup would remove",
+                 detail: "In Library, See exactly what's included lists every file before anything is touched."),
+            Item(icon: "wand.and.stars", title: "Your ideas ship by themselves",
+                 detail: "Ask Lens for a change and it arrives as an update like this one, usually within an hour."),
+        ]),
+    ]
+
+    private static let seenKey = "whatsNew.seenVersion"
+    static var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
+
+    /// Lines Emma hasn't seen yet. Someone who has never seen the card gets the newest entry.
+    static func unseen() -> [Item] {
+        let seen = UserDefaults.standard.string(forKey: seenKey)
+        if seen == currentVersion { return [] }
+        guard let seen else { return notes.first?.items ?? [] }
+        return notes.filter { newer($0.since, than: seen) }.flatMap(\.items)
+    }
+
+    static func markSeen() { UserDefaults.standard.set(currentVersion, forKey: seenKey) }
+
+    private static func newer(_ a: String, than b: String) -> Bool {
+        a.compare(b, options: .numeric) == .orderedDescending
+    }
+}
+
+struct WhatsNewView: View {
+    let items: [WhatsNew.Item]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What's new in Lens").font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
+                Text("A few things got better since you last looked.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(items) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: item.icon)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.teal)
+                                .frame(width: 30, height: 30)
+                                .background(Theme.teal.opacity(0.14))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(item.detail).font(.system(size: 13)).foregroundStyle(Theme.text3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 380)
+            HStack {
+                Spacer()
+                Button("Got it") { dismiss() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(28)
+        .frame(width: 460)
+        .background(Theme.panel)
+    }
+}
