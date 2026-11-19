@@ -41,6 +41,8 @@ struct TodayView: View {
                         thisWeek
                     }
                 }
+                AutoFiledToday()
+                    .frame(maxWidth: 720, alignment: .leading)
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)

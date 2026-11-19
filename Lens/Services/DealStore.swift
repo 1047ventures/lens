@@ -144,6 +144,13 @@ final class DealStore: ObservableObject {
         update(d)
     }
 
+    /// Takes a Gmail conversation off, for when it landed on the wrong deal.
+    func removeEmail(_ threadID: String, from dealID: UUID) {
+        guard var d = deal(id: dealID), let list = d.emails, list.contains(where: { $0.id == threadID }) else { return }
+        d.emails = list.filter { $0.id != threadID }
+        update(d)
+    }
+
     // MARK: - Persistence
 
     private func load() {

@@ -61,6 +61,21 @@ struct ProjectFile: Codable, Hashable, Identifiable {
     static let kinds = ["Contract", "Treatment", "Call sheet", "Script", "Release form", "Other"]
 }
 
+/// Something Lens put on a project by itself (a Zoom note, an email, a person), so Emma can see it
+/// on the project and undo it with Move or Not this project.
+struct AutoFiled: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable { case note, email, person }
+
+    var id = UUID()
+    var kind: Kind
+    /// The meeting note's id, the email conversation's id, or the person's email address.
+    var itemID: String
+    var title: String
+    /// Where it came from, as Emma sees it: "Zoom call", "Email", "Emails and calls".
+    var source: String
+    var date = Date()
+}
+
 /// A gig. Footage, history and (later) money and gear all hang off this.
 struct Project: Codable, Identifiable, Hashable {
     let id: UUID
@@ -98,6 +113,10 @@ struct Project: Codable, Identifiable, Hashable {
     var skippedTimeSources: [String]?
     /// What Emma is charging, when it isn't already on a won deal in Pipeline.
     var price: Double?
+    /// What Lens filed on this project by itself lately, newest first. Optional so older saved projects still load.
+    var autoFiled: [AutoFiled]?
+    /// Email addresses Emma said aren't on this project, so Lens doesn't add them again.
+    var notPeople: [String]?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {

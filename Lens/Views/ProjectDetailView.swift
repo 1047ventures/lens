@@ -40,9 +40,9 @@ struct ProjectDetailView: View {
                         HStack(alignment: .top, spacing: 28) {
                             VStack(alignment: .leading, spacing: 28) { footagePanel; story }
                                 .frame(minWidth: 420)
-                            VStack(alignment: .leading, spacing: 28) { details; atAGlance }.frame(width: 300)
+                            VStack(alignment: .leading, spacing: 28) { details; atAGlance; AutoFiledPanel(project: project) }.frame(width: 300)
                         }
-                        VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance }
+                        VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance; AutoFiledPanel(project: project) }
                     }
                 case .people:
                     VStack(alignment: .leading, spacing: 28) {
@@ -99,7 +99,7 @@ struct ProjectDetailView: View {
             HStack(spacing: 4) {
                 ForEach(ProjectTab.allCases) { t in
                     let label = count(t).map { "\(t.rawValue) · \($0)" } ?? t.rawValue
-                    let waiting = t == .notes ? zoom.suggestions(for: project.id).count : 0
+                    let waiting = t == .notes ? zoom.waiting(for: project.id).count : 0
                     Button {
                         tab = t
                     } label: {

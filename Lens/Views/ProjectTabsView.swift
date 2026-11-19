@@ -40,7 +40,7 @@ struct ProjectPeopleTab: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 14) {
                 SectionLabel("People · \(people.count)")
-                Text("Zoom notes and emails with anyone here go on this project by themselves.")
+                Text("Zoom notes and emails with anyone here go on this project by themselves. Lens also adds people it keeps seeing in this project's calls and emails.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text3)
                 if people.isEmpty {
                     Text("No one yet. Add the people you're working with, or pick from the suggestions below.")
@@ -179,11 +179,13 @@ struct ProjectPeopleTab: View {
 
 // MARK: - Meeting notes
 
-/// Every Zoom call on the project, newest first and searchable, plus calls Lens thinks belong here.
+/// Every Zoom call on the project, newest first and searchable, plus calls that might belong here,
+/// where Lens asks "Which project is this for?".
 struct ProjectNotesTab: View {
     let project: Project
     @EnvironmentObject private var zoom: ZoomNotes
     @State private var search = ""
+    @State private var drafting: ProjectDraft?
 
     private var notes: [MeetingNote] {
         let all = (project.meetingNotes ?? []).sorted { $0.date > $1.date }
@@ -194,11 +196,11 @@ struct ProjectNotesTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            let waiting = zoom.suggestions(for: project.id)
+            let waiting = zoom.waiting(for: project.id)
             if !waiting.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     ColorLabel("Might be for this project · \(waiting.count)", Palette.violet)
-                    Text("Zoom calls Lens thinks are about \(project.name), but wasn't sure enough to add.")
+                    Text("Zoom calls that might be about \(project.name). Lens wasn't sure, so it's asking.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(waiting) { note in
                         HStack(alignment: .top, spacing: 12) {
@@ -212,8 +214,7 @@ struct ProjectNotesTab: View {
                                 }
                             }
                             Spacer(minLength: 8)
-                            Button("Add to \(project.name)") { zoom.assign(note, toProject: project.id) }
-                                .buttonStyle(PrimaryButtonStyle())
+                            NoteQuestion(note: note, drafting: $drafting)
                         }
                         .padding(12)
                         .background(Theme.raised.opacity(0.5))
@@ -222,6 +223,7 @@ struct ProjectNotesTab: View {
                 }
                 .panel(padding: 18)
                 .accentBar(Palette.violet)
+                .sheet(item: $drafting) { draft in ProjectDraftSheet(draft: draft) }
             }
 
             VStack(alignment: .leading, spacing: 14) {
