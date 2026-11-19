@@ -1,5 +1,5 @@
 # Emma asks Ask Lens for a change -> it files an issue titled "[Emma] ..." -> Claude builds it on a
-# branch and opens a pull request for Sean. Sean can also reply "@claude ..." on any issue or PR.
+# branch, opens a pull request, and ship-emma.yml releases it if it builds. Sean can also reply "@claude ..." on any issue or PR.
 name: Claude builds Emma's requests
 
 on:
@@ -12,7 +12,10 @@ on:
 
 jobs:
   build-request:
-    if: github.event_name == 'issues' && startsWith(github.event.issue.title, '[Emma]')
+    # Only Emma's (or Sean's) requests get built. The repo is public, so a stranger's issue is ignored.
+    if: |
+      github.event_name == 'issues' && startsWith(github.event.issue.title, '[Emma]') &&
+      (github.event.issue.user.login == 'EmmaPion-Berlin' || github.event.issue.user.login == github.repository_owner)
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -20,6 +23,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - name: Use the newest Xcode
@@ -47,12 +51,19 @@ jobs:
             --model claude-opus-5-5
             --max-turns 80
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(python3 generate_xcodeproj.py),Bash(xcodebuild:*),Bash(git:*),Bash(gh pr:*),Bash(gh issue:*)"
+      - name: Ship it to Emma (builds again, merges and releases if it compiles)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          PR=$(gh pr list --state open --json number,body --jq ".[] | select(.body | test(\"(Closes|Fixes) #$ISSUE\\\\b\")) | .number" | head -1)
+          if [ -n "$PR" ]; then gh workflow run ship-emma.yml --ref main -f pr="$PR"; fi
 
   respond:
     if: |
       (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
       contains(github.event.comment.body, '@claude') &&
-      github.event.comment.user.login == github.repository_owner
+      (github.event.comment.user.login == github.repository_owner || github.event.comment.user.login == 'EmmaPion-Berlin')
     runs-on: macos-15
     timeout-minutes: 60
     permissions:

@@ -1,0 +1,70 @@
+# Emma's changes go live without waiting for Sean: when Emma (or Claude working on one of her
+# requests) opens a pull request, it is built here. If it compiles and doesn't touch signing or
+# release files, it is merged and released, and Lens on her Mac offers the update.
+name: Ship Emma's change
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to build and ship"
+        required: true
+
+concurrency: ship-emma
+
+jobs:
+  ship:
+    # Only Emma's own pull requests ship on their own. Anyone else's (or anything from a fork)
+    # waits for Sean. A manual run can only be started by someone with write access.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.user.login == 'EmmaPion-Berlin' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       !github.event.pull_request.draft)
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out the change
+        run: gh pr checkout "$PR"
+
+      - name: Keep signing and release files Sean-only
+        run: |
+          BLOCKED=$(gh pr diff "$PR" --name-only | grep -E '^(\.github/|release\.sh$|package\.sh$|Lens/Lens\.entitlements$|Lens/Info\.plist$|tools/)' || true)
+          if [ -n "$BLOCKED" ]; then
+            gh pr comment "$PR" --body "This change touches files only Sean can change, so it's waiting for him: $(echo $BLOCKED | tr '\n' ' ')"
+            exit 1
+          fi
+
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Make sure it builds
+        run: |
+          python3 generate_xcodeproj.py
+          if ! xcodebuild -project Lens.xcodeproj -scheme Lens -configuration Debug build CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/build.log" 2>&1; then
+            ERRORS=$(grep -E "error:" "$RUNNER_TEMP/build.log" | head -10)
+            gh pr comment "$PR" --body "$(printf "This change doesn't build yet, so it wasn't released. Ask Claude to fix these and push again:\n\n\`\`\`\n%s\n\`\`\`" "$ERRORS")"
+            exit 1
+          fi
+
+      - name: Merge and release
+        run: |
+          NOTES=$(gh pr view "$PR" --json body -q .body | sed -n 's/^Release note:[[:space:]]*//p' | head -1)
+          [ -z "$NOTES" ] && NOTES=$(gh pr view "$PR" --json title -q .title)
+          gh pr merge "$PR" --squash --delete-branch
+          gh workflow run release.yml --ref main -f notes="$NOTES"
+          gh pr comment "$PR" --body "Built and merged. The update is being signed and published now; Lens will offer it in about 20 minutes."

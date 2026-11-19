@@ -34,8 +34,12 @@ changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
 ## Working from Emma's Mac
 Emma can change Lens herself with Claude Code. When the person at the keyboard is Emma (not Sean):
 - Work on a new branch named `emma/<short-topic>`, never on `main`. Pull `main` first.
-- Check it compiles (command above; if Xcode isn't installed, skip it and say so in the pull request), then commit, push the branch and open a pull request with
-  `gh pr create`. Describe the change in plain words. Sean reviews and publishes.
-- Never run `release.sh` or `package.sh`, and never try to sign or notarize. Only Sean's Mac can.
-- She sees the change in the app after Sean publishes it and Lens updates itself.
+- Check it compiles (command above; if Xcode isn't installed, skip it, GitHub checks it anyway), then commit, push the branch and open a pull request with
+  `gh pr create`. Describe the change in plain words and end the description with one line
+  starting "Release note:" written for Emma. Once the pull request is open it ships on its own:
+  GitHub builds it, merges it and publishes the update (about 20 to 30 minutes). Tell her that.
+  If GitHub comments that it doesn't build, fix the errors and push again.
+- Never run `release.sh` or `package.sh`, and never try to sign or notarize. Never change
+  `.github/`, `tools/`, the entitlements or Info.plist: changes to those wait for Sean.
+- She sees the change when Lens offers the update (bottom left of the sidebar).
 - Explain things to her in plain English, no jargon. She knows the app, not the code.
