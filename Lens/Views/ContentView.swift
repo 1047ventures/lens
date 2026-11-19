@@ -196,8 +196,10 @@ struct ContentView: View {
             // Look through Gmail now and every hour for new inquiries and booked work.
             gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai, people: people)
             gmail.start()
-            // Zoom AI summaries arrive by email too: attach each to its deal or project.
+            // Zoom AI summaries, straight from Zoom (or from Gmail until Zoom is connected): attach each to its deal or project.
             zoom.attach(deals: deals, projects: projects, logins: logins)
+            ai.attachZoom(zoom)
+            logins.importZoomClient()
             zoom.start()
             // First time Lens opens, show the tour.
             if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
@@ -214,6 +216,10 @@ struct ContentView: View {
         // Once Google is connected, look at email straight away rather than waiting for the hourly check.
         .onChange(of: logins.gmailReady) { _, ready in
             if ready { Task { await gmail.check(); await zoom.check() } }
+        }
+        // Zoom just got connected: start reading every summary in the background.
+        .onChange(of: logins.zoomConnected) { _, connected in
+            if connected { Task { await zoom.check() } }
         }
         // @Published sends the new list before it's stored, so pass it along rather than reading the store.
         .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }

@@ -5,14 +5,19 @@ struct MeetingNotesList: View {
     @EnvironmentObject private var zoom: ZoomNotes
     let notes: [MeetingNote]
     @State private var open: Set<String> = []
+    @State private var reading: MeetingNote?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(notes) { note in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(note.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                            .lineLimit(2)
+                        Button { reading = note } label: {
+                            Text(note.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                .lineLimit(2).multilineTextAlignment(.leading)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Read the whole summary")
                         Spacer()
                         Text(note.date.formatted(date: .abbreviated, time: .omitted))
                             .font(.system(size: 12)).foregroundStyle(Theme.muted)
@@ -24,14 +29,17 @@ struct MeetingNotesList: View {
                             .textSelection(.enabled)
                     }
                     HStack(spacing: 14) {
-                        if note.summary.count > 300 {
+                        if note.hasDetails {
+                            Button("Read the whole summary") { reading = note }
+                                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                        } else if note.summary.count > 300 {
                             Button(open.contains(note.id) ? "Show less" : "Show all") {
                                 if open.contains(note.id) { open.remove(note.id) } else { open.insert(note.id) }
                             }
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
                         }
                         if let url = URL(string: note.link) {
-                            Link("Open in Gmail ↗", destination: url).font(.system(size: 12))
+                            Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 12))
                         }
                         Spacer()
                         Button("Wrong place?") { zoom.unassign(note) }
@@ -40,6 +48,138 @@ struct MeetingNotesList: View {
                     }
                 }
             }
+        }
+        .sheet(item: $reading) { note in
+            MeetingNoteView(note: note)
+        }
+    }
+}
+
+/// One meeting summary on its own page: overview, every topic, next steps and who was there.
+struct MeetingNoteView: View {
+    let note: MeetingNote
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ColorLabel(note.fromZoom ? "Zoom summary" : "Zoom summary email", Palette.violet)
+                    Text(note.title).font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(note.date.formatted(date: .complete, time: .shortened))
+                        .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                }
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.defaultAction)
+            }
+            .padding(24)
+            Divider().overlay(Theme.line)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if let people = note.people, !people.isEmpty {
+                        block("Who was there") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(people, id: \.self) { p in
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(Palette.violet)
+                                        Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                        if !p.email.isEmpty && p.email != p.name {
+                                            Text(p.email).font(.system(size: 12)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let overview = (note.overview ?? "").isEmpty ? note.summary : (note.overview ?? "")
+                    if !overview.isEmpty {
+                        block(note.fromZoom ? "Overview" : "Summary") { FormattedText(text: overview) }
+                    }
+                    ForEach(Array((note.sections ?? []).enumerated()), id: \.offset) { _, section in
+                        block(section.title.isEmpty ? "More" : section.title) { FormattedText(text: section.text) }
+                    }
+                    if let steps = note.nextSteps, !steps.isEmpty {
+                        block("Next steps") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Image(systemName: "arrow.right.circle").font(.system(size: 12)).foregroundStyle(Palette.violet)
+                                        Text(FormattedText.inline(step)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider().overlay(Theme.line)
+            HStack {
+                if let url = URL(string: note.link) {
+                    Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 13))
+                }
+                Spacer()
+                Text("Written by Zoom's AI Companion").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 14)
+        }
+        .frame(minWidth: 560, idealWidth: 680, minHeight: 480, idealHeight: 680)
+        .background(Theme.ground)
+    }
+
+    private func block<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Palette.violet)
+            content()
+        }
+    }
+}
+
+/// A few lines of Zoom's text, with its bullet points and bold words shown properly.
+private struct FormattedText: View {
+    let text: String
+
+    static func inline(_ line: String) -> AttributedString {
+        (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(line)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                if let bullet = line.bullet {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle().fill(Theme.muted).frame(width: 4, height: 4)
+                        Text(Self.inline(bullet)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    }
+                    .padding(.leading, CGFloat(line.indent) * 14)
+                } else {
+                    Text(Self.inline(line.text)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                        .lineSpacing(3).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private struct Line {
+        let text: String
+        let bullet: String?
+        let indent: Int
+    }
+
+    private var lines: [Line] {
+        text.components(separatedBy: .newlines).compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return nil }
+            let indent = min((raw.prefix(while: { $0 == " " || $0 == "\t" }).count) / 2, 3)
+            for marker in ["- ", "* ", "• "] where trimmed.hasPrefix(marker) {
+                return Line(text: trimmed, bullet: String(trimmed.dropFirst(marker.count)), indent: indent)
+            }
+            return Line(text: trimmed, bullet: nil, indent: 0)
         }
     }
 }
@@ -50,6 +190,7 @@ struct UnmatchedNotesPanel: View {
     @EnvironmentObject private var zoom: ZoomNotes
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
+    @State private var reading: MeetingNote?
 
     var body: some View {
         if !zoom.unmatched.isEmpty {
@@ -65,6 +206,9 @@ struct UnmatchedNotesPanel: View {
             }
             .panel(padding: 18)
             .accentBar(Palette.violet)
+            .sheet(item: $reading) { note in
+                MeetingNoteView(note: note)
+            }
         }
     }
 
@@ -78,8 +222,12 @@ struct UnmatchedNotesPanel: View {
                     Text(note.summary).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let url = URL(string: note.link) {
-                    Link("Open the email ↗", destination: url).font(.system(size: 12))
+                HStack(spacing: 14) {
+                    Button("Read the whole summary") { reading = note }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                    if let url = URL(string: note.link) {
+                        Link(note.fromZoom ? "Open in Zoom ↗" : "Open the email ↗", destination: url).font(.system(size: 12))
+                    }
                 }
             }
             Spacer(minLength: 8)
@@ -118,7 +266,7 @@ struct UnmatchedNotesPanel: View {
     }
 }
 
-/// In Log-ins › Zoom: whether any summaries have reached Gmail yet.
+/// In Log-ins › Zoom, until Zoom is connected: whether any summaries have reached Gmail yet.
 struct ZoomCheck: View {
     @EnvironmentObject private var zoom: ZoomNotes
     @EnvironmentObject private var logins: ConnectionStore

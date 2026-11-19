@@ -13,6 +13,12 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("1.0.35", [
+            Item(icon: "video.fill", title: "Connect Zoom",
+                 detail: "In Log-ins, click Connect Zoom and Lens reads every full Zoom AI summary, old and new, with next steps and who was there. Nothing to upload."),
+            Item(icon: "doc.text.fill", title: "Read the whole summary",
+                 detail: "Click a meeting note to see all of it, nicely laid out, with a link to open it in Zoom. Ask Lens can search them all too."),
+        ]),
         ("1.0.34", [
             Item(icon: "timer", title: "Track your hours",
                  detail: "Start a timer on any project, or add time by hand. A small timer shows in the sidebar while it runs."),
