@@ -13,6 +13,12 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("1.0.29", [
+            Item(icon: "tray.and.arrow.down.fill", title: "New inquiries from Gmail",
+                 detail: "Lens spots inquiries and booked work in your email and suggests them on Pipeline and Projects. Tap Add or Ignore."),
+            Item(icon: "video.fill", title: "Zoom notes on the right client",
+                 detail: "Your Zoom AI call summaries show up under Meeting notes on the matching deal or project."),
+        ]),
         ("1.0.30", [
             Item(icon: "phone.fill", title: "Your Zoom notes, on every gig",
                  detail: "Zoom's AI call summaries now show up under Meeting notes on the right deal or project, and Ask Lens can read them."),
@@ -40,11 +46,11 @@ enum WhatsNew {
     private static let seenKey = "whatsNew.seenVersion"
     static var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
 
-    /// Lines Emma hasn't seen yet. Someone who has never seen the card gets the newest entry.
+    /// Lines Emma hasn't seen yet. Someone who has never seen the card gets all of it.
     static func unseen() -> [Item] {
         let seen = UserDefaults.standard.string(forKey: seenKey)
         if seen == currentVersion { return [] }
-        guard let seen else { return notes.first?.items ?? [] }
+        guard let seen else { return notes.flatMap(\.items) }
         return notes.filter { newer($0.since, than: seen) }.flatMap(\.items)
     }
 

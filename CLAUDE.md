@@ -18,6 +18,8 @@ changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
 - Keep the look consistent: colours and components live in `Lens/Views/Theme.swift` (Theme, Palette,
   ColorLabel, `.panel()`, `.accentBar()`, PrimaryButtonStyle, SecondaryButtonStyle).
 - Copy is plain English for a non-technical person. No jargon, no em dashes in UI text.
+- If a change is something Emma would notice and like, add a short line for it to `WhatsNew.notes`
+  (`Views/WhatsNewView.swift`), in a new entry for the next version. Lens shows it to her once after the update.
 - Anything that changes Emma's data from Ask Lens must go through an approval card (see `LensAI.ask`).
 - Secrets go in the Keychain (`Keychain` in `Services/Connections.swift`), never in JSON or code.
 
@@ -41,7 +43,5 @@ Emma can change Lens herself with Claude Code. When the person at the keyboard i
   If GitHub comments that it doesn't build, fix the errors and push again.
 - Never run `release.sh` or `package.sh`, and never try to sign or notarize. Never change
   `.github/`, `tools/`, the entitlements or Info.plist: changes to those wait for Sean.
-- If the change is something Emma would notice and like, add one short line for it to the newest entry in
-  `WhatsNew.notes` (`Views/WhatsNewView.swift`); Lens shows it to her once after the update.
 - She sees the change when Lens offers the update (bottom left of the sidebar).
 - Explain things to her in plain English, no jargon. She knows the app, not the code.
