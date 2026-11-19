@@ -50,6 +50,7 @@ FILES = [
     (f"{APP_NAME}/Views/ContentView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/DuplicatesView.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/CacheCleanupView.swift",          f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/CleanupExplainedView.swift",      f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/OrganizeView.swift",              f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ArchiveCandidatesView.swift",     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/SettingsView.swift",              f"{APP_NAME}/Views"),

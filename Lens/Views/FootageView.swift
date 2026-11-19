@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 enum FootageRoute: Hashable {
-    case duplicates, cache, organize, retirees
+    case duplicates, cache, organize, retirees, cleanupList
     case folder(driveID: String, path: String)
     case drive(id: String)
 }
@@ -56,6 +56,7 @@ struct FootageView: View {
                     case .cache: CacheCleanupView(viewModel: viewModel)
                     case .organize: OrganizeView(viewModel: viewModel)
                     case .retirees: ArchiveCandidatesView(viewModel: viewModel)
+                    case .cleanupList: CleanupExplainedView(viewModel: viewModel)
                     case .folder(let driveID, let path): LibraryFolderView(driveID: driveID, folder: path)
                     case .drive(let id): LibraryDriveView(driveID: id)
                     }
@@ -251,6 +252,8 @@ struct FootageView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel("Get space back")
+                Button("See exactly what's included") { path.append(.cleanupList) }
+                    .buttonStyle(.link).font(.system(size: 13))
                 Spacer()
                 if total > 0, let capacity = viewModel.roots.first.flatMap(DriveInfo.capacity(for:)) {
                     let after = Double(max(0, capacity.used - total)) / Double(max(capacity.total, 1))
