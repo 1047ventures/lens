@@ -54,6 +54,8 @@ struct Project: Codable, Identifiable, Hashable {
     var portfolioURL: String?
     /// Gmail conversations about this project. Optional so older saved projects still load.
     var emails: [EmailThread]?
+    /// Zoom meeting summaries for this project. Optional so older saved projects still load.
+    var meetingNotes: [MeetingNote]?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {

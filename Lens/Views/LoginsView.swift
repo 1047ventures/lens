@@ -200,7 +200,14 @@ struct LoginsView: View {
         case .google: GoogleControls()
         case .calendar: calendarControls
         case .drive: driveControls
-        case .zoom: confirm("zoom", "Done: her AI summaries get emailed to the Gmail above")
+        case .zoom:
+            VStack(alignment: .leading, spacing: 10) {
+                Link(destination: URL(string: "https://zoom.us/profile/setting?tab=zoomai")!) {
+                    Label("Open Zoom's AI summary setting", systemImage: "arrow.up.right.square")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                ZoomCheck()
+            }
         case .website:
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Her website, e.g. emmapionberlin.com", text: Binding(get: { logins.field("website") }, set: { logins.setField("website", $0) }))
@@ -372,11 +379,9 @@ struct LoginsView: View {
             name: "Zoom (calls + AI Companion)", icon: "phone.fill",
             covers: "Every call's summary attached to the right inquiry or project",
             gets: ["The AI summary email after each call, matched to the client by name and email",
-                   "Discovery answers pulled from first calls into the proposal builder"],
+                   "Ask Lens can read every summary, so she can ask what a client wanted on a call"],
             never: "No Zoom password; it all arrives as email.",
-            steps: ["In Zoom on the web: Settings → **AI Companion** → turn on **Meeting summary** and set it to send automatically to the host.",
-                    "For Zoom Phone: Settings → Phone → turn on **AI call summaries** emailed to her.",
-                    "Make sure those emails go to the Gmail connected above."]),
+            steps: ["Click **Open Zoom's AI summary setting** below, sign in, and turn on **Meeting summary** with **Automatically send** to you. Lens does the rest."]),
         .website: Info(
             name: "Website contact form", icon: "globe",
             covers: "Form inquiries land in the pipeline on their own",

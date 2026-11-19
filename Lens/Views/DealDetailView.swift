@@ -418,6 +418,14 @@ struct DealDetailView: View {
             }
             .panel()
             .accentBar(Palette.sand)
+            if let notes = deal.meetingNotes, !notes.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ColorLabel("Meeting notes · \(notes.count)", Palette.violet)
+                    MeetingNotesList(notes: notes)
+                }
+                .panel()
+                .accentBar(Palette.violet)
+            }
             if let emails = deal.emails, !emails.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ColorLabel("Emails · \(emails.count)", Palette.blue)

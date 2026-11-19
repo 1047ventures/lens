@@ -97,6 +97,7 @@ final class DealStore: ObservableObject {
             + d.milestones.map { ProjectEvent(text: "Planned: \($0.phase) · \($0.when)") }
             + [ProjectEvent(text: "Booked: \(option.name) (\(option.tagline)) at \(Money.string(estimate.total))")]
         project.emails = d.emails
+        project.meetingNotes = d.meetingNotes
         projects.add(project)
 
         d.stage = .won
@@ -106,6 +107,27 @@ final class DealStore: ObservableObject {
         d.events.append(ProjectEvent(text: "Won with \(option.name) · \(Money.string(estimate.total))"))
         update(d)
         return project.id
+    }
+
+    /// Adds a Zoom meeting summary, or refreshes it if it's already there.
+    func attachNote(_ note: MeetingNote, to dealID: UUID) {
+        guard var d = deal(id: dealID) else { return }
+        var list = d.meetingNotes ?? []
+        if let i = list.firstIndex(where: { $0.id == note.id }) {
+            guard list[i] != note else { return }
+            list[i] = note
+        } else {
+            list.append(note)
+        }
+        d.meetingNotes = list.sorted { $0.date > $1.date }
+        update(d)
+    }
+
+    /// Takes a meeting summary off, for when it landed on the wrong one.
+    func removeNote(_ noteID: String, from dealID: UUID) {
+        guard var d = deal(id: dealID), let list = d.meetingNotes, list.contains(where: { $0.id == noteID }) else { return }
+        d.meetingNotes = list.filter { $0.id != noteID }
+        update(d)
     }
 
     /// Links a Gmail conversation to a deal, or refreshes it if it's already linked.

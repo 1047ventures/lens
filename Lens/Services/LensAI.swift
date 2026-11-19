@@ -496,6 +496,7 @@ final class LensAI: ObservableObject {
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
             d["history"] = p.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
+            if let notes = p.meetingNotes, !notes.isEmpty { d["meeting_notes"] = meetingNotes(notes) }
             if let emails = p.emails, !emails.isEmpty {
                 d["emails"] = emails.map { "\($0.lastDate.formatted(date: .abbreviated, time: .omitted)) \($0.subject) (latest from \($0.from)): \($0.snippet)" }
             }
@@ -698,10 +699,16 @@ final class LensAI: ObservableObject {
         out["next_steps"] = d.nextSteps.map { ($0.done ? "[done] " : "") + $0.text }
         out["proposal_sections_done"] = "\(BuilderStep.progress(d)) of \(BuilderStep.allCases.count)"
         out["history"] = d.events.map { "\($0.date.formatted(date: .abbreviated, time: .omitted)): \($0.text)" }
+        if let notes = d.meetingNotes, !notes.isEmpty { out["meeting_notes"] = meetingNotes(notes) }
         if let emails = d.emails, !emails.isEmpty {
             out["emails"] = emails.map { "\($0.lastDate.formatted(date: .abbreviated, time: .omitted)) \($0.subject) (latest from \($0.from)): \($0.snippet)" }
         }
         return out
+    }
+
+    /// Zoom AI summaries of calls, newest first, so Ask Lens can answer "what did they want on our call?".
+    private func meetingNotes(_ notes: [MeetingNote]) -> [String] {
+        notes.prefix(8).map { "\($0.date.formatted(date: .abbreviated, time: .omitted)) Zoom call \"\($0.title)\": \($0.summary.prefix(4000))" }
     }
 
     private func projectSummary(_ p: Project) -> [String: Any] {
@@ -802,10 +809,10 @@ final class LensAI: ObservableObject {
              ["query": ["type": "string"]], ["query"]),
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
-        tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history.",
+        tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
         tool("list_projects", "List booked projects with stage, shoot date and location.", [:], []),
-        tool("get_project", "One project's details and history.", ["project_id": ["type": "string"]], ["project_id"]),
+        tool("get_project", "One project's details, history, emails and Zoom call summaries (meeting_notes).", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),

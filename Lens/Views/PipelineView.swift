@@ -35,6 +35,7 @@ struct PipelineView: View {
                 }
 
                 EmailSuggestionsPanel(place: .pipeline)
+                UnmatchedNotesPanel()
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
