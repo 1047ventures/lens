@@ -15,7 +15,7 @@ jobs:
     # Only Emma's (or Sean's) requests get built. The repo is public, so a stranger's issue is ignored.
     if: |
       github.event_name == 'issues' && startsWith(github.event.issue.title, '[Emma]') &&
-      (github.event.issue.user.login == 'EmmaPion-Berlin' || github.event.issue.user.login == github.repository_owner)
+      (github.event.issue.user.login == 'EmmaPion-Berlin' || github.event.issue.user.login == '1047ventures')
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
