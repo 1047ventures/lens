@@ -65,6 +65,7 @@ jobs:
         run: |
           NOTES=$(gh pr view "$PR" --json body -q .body | sed -n 's/^Release note:[[:space:]]*//p' | head -1)
           [ -z "$NOTES" ] && NOTES=$(gh pr view "$PR" --json title -q .title)
+          git checkout -- . && git clean -fdq
           gh pr merge "$PR" --squash --delete-branch
           gh workflow run release.yml --ref main -f notes="$NOTES"
           gh pr comment "$PR" --body "Built and merged. The update is being signed and published now; Lens will offer it in about 20 minutes."
