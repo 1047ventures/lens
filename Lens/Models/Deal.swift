@@ -159,6 +159,15 @@ struct EmailThread: Codable, Hashable, Identifiable {
     var link: String        // opens the conversation in Gmail
 }
 
+/// A Zoom AI Companion summary of a call, found in Gmail and attached to a deal or project.
+struct MeetingNote: Codable, Hashable, Identifiable {
+    var id: String          // Gmail's thread id for the summary email
+    var title: String       // the meeting's name, e.g. "Smith wedding planning"
+    var date: Date
+    var summary: String
+    var link: String        // opens the summary email in Gmail
+}
+
 struct Milestone: Codable, Hashable, Identifiable {
     var id = UUID()
     var phase: String
@@ -268,6 +277,8 @@ struct Deal: Codable, Identifiable, Hashable {
     var shortProposal: Bool?
     /// Gmail conversations about this deal. Optional so older saved deals still load.
     var emails: [EmailThread]?
+    /// Zoom meeting summaries for this deal. Optional so older saved deals still load.
+    var meetingNotes: [MeetingNote]?
 
     var disc: Discovery {
         get { discovery ?? Discovery() }

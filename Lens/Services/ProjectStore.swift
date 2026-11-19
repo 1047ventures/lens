@@ -53,6 +53,27 @@ final class ProjectStore: ObservableObject {
         update(updated)
     }
 
+    /// Adds a Zoom meeting summary, or refreshes it if it's already there.
+    func attachNote(_ note: MeetingNote, to projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        var list = p.meetingNotes ?? []
+        if let i = list.firstIndex(where: { $0.id == note.id }) {
+            guard list[i] != note else { return }
+            list[i] = note
+        } else {
+            list.append(note)
+        }
+        p.meetingNotes = list.sorted { $0.date > $1.date }
+        update(p)
+    }
+
+    /// Takes a meeting summary off, for when it landed on the wrong one.
+    func removeNote(_ noteID: String, from projectID: UUID) {
+        guard var p = project(id: projectID), let list = p.meetingNotes, list.contains(where: { $0.id == noteID }) else { return }
+        p.meetingNotes = list.filter { $0.id != noteID }
+        update(p)
+    }
+
     /// Links a Gmail conversation to a project, or refreshes it if it's already linked.
     func attachEmail(_ thread: EmailThread, to projectID: UUID) {
         guard var p = project(id: projectID) else { return }

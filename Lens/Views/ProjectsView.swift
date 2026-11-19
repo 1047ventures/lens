@@ -53,6 +53,7 @@ struct ProjectsView: View {
                 }
 
                 EmailSuggestionsPanel(place: .projects)
+                UnmatchedNotesPanel()
 
                 if projects.projects.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {

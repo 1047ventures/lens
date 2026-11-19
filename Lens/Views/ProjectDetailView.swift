@@ -31,9 +31,9 @@ struct ProjectDetailView: View {
                     HStack(alignment: .top, spacing: 28) {
                         VStack(alignment: .leading, spacing: 28) { footagePanel; story }
                             .frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 28) { details; emails }.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) { details; meetingNotes; emails }.frame(width: 300)
                     }
-                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; emails }
+                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; meetingNotes; emails }
                 }
             }
             .padding(.horizontal, 48)
@@ -216,6 +216,16 @@ struct ProjectDetailView: View {
             .padding(.top, 4)
         }
         .panel(padding: 20)
+    }
+
+    @ViewBuilder private var meetingNotes: some View {
+        if let notes = project.meetingNotes, !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Meeting notes · \(notes.count)")
+                MeetingNotesList(notes: notes)
+            }
+            .panel(padding: 20)
+        }
     }
 
     @ViewBuilder private var emails: some View {
