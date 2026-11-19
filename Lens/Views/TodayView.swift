@@ -8,6 +8,7 @@ struct TodayView: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
+    @State private var scanningCard = false
 
     private struct Item: Identifiable {
         enum Tone { case overdue, soon, neutral }
@@ -53,15 +54,22 @@ struct TodayView: View {
     // MARK: - Pieces
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.8)
-                .foregroundStyle(Theme.muted)
-            Text("\(greeting)\(firstName.map { ", \($0)" } ?? "")")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(Theme.text)
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.muted)
+                Text("\(greeting)\(firstName.map { ", \($0)" } ?? "")")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Theme.text)
+            }
+            Spacer()
+            // Back from a networking event: cards go straight into People.
+            Button("Scan a card") { scanningCard = true }
+                .buttonStyle(SecondaryButtonStyle())
         }
+        .sheet(isPresented: $scanningCard) { CardScanView() }
     }
 
     private var needsYou: some View {

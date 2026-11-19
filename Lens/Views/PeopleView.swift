@@ -11,6 +11,8 @@ struct PeopleView: View {
     @State private var tag: String?
     @State private var onID: UUID?
     @State private var creating = false
+    @State private var scanning = false
+    @State private var bringing: PeopleImport.Kind?
 
     var body: some View {
         Group {
@@ -23,6 +25,8 @@ struct PeopleView: View {
         .sheet(isPresented: $creating) {
             PersonEditor(initial: nil) { people.add($0); navigator.personID = $0.id }
         }
+        .sheet(isPresented: $scanning) { CardScanView() }
+        .sheet(item: $bringing) { BringInSheet(kind: $0) }
     }
 
     private var filtered: [Person] {
@@ -50,13 +54,23 @@ struct PeopleView: View {
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Button("Add a person") { creating = true }
-                        .buttonStyle(PrimaryButtonStyle())
+                    HStack(spacing: 10) {
+                        Menu("Bring in people") {
+                            Button("From LinkedIn") { bringing = .linkedIn }
+                            Button("From Facebook or Instagram") { bringing = .meta }
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        Button("Scan a card") { scanning = true }
+                            .buttonStyle(SecondaryButtonStyle())
+                        Button("Add a person") { creating = true }
+                            .buttonStyle(PrimaryButtonStyle())
+                    }
                 }
 
                 filters
 
-                PeopleSuggestionsPanel()
+                RecentlyAddedPanel()
                 followUps
 
                 if people.people.isEmpty {
@@ -64,7 +78,7 @@ struct PeopleView: View {
                         Text("No one here yet")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Theme.text)
-                        Text("Everyone on your deals and projects shows up here by itself. People you email with show up as suggestions once Google is connected in Log-ins.")
+                        Text("Everyone on your deals, projects and Zoom calls shows up here by itself, and so does anyone who emails you about work once Google is connected in Log-ins. You can also scan business cards or bring in LinkedIn, Facebook and Instagram.")
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -269,44 +283,6 @@ struct PersonRow: View {
     }
 }
 
-// MARK: - People found in Gmail
-
-struct PeopleSuggestionsPanel: View {
-    @EnvironmentObject private var people: PeopleStore
-    @State private var showAll = false
-
-    var body: some View {
-        if !people.suggestions.isEmpty {
-            let shown = showAll ? people.suggestions : Array(people.suggestions.prefix(4))
-            VStack(alignment: .leading, spacing: 12) {
-                ColorLabel("Found in your email · \(people.suggestions.count)", Palette.blue)
-                Text("People you've been writing back and forth with. Add the ones you work with.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
-                ForEach(shown) { s in
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(s.name.isEmpty ? s.email : s.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                            Text([s.name.isEmpty ? "" : s.email, s.thread?.subject ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
-                        }
-                        Spacer()
-                        Button("Ignore") { people.ignore(s) }.buttonStyle(SecondaryButtonStyle())
-                        Button("Add") { people.accept(s) }.buttonStyle(PrimaryButtonStyle())
-                    }
-                }
-                if people.suggestions.count > 4 {
-                    Button(showAll ? "Show fewer" : "Show all \(people.suggestions.count)") { showAll.toggle() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.teal)
-                }
-            }
-            .panel()
-            .accentBar(Palette.blue)
-        }
-    }
-}
-
 // MARK: - One person's page
 
 struct PersonDetailView: View {
@@ -336,10 +312,10 @@ struct PersonDetailView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 28) {
                         timeline.frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 18) { followUpPanel; details; workPanel; paidPanel; notesPanel }
+                        VStack(alignment: .leading, spacing: 18) { followUpPanel; details; cardPanel; workPanel; paidPanel; notesPanel }
                             .frame(width: 320)
                     }
-                    VStack(alignment: .leading, spacing: 18) { followUpPanel; details; workPanel; paidPanel; notesPanel; timeline }
+                    VStack(alignment: .leading, spacing: 18) { followUpPanel; details; cardPanel; workPanel; paidPanel; notesPanel; timeline }
                 }
             }
             .padding(.horizontal, 48)
@@ -494,10 +470,35 @@ struct PersonDetailView: View {
             if !person.role.isEmpty { row("Role", person.role) }
             if !person.link.isEmpty { row(person.link.contains("instagram") || person.link.hasPrefix("@") ? "Instagram" : "Website", person.link, url: linkURL) }
             if !person.met.isEmpty { row("How you met", person.met) }
+            if let on = person.metOn { row("Met on", on.formatted(date: .abbreviated, time: .omitted)) }
+            if let on = person.connectedOn { row("Connected on", on.formatted(date: .abbreviated, time: .omitted)) }
+            if let from = person.addedFrom { row("Added from", from.prefix(1).uppercased() + from.dropFirst()) }
             row("In People since", person.createdAt.formatted(date: .abbreviated, time: .omitted))
         }
         .panel()
         .accentBar(Palette.sand)
+    }
+
+    /// The business card photos Emma scanned for this person.
+    @ViewBuilder private var cardPanel: some View {
+        let photos = (person.cardPhotos ?? []).filter { FileManager.default.fileExists(atPath: CardReader.photoURL($0).path) }
+        if !photos.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ColorLabel("Their card", Palette.gold)
+                ForEach(photos, id: \.self) { file in
+                    if let image = NSImage(contentsOf: CardReader.photoURL(file)) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .onTapGesture { NSWorkspace.shared.open(CardReader.photoURL(file)) }
+                            .help("Open the photo")
+                    }
+                }
+            }
+            .panel()
+            .accentBar(Palette.gold)
+        }
     }
 
     private var linkURL: URL? {
@@ -671,7 +672,7 @@ struct PersonEditor: View {
     @State private var tags: [String] = []
     @State private var notes = ""
 
-    static let metOptions = ["Referral", "Website", "Instagram", "Email", "Event", "Festival", "Repeat client"]
+    static let metOptions = ["Referral", "Website", "Instagram", "Facebook", "LinkedIn", "Email", "Event", "Networking event", "Festival", "Repeat client"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {

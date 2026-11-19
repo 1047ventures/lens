@@ -60,6 +60,19 @@ struct Person: Codable, Identifiable, Hashable {
     /// True when Lens made this person from a deal, project or email rather than Emma adding them.
     var automatic = false
     var createdAt = Date()
+    // Added for "Added recently", imports and business cards. Optional so older files still load.
+    /// Where Lens found them: "Gmail", "your website", "Instagram", "LinkedIn", "a business card"…
+    var addedFrom: String?
+    /// When Lens added them by itself. Only these show in "Added recently".
+    var addedOn: Date?
+    /// Emma tapped Keep, so they leave "Added recently".
+    var reviewed: Bool?
+    /// Photos of their business card, kept in Application Support/Lens/CardPhotos.
+    var cardPhotos: [String]?
+    /// The day Emma met them (from a business card).
+    var metOn: Date?
+    /// The day they connected on LinkedIn.
+    var connectedOn: Date?
 
     init(name: String, emails: [String] = [], automatic: Bool = false) {
         self.name = name
@@ -69,7 +82,8 @@ struct Person: Codable, Identifiable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, emails, phone, company, role, link, met, tags, notes, followUp, followUpNote, touches,
-             dealIDs, projectIDs, unlinked, threads, notSame, automatic, createdAt
+             dealIDs, projectIDs, unlinked, threads, notSame, automatic, createdAt,
+             addedFrom, addedOn, reviewed, cardPhotos, metOn, connectedOn
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +109,21 @@ struct Person: Codable, Identifiable, Hashable {
         notSame = get(.notSame, [])
         automatic = get(.automatic, false)
         createdAt = get(.createdAt, Date())
+        addedFrom = (try? c.decodeIfPresent(String.self, forKey: .addedFrom)) ?? nil
+        addedOn = (try? c.decodeIfPresent(Date.self, forKey: .addedOn)) ?? nil
+        reviewed = (try? c.decodeIfPresent(Bool.self, forKey: .reviewed)) ?? nil
+        cardPhotos = (try? c.decodeIfPresent([String].self, forKey: .cardPhotos)) ?? nil
+        metOn = (try? c.decodeIfPresent(Date.self, forKey: .metOn)) ?? nil
+        connectedOn = (try? c.decodeIfPresent(Date.self, forKey: .connectedOn)) ?? nil
+    }
+
+    /// "From Gmail", "From your website"…
+    var fromText: String? { addedFrom.map { "From \($0)" } }
+
+    /// Lens added them by itself in the last two weeks and Emma hasn't looked yet.
+    func isRecentlyAdded(now: Date = Date()) -> Bool {
+        guard let addedOn, reviewed != true else { return false }
+        return now.timeIntervalSince(addedOn) < 14 * 86_400
     }
 
     var initials: String {
@@ -134,7 +163,8 @@ struct Person: Codable, Identifiable, Hashable {
     }
 }
 
-/// Someone Lens found in Gmail who isn't in People yet. Emma taps Add or Ignore.
+/// Someone Lens found in Gmail who wasn't in People yet. Older versions asked Emma to tap Add or Ignore;
+/// Lens now adds them by itself, and any left in an older file are added when it loads.
 struct PersonSuggestion: Codable, Identifiable, Hashable {
     var id: String { email }
     var name: String

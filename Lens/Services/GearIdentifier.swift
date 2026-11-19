@@ -41,7 +41,13 @@ enum GearIdentifier {
 
     /// Reads an image file and returns a JPEG no larger than `maxSide` pixels on its long edge.
     static func jpeg(from url: URL, maxSide: CGFloat = 1600) -> Data? {
-        guard let image = NSImage(contentsOf: url), let rep = bestRep(image) else { return nil }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        return jpeg(from: image, maxSide: maxSide)
+    }
+
+    /// The same for a photo that isn't a file yet (one taken with the iPhone camera, for example).
+    static func jpeg(from image: NSImage, maxSide: CGFloat = 1600) -> Data? {
+        guard let rep = bestRep(image) else { return nil }
         let w = CGFloat(rep.pixelsWide), h = CGFloat(rep.pixelsHigh)
         guard w > 0, h > 0 else { return nil }
         let scale = min(1, maxSide / max(w, h))

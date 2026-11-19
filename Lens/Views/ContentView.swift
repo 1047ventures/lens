@@ -191,7 +191,7 @@ struct ContentView: View {
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
             // People: everyone on a deal or project, kept up to date as those change.
-            people.attach(deals: deals, projects: projects, money: money)
+            people.attach(deals: deals, projects: projects, money: money, logins: logins)
             ai.attach(deals: deals, projects: projects, navigator: navigator, money: money, people: people)
             // Look through Gmail now and every hour for new inquiries and booked work.
             gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai, people: people)
@@ -224,6 +224,8 @@ struct ContentView: View {
         // @Published sends the new list before it's stored, so pass it along rather than reading the store.
         .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }
         .onReceive(projects.$projects) { list in people.sync(deals: deals.deals, projects: list) }
+        // Everyone on a Zoom call Lens hasn't filed yet goes in People too.
+        .onReceive(zoom.$unmatched) { notes in people.noteMeetings(notes) }
         .onChange(of: viewModel.isScanning) { _, scanning in
             if !scanning { projects.reconcileArchives() }
         }
