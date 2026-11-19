@@ -68,6 +68,7 @@ final class LensAI: ObservableObject {
     private weak var projects: ProjectStore?
     private weak var navigator: Navigator?
     private weak var money: MoneyStore?
+    private weak var zoom: ZoomNotes?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
@@ -80,6 +81,8 @@ final class LensAI: ObservableObject {
         self.projects = projects
         self.navigator = navigator
     }
+
+    func attachZoom(_ zoom: ZoomNotes) { self.zoom = zoom }
 
     func saveKey(_ key: String) {
         Keychain.set(key.trimmingCharacters(in: .whitespacesAndNewlines), for: "anthropic.apiKey")
@@ -439,6 +442,7 @@ final class LensAI: ObservableObject {
         case "get_rates": return "Checking your rates…"
         case "draft_email": return "Drafting the email…"
         case "open_screen": return "Opening it…"
+        case "search_meeting_notes", "get_meeting_note": return "Reading your meeting notes…"
         default: return "Getting that ready…"
         }
     }
@@ -506,6 +510,35 @@ final class LensAI: ObservableObject {
             if hits.isEmpty { return ("Nothing matched \"\(query)\".", false) }
             return (json(hits.prefix(40).map { ["drive": names[$0.driveID] ?? $0.driveID, "folder": $0.folder, "matching_files": $0.files,
                                                 "size": ByteFormat.string($0.bytes), "example": $0.sample] as [String: Any] }), false)
+        case "search_meeting_notes":
+            let notes = allMeetingNotes(deals: deals, projects: projects)
+            if notes.isEmpty { return ("No meeting notes yet. Connect Zoom in Log-ins to bring them in.", false) }
+            let words = str("query").lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "@" && $0 != "." })
+                .map(String.init).filter { $0.count > 2 && !Self.stopWords.contains($0) }
+            let limit = min(max((input["limit"] as? Int) ?? 6, 1), 20)
+            let scored: [(MeetingNote, String, Int)] = notes.map { item in
+                let text = (item.note.title + "\n" + item.note.fullText).lowercased()
+                let score = words.reduce(0) { $0 + (text.contains($1) ? (item.note.title.lowercased().contains($1) ? 3 : 1) : 0) }
+                return (item.note, item.place, score)
+            }
+            let hits = words.isEmpty ? scored.sorted { $0.0.date > $1.0.date }
+                                     : scored.filter { $0.2 > 0 }.sorted { $0.2 != $1.2 ? $0.2 > $1.2 : $0.0.date > $1.0.date }
+            if hits.isEmpty { return ("No meeting notes mention \"\(str("query"))\". \(notes.count) notes were searched.", false) }
+            // The best few in full, the rest as a list to open with get_meeting_note.
+            var out: [[String: Any]] = []
+            for (i, hit) in hits.prefix(words.isEmpty ? 30 : 20).enumerated() {
+                var d = meetingNoteHeader(hit.0, place: hit.1)
+                if i < limit && !words.isEmpty { d["summary"] = String(hit.0.fullText.prefix(8000)) }
+                out.append(d)
+            }
+            return (json(["notes_searched": notes.count, "matches": hits.count, "notes": out]), false)
+        case "get_meeting_note":
+            guard let hit = allMeetingNotes(deals: deals, projects: projects).first(where: { $0.note.id == str("note_id") }) else {
+                return ("No meeting note with that id.", true)
+            }
+            var d = meetingNoteHeader(hit.note, place: hit.place)
+            d["summary"] = String(hit.note.fullText.prefix(20000))
+            return (json(d), false)
         case "list_deals":
             let stage = str("stage")
             let list = deals.deals.filter { stage.isEmpty || stageKey($0.stage) == stage }
@@ -731,8 +764,36 @@ final class LensAI: ObservableObject {
 
     /// Zoom AI summaries of calls, newest first, so Ask Lens can answer "what did they want on our call?".
     private func meetingNotes(_ notes: [MeetingNote]) -> [String] {
-        notes.prefix(8).map { "\($0.date.formatted(date: .abbreviated, time: .omitted)) Zoom call \"\($0.title)\": \($0.summary.prefix(4000))" }
+        notes.prefix(8).map { "[\($0.id)] \($0.date.formatted(date: .abbreviated, time: .omitted)) Zoom call \"\($0.title)\": \($0.fullText.prefix(4000))" }
     }
+
+    /// Every meeting note Lens has, with where it lives ("Deal: Smith · Wedding film", "Not placed").
+    private func allMeetingNotes(deals: DealStore, projects: ProjectStore) -> [(note: MeetingNote, place: String)] {
+        var out: [(note: MeetingNote, place: String)] = []
+        var seen = Set<String>()
+        for p in projects.projects {
+            for n in p.meetingNotes ?? [] where seen.insert(n.id).inserted { out.append((n, "Project: \(p.client.isEmpty ? p.name : "\(p.client) · \(p.name)") (project_id \(p.id.uuidString))")) }
+        }
+        for d in deals.deals {
+            for n in d.meetingNotes ?? [] where seen.insert(n.id).inserted { out.append((n, "Deal: \(d.client) · \(d.title) (deal_id \(d.id.uuidString))")) }
+        }
+        for n in zoom?.unmatched ?? [] where seen.insert(n.id).inserted { out.append((n, "Not placed yet (in Unmatched notes)")) }
+        for n in zoom?.kept ?? [] where seen.insert(n.id).inserted { out.append((n, "Not on a deal or project")) }
+        return out
+    }
+
+    private func meetingNoteHeader(_ note: MeetingNote, place: String) -> [String: Any] {
+        var d: [String: Any] = ["note_id": note.id, "title": note.title,
+                                "date": note.date.formatted(date: .abbreviated, time: .shortened),
+                                "where": place, "from": note.fromZoom ? "Zoom" : "Gmail summary email"]
+        if let people = note.people, !people.isEmpty {
+            d["people"] = people.map { $0.email.isEmpty ? $0.name : "\($0.name) <\($0.email)>" }
+        }
+        return d
+    }
+
+    private static let stopWords: Set<String> = ["the", "and", "what", "did", "say", "said", "about", "with", "for", "from",
+                                                 "that", "this", "was", "were", "our", "call", "meeting", "zoom", "who", "when", "how"]
 
     private func projectSummary(_ p: Project) -> [String: Any] {
         ["project_id": p.id.uuidString, "name": p.name, "client": p.client, "stage": p.stage.label,
@@ -830,6 +891,9 @@ final class LensAI: ObservableObject {
         tool("get_library", "Every drive, the Mac and the Photos app Lens knows: size, free space, how many videos, photos and edit projects, when last seen and scanned.", [:], []),
         tool("search_library", "Find folders on Emma's drives whose names or files match some words (a client, a place, a date like 2024-06). Works on unplugged drives too.",
              ["query": ["type": "string"]], ["query"]),
+        tool("search_meeting_notes", "Search every Zoom meeting summary Lens has (on deals, on projects, and not placed): overview, each topic, next steps and who was there. Give a few key words (a name, a topic like \"shoot schedule\"). The best matches come back in full; open others with get_meeting_note. With no query, lists the newest.",
+             ["query": ["type": "string"], "limit": ["type": "integer", "description": "How many matches to return in full (default 6)"]], []),
+        tool("get_meeting_note", "One meeting summary in full, by its note_id.", ["note_id": ["type": "string"]], ["note_id"]),
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",

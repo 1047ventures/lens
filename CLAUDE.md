@@ -32,6 +32,8 @@ changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
 - Money and Gear: `Models/Money.swift`, `Services/MoneyStore.swift`, `Views/MoneyView.swift`, `Views/GearView.swift`.
 - Ask Lens: `Services/LensAI.swift` (tools, prompt), `Views/AskLensView.swift`.
 - Log-ins: `Services/Connections.swift`, `Views/LoginsView.swift`. Updates: `Services/Updater.swift`.
+- Zoom notes: `Services/ZoomAPI.swift` (Zoom sign-in, read-only API), `Services/ZoomNotes.swift` (sync and
+  matching, Gmail fallback), `Views/MeetingNotesView.swift`. Setting up Zoom on Emma's Mac: `ZOOM-SETUP.md`.
 
 ## Working from Emma's Mac
 Emma can change Lens herself with Claude Code. When the person at the keyboard is Emma (not Sean):

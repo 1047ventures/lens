@@ -159,13 +159,52 @@ struct EmailThread: Codable, Hashable, Identifiable {
     var link: String        // opens the conversation in Gmail
 }
 
-/// A Zoom AI Companion summary of a call, found in Gmail and attached to a deal or project.
+/// A Zoom AI Companion summary of a call, attached to a deal or project. It comes either straight
+/// from Zoom (the full summary) or, when Zoom isn't connected, from the summary email in Gmail.
 struct MeetingNote: Codable, Hashable, Identifiable {
-    var id: String          // Gmail's thread id for the summary email
+    var id: String          // Gmail's thread id for the summary email, or "zoom:<meeting uuid>"
     var title: String       // the meeting's name, e.g. "Smith wedding planning"
     var date: Date
-    var summary: String
-    var link: String        // opens the summary email in Gmail
+    var summary: String     // the email text, or the overview for a summary read from Zoom
+    var link: String        // opens the summary email in Gmail, or the summary in Zoom
+    // Added for summaries read straight from Zoom. Optional so older saved notes still load.
+    var source: String?                 // "zoom" when read from Zoom; nil for the Gmail email
+    var zoomMeetingID: String?          // Zoom's id for that one meeting (its uuid)
+    var overview: String?
+    var sections: [MeetingNoteSection]?
+    var nextSteps: [String]?
+    var people: [MeetingPerson]?
+
+    var fromZoom: Bool { source == "zoom" }
+
+    /// Everything in the note as plain text, for matching and for Ask Lens.
+    var fullText: String {
+        var parts: [String] = []
+        if let overview, !overview.isEmpty { parts.append(overview) } else if !summary.isEmpty { parts.append(summary) }
+        for s in sections ?? [] { parts.append(s.title.isEmpty ? s.text : "\(s.title)\n\(s.text)") }
+        if let steps = nextSteps, !steps.isEmpty { parts.append("Next steps\n" + steps.map { "- \($0)" }.joined(separator: "\n")) }
+        if let people, !people.isEmpty {
+            parts.append("In the meeting: " + people.map { $0.email.isEmpty ? $0.name : "\($0.name) <\($0.email)>" }.joined(separator: ", "))
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// True when the note has more than the short text (sections, next steps or people).
+    var hasDetails: Bool {
+        !(sections ?? []).isEmpty || !(nextSteps ?? []).isEmpty || !(people ?? []).isEmpty
+    }
+}
+
+/// One titled part of a Zoom summary, e.g. "Shoot schedule" and what was said about it.
+struct MeetingNoteSection: Codable, Hashable {
+    var title: String
+    var text: String
+}
+
+/// Someone who was in the meeting.
+struct MeetingPerson: Codable, Hashable {
+    var name: String
+    var email: String
 }
 
 struct Milestone: Codable, Hashable, Identifiable {

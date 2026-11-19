@@ -200,14 +200,7 @@ struct LoginsView: View {
         case .google: GoogleControls()
         case .calendar: calendarControls
         case .drive: driveControls
-        case .zoom:
-            VStack(alignment: .leading, spacing: 10) {
-                Link(destination: URL(string: "https://zoom.us/profile/setting?tab=zoomai")!) {
-                    Label("Open Zoom's AI summary setting", systemImage: "arrow.up.right.square")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                ZoomCheck()
-            }
+        case .zoom: ZoomControls()
         case .website:
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Her website, e.g. emmapionberlin.com", text: Binding(get: { logins.field("website") }, set: { logins.setField("website", $0) }))
@@ -377,11 +370,14 @@ struct LoginsView: View {
                     "Leave it running; Lens finds it on its own."]),
         .zoom: Info(
             name: "Zoom (calls + AI Companion)", icon: "phone.fill",
-            covers: "Every call's summary attached to the right inquiry or project",
-            gets: ["The AI summary email after each call, matched to the client by name and email",
-                   "Ask Lens can read every summary, so she can ask what a client wanted on a call"],
-            never: "No Zoom password; it all arrives as email.",
-            steps: ["Click **Open Zoom's AI summary setting** below, sign in, and turn on **Meeting summary** with **Automatically send** to you. Lens does the rest."]),
+            covers: "Every call's full summary attached to the right inquiry or project",
+            gets: ["Every AI Companion summary in her Zoom account, old and new, in full: overview, each topic, next steps and who was there",
+                   "Each one placed on the matching inquiry or project, by the client's name and email",
+                   "Ask Lens can read and search them all, so she can ask what someone said on a call"],
+            never: "Never sees her Zoom password, never changes or deletes anything in Zoom, never joins her calls.",
+            steps: ["Click **Connect Zoom** below, sign in to Zoom and press **Allow**.",
+                    "That's it. Lens reads all your summaries in the background, then checks for new ones every hour.",
+                    "Make sure **Meeting summary** is on in Zoom's AI setting (link below), so every call gets one."]),
         .website: Info(
             name: "Website contact form", icon: "globe",
             covers: "Form inquiries land in the pipeline on their own",
@@ -458,6 +454,97 @@ struct LoginsView: View {
             never: "",
             steps: ["Nothing yet. This switches on once the server is built."]),
     ]
+}
+
+/// Connect Zoom, and how many summaries Lens has read. Without Zoom connected, Lens falls back to
+/// the summary emails in Gmail (ZoomCheck).
+private struct ZoomControls: View {
+    @EnvironmentObject private var logins: ConnectionStore
+    @EnvironmentObject private var zoom: ZoomNotes
+    @EnvironmentObject private var navigator: Navigator
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if logins.zoomConnected {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
+                    Text("Connected · \(logins.zoomReport ?? "Reading your summaries")")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                }
+                if let email = logins.state.zoomEmail {
+                    Text(email).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                if let progress = zoom.progress {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progress).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    }
+                } else if !zoom.backfillDone && zoom.zoomCount > 0 {
+                    Text("Older summaries are still on their way. Lens keeps going in the background.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                HStack(spacing: 10) {
+                    Button("Check now") { Task { await zoom.check() } }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(zoom.checking)
+                    Button("Disconnect") { Task { await logins.disconnectZoom() } }
+                        .buttonStyle(SecondaryButtonStyle())
+                    settingLink
+                }
+                if let problem = zoom.problem {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                        Button("Get help") { ask("Lens is connected to Zoom but showed: \"\(problem)\". What should I do?") }
+                            .buttonStyle(SecondaryButtonStyle())
+                    }
+                }
+            } else {
+                if logins.hasZoomClient {
+                    HStack(spacing: 10) {
+                        Button(logins.zoomBusy ? "Waiting for Zoom…" : "Connect Zoom") {
+                            Task { await logins.connectZoom() }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(logins.zoomBusy)
+                        settingLink
+                    }
+                } else {
+                    Text("Connecting Zoom isn't set up on this Mac yet. Ask Claude to set up Zoom for Lens.")
+                        .font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("Get help") { ask("Connecting Zoom isn't set up on this Mac yet. How do I set up Zoom for Lens?") }
+                            .buttonStyle(SecondaryButtonStyle())
+                        settingLink
+                    }
+                }
+                if let error = logins.zoomError {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                        Button("Get help") { ask(logins.zoomHelpQuestion) }.buttonStyle(SecondaryButtonStyle())
+                    }
+                }
+                Text("Until Zoom is connected, Lens reads the summary emails Zoom sends to your Gmail.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted).padding(.top, 4)
+                ZoomCheck()
+            }
+        }
+        .onAppear { logins.importZoomClient() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            logins.importZoomClient()
+        }
+    }
+
+    private var settingLink: some View {
+        Link(destination: URL(string: "https://zoom.us/profile/setting?tab=zoomai")!) {
+            Label("Zoom's AI summary setting", systemImage: "arrow.up.right.square")
+        }
+        .font(.system(size: 12))
+    }
+
+    private func ask(_ question: String) {
+        navigator.askDraft = question
+        navigator.askOpen = true
+    }
 }
 
 /// One button. The Google client arrives on its own (Claude puts it on this Mac), so Emma never sees setup.
