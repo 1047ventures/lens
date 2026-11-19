@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import WebKit
 
 /// Builds the client-facing proposal as one HTML document in Emma's proposal style.
 /// Every number comes from the Estimator, so the deck, budgets and comparison table can
@@ -530,5 +531,72 @@ enum ProposalRenderer {
         @media print{.page{border:none}}
         </style></head><body>
         """
+    }
+}
+
+/// Prints the proposal, or saves it as a PDF, by laying it out in a hidden web page
+/// the same way it looks when opened.
+@MainActor
+final class ProposalPrinter: NSObject, WKNavigationDelegate {
+    /// Kept alive until the print or save finishes.
+    private static var current: ProposalPrinter?
+
+    private let window: NSWindow
+    private let webView: WKWebView
+    private let saveTo: URL?
+
+    private init(html: String, saveTo: URL?) {
+        let frame = NSRect(x: 0, y: 0, width: 816, height: 1056)
+        webView = WKWebView(frame: frame)
+        window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.contentView = webView
+        self.saveTo = saveTo
+        super.init()
+        webView.navigationDelegate = self
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    /// Opens the Mac's Print window for the proposal.
+    static func print(_ deal: Deal, store: DealStore, projects: ProjectStore) {
+        current = ProposalPrinter(html: ProposalRenderer.render(deal, store: store, projects: projects), saveTo: nil)
+    }
+
+    /// Asks where to save, then writes the proposal there as a PDF and shows it in Finder.
+    static func savePDF(_ deal: Deal, store: DealStore, projects: ProjectStore) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "\(deal.client.isEmpty ? deal.title : deal.client) proposal.pdf"
+        panel.prompt = "Save PDF"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        current = ProposalPrinter(html: ProposalRenderer.render(deal, store: store, projects: projects), saveTo: url)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let info = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        info.topMargin = 24; info.bottomMargin = 24; info.leftMargin = 24; info.rightMargin = 24
+        if let saveTo {
+            info.jobDisposition = .save
+            info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL.rawValue] = saveTo
+        }
+        let op = webView.printOperation(with: info)
+        op.showsPrintPanel = saveTo == nil
+        op.showsProgressPanel = saveTo == nil
+        op.view?.frame = webView.bounds
+        op.jobTitle = "Proposal"
+        let target = saveTo
+        // The Print window appears over Lens itself; the page being printed stays hidden.
+        op.runModal(for: NSApp.keyWindow ?? NSApp.mainWindow ?? window, delegate: nil, didRun: nil, contextInfo: nil)
+        if let target {
+            // Saving happens in the background: show the file once it's there.
+            Task { @MainActor in
+                for _ in 0..<40 where !FileManager.default.fileExists(atPath: target.path) {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([target])
+            }
+        }
     }
 }

@@ -265,10 +265,19 @@ final class GmailSync: ObservableObject {
         let subject = thread.messages.first(where: { !$0.subject.isEmpty })?.subject ?? ""
         let from = GmailAPI.parseAddress(last.from)
         let account = me.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? me
+        var people: [String] = [], seen = Set<String>()
+        for m in thread.messages {
+            for raw in [m.from, m.to, m.replyTo].flatMap({ $0.split(separator: ",").map(String.init) }) {
+                let a = GmailAPI.parseAddress(raw)
+                guard a.email.contains("@"), a.email != me, seen.insert(a.email).inserted else { continue }
+                people.append(a.name == a.email ? a.email : "\(a.name) <\(a.email)>")
+            }
+        }
         return EmailThread(id: thread.id, subject: subject, from: from.email == me ? "You" : from.name,
                            snippet: String(thread.snippet.prefix(220)), lastDate: last.date,
                            messageCount: thread.messages.count,
-                           link: "https://mail.google.com/mail/?authuser=\(account)#all/\(thread.id)")
+                           link: "https://mail.google.com/mail/?authuser=\(account)#all/\(thread.id)",
+                           people: people.isEmpty ? nil : people)
     }
 
     /// The conversation is already on a deal or project (added from email earlier): refresh it there.
@@ -291,14 +300,27 @@ final class GmailSync: ObservableObject {
         }
         people.remove(me)
         guard !people.isEmpty else { return false }
+        var linked = false
         let matches = deals.deals.filter { d in d.contacts.contains { people.contains($0.email.lowercased()) } }
         // A person on several deals: only link when it's clear which one (a single open deal).
         let open = matches.filter { $0.stage.isOpen }
         let pick = open.count == 1 ? open : (open.isEmpty && matches.count == 1 ? matches : [])
-        guard let deal = pick.first else { return false }
-        deals.attachEmail(link, to: deal.id)
-        if let projectID = deal.projectID { projects.attachEmail(link, to: projectID) }
-        return true
+        if let deal = pick.first {
+            deals.attachEmail(link, to: deal.id)
+            if let projectID = deal.projectID { projects.attachEmail(link, to: projectID) }
+            linked = true
+        }
+        // Someone on a project's people list (a director, an interviewee, crew): link it to that project,
+        // when only one project that's still going has them.
+        let onProjects = projects.active.filter { p in
+            (p.people ?? []).contains { $0.email.contains("@") && people.contains($0.email.lowercased()) }
+        }
+        if onProjects.count == 1, let p = onProjects.first {
+            projects.attachEmail(link, to: p.id)
+            if let deal = deals.deals.first(where: { $0.projectID == p.id }) { deals.attachEmail(link, to: deal.id) }
+            linked = true
+        }
+        return linked
     }
 
     /// Without Claude: website forms, directories and emails that say "inquiry" become inquiry suggestions.
@@ -325,7 +347,8 @@ final class GmailSync: ObservableObject {
             ["id": $0.id.uuidString, "type": "deal", "client": $0.client, "title": $0.title,
              "people": $0.contacts.map { "\($0.name) \($0.email)" }]
         } + projects.projects.filter { $0.stage != .archived }.map {
-            ["id": $0.id.uuidString, "type": "project", "client": $0.client, "title": $0.name]
+            ["id": $0.id.uuidString, "type": "project", "client": $0.client, "title": $0.name,
+             "keywords": $0.keywords ?? [], "people": ($0.people ?? []).map { "\($0.name) (\($0.role)) \($0.email)" }]
         }
         let conversations: [[String: Any]] = fresh.map { thread, link in
             ["thread_id": thread.id, "subject": link.subject,

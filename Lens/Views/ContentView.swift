@@ -167,7 +167,7 @@ struct ContentView: View {
             gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai)
             gmail.start()
             // Zoom AI summaries arrive by email too: attach each to its deal or project.
-            zoom.attach(deals: deals, projects: projects, logins: logins)
+            zoom.attach(deals: deals, projects: projects, logins: logins, ai: ai)
             zoom.start()
             // First time Lens opens, show the tour.
             if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
