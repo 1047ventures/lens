@@ -17,18 +17,22 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.18</string>
+	<string>1.0.19</string>
 	<key>CFBundleVersion</key>
-	<string>20</string>
+	<string>21</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Lens shows Emma's shoots and calls, checks for clashes, and adds shoot days and milestones when a project is booked.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lens only listens after you tap the mic in Ask Lens, so you can talk instead of typing.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Lens reads your Photos library so you can see and search every photo and video in one place. It never changes or deletes anything there.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Lens turns what you say in Ask Lens into text. It uses Apple speech recognition on this Mac when it can.</string>
 </dict>
 </plist>

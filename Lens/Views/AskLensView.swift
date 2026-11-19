@@ -7,6 +7,8 @@ struct AskLensView: View {
     @EnvironmentObject private var ai: LensAI
     @EnvironmentObject private var navigator: Navigator
     @State private var draft = ""
+    @State private var voiceBase = ""
+    @StateObject private var voice = VoiceInput()
     @State private var showLearned = false
     @FocusState private var focused: Bool
 
@@ -272,6 +274,20 @@ struct AskLensView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
                     .onSubmit(send)
+                    .onChange(of: voice.text) { _, spoken in
+                        guard !spoken.isEmpty else { return }
+                        draft = voiceBase.isEmpty ? spoken : voiceBase + " " + spoken
+                    }
+                Button {
+                    if !voice.listening { voiceBase = draft.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    voice.toggle()
+                } label: {
+                    Image(systemName: voice.listening ? "stop.circle.fill" : "mic.circle.fill").font(.system(size: 24))
+                        .symbolEffect(.pulse, isActive: voice.listening)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(voice.listening ? Theme.coral : Theme.text3)
+                .help(voice.listening ? "Stop listening" : "Talk instead of typing")
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill").font(.system(size: 24))
                 }
@@ -279,6 +295,12 @@ struct AskLensView: View {
                 .foregroundStyle(canSend ? Palette.violet : Theme.track)
                 .disabled(!canSend)
                 .keyboardShortcut(.return, modifiers: .command)
+            }
+            if voice.listening {
+                Text("Listening… tap stop when you're done, then send.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.text2)
+            } else if let problem = voice.problem {
+                Text(problem).font(.system(size: 11)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
             Text(ai.monthSpend > 0 ? "About \(String(format: "$%.2f", ai.monthSpend)) used this month" : "Uses Claude Opus 5.5 · charged to the connected Anthropic account")
                 .font(.system(size: 10)).foregroundStyle(Theme.muted)
@@ -290,8 +312,10 @@ struct AskLensView: View {
 
     private func send() {
         guard canSend else { return }
+        voice.cancel()
         let text = draft
         draft = ""
+        voiceBase = ""
         Task { await ai.send(text) }
     }
 
