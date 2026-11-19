@@ -32,7 +32,8 @@ struct AskLensView: View {
             composer
         }
         .background(Theme.ground)
-        .onAppear { focused = true }
+        .onAppear { takeDraft(); focused = true }
+        .onChange(of: navigator.askDraft) { _, _ in takeDraft() }
     }
 
     // MARK: Header
@@ -306,6 +307,13 @@ struct AskLensView: View {
                 .font(.system(size: 10)).foregroundStyle(Theme.muted)
         }
         .padding(12)
+    }
+
+    private func takeDraft() {
+        guard let text = navigator.askDraft else { return }
+        draft = text
+        navigator.askDraft = nil
+        focused = true
     }
 
     private var canSend: Bool { ai.hasKey && !ai.busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

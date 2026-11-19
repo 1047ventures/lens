@@ -38,6 +38,8 @@ final class Navigator: ObservableObject {
     @Published var builderDealID: UUID?
     /// Whether the Ask Lens panel is open.
     @Published var askOpen = false
+    /// A question to drop into the Ask Lens box when it opens. Ask Lens clears it once used.
+    @Published var askDraft: String?
     /// The bank, Venmo or PayPal log-in window, when open.
     @Published var bankLogin: LoginID?
     /// Whether the one minute tour is showing.
