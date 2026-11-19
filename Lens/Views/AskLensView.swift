@@ -8,6 +8,7 @@ struct AskLensView: View {
     @EnvironmentObject private var navigator: Navigator
     @State private var draft = ""
     @State private var voiceBase = ""
+    @State private var attached: [URL] = []
     @StateObject private var voice = VoiceInput()
     @State private var showLearned = false
     @FocusState private var focused: Bool
@@ -263,7 +264,31 @@ struct AskLensView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.amber)
             }
+            if !attached.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(attached, id: \.self) { url in
+                            HStack(spacing: 4) {
+                                Image(systemName: "paperclip").font(.system(size: 10))
+                                Text(url.lastPathComponent).font(.system(size: 11)).lineLimit(1)
+                                Button { attached.removeAll { $0 == url } } label: {
+                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                }.buttonStyle(.plain).help("Remove")
+                            }
+                            .foregroundStyle(Theme.text2)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Theme.raised).clipShape(Capsule())
+                        }
+                    }
+                }
+            }
             HStack(alignment: .bottom, spacing: 8) {
+                Button { pickFiles() } label: {
+                    Image(systemName: "paperclip.circle.fill").font(.system(size: 24))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.text3)
+                .help("Attach photos, PDFs or files")
                 TextField("Ask Lens…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
@@ -306,17 +331,37 @@ struct AskLensView: View {
                 .font(.system(size: 10)).foregroundStyle(Theme.muted)
         }
         .padding(12)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    if let url { Task { @MainActor in if !attached.contains(url) { attached.append(url) } } }
+                }
+            }
+            return true
+        }
     }
 
-    private var canSend: Bool { ai.hasKey && !ai.busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canSend: Bool {
+        ai.hasKey && !ai.busy && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
+    }
+
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Attach"
+        panel.message = "Photos, PDFs or text files for Lens to look at."
+        if panel.runModal() == .OK { attached.append(contentsOf: panel.urls.filter { !attached.contains($0) }) }
+    }
 
     private func send() {
         guard canSend else { return }
         voice.cancel()
-        let text = draft
+        let text = draft, files = attached
         draft = ""
         voiceBase = ""
-        Task { await ai.send(text) }
+        attached = []
+        Task { await ai.send(text, attachments: files) }
     }
 
     private func markdown(_ s: String) -> AttributedString {

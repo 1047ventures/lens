@@ -79,6 +79,7 @@ FILES = [
     (f"{APP_NAME}/Services/MoneyStore.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/Updater.swift",                f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/VoiceInput.swift",             f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/Attachments.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/LensAI.swift",                 f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/Connections.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Models/Deal.swift",                     f"{APP_NAME}/Models"),

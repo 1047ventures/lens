@@ -128,15 +128,21 @@ final class LensAI: ObservableObject {
 
     // MARK: Conversation
 
-    func send(_ text: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    func send(_ text: String, attachments: [URL] = []) async {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty && !attachments.isEmpty { trimmed = "Take a look at this." }
         guard !trimmed.isEmpty, !busy else { return }
         guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else {
             items.append(Item(kind: .error, text: "Connect Claude in Log-ins first (it needs an API key)."))
             return
         }
-        items.append(Item(kind: .user, text: trimmed))
-        messages.append(["role": "user", "content": [["type": "text", "text": "<screen>\(screenContext())</screen>\n\n\(trimmed)"]]])
+        let shown = attachments.isEmpty ? trimmed : trimmed + "\n" + attachments.map { "📎 " + $0.lastPathComponent }.joined(separator: "\n")
+        items.append(Item(kind: .user, text: shown))
+        let (fileBlocks, skipped) = await Task.detached { Attachments.blocks(for: attachments) }.value
+        if !skipped.isEmpty {
+            items.append(Item(kind: .info, text: "Couldn't read \(skipped.joined(separator: ", ")). Photos, PDFs and text files work."))
+        }
+        messages.append(["role": "user", "content": fileBlocks + [["type": "text", "text": "<screen>\(screenContext())</screen>\n\n\(trimmed)"]]])
         busy = true
         defer { busy = false; status = nil }
 
@@ -199,7 +205,7 @@ final class LensAI: ObservableObject {
             "system": system,
             "tools": Self.tools,
             "messages": messages,
-            "output_config": ["effort": "medium"],
+            "output_config": ["effort": "high"],
             "cache_control": ["type": "ephemeral"],
             // If Claude declines on a safety classifier, the API retries on a suitable model.
             "fallbacks": "default",
@@ -322,6 +328,8 @@ final class LensAI: ObservableObject {
         case "list_deals", "get_deal": return "Looking through the pipeline…"
         case "list_projects", "get_project": return "Checking projects…"
         case "get_money": return "Checking the books…"
+        case "get_gear": return "Checking your gear…"
+        case "get_library", "search_library": return "Looking through your drives…"
         case "get_rates": return "Checking your rates…"
         case "draft_email": return "Drafting the email…"
         case "open_screen": return "Opening it…"
@@ -364,6 +372,32 @@ final class LensAI: ObservableObject {
 
         switch name {
         // ---- Reading (no approval needed)
+        case "get_gear":
+            guard let money else { return ("Gear isn't ready.", true) }
+            return (json(money.gear.map { g -> [String: Any] in
+                var d: [String: Any] = ["name": g.name, "type": g.kind.label, "bought": day(g.bought), "paid": g.paid, "life_years": g.lifeYears]
+                if let s = g.serial { d["serial"] = s }
+                if let s = g.lastService { d["last_service"] = day(s) }
+                if let s = g.serviceNote { d["service_note"] = s }
+                if let s = g.shoots { d["shoots"] = s }
+                return d
+            }), false)
+        case "get_library":
+            return (json(DriveCatalog.shared.drives.map { d -> [String: Any] in
+                var r: [String: Any] = ["name": d.name, "kind": d.isPhotos ? "Photos app" : d.isWebsite ? "website" : d.isMac ? "this Mac" : "drive",
+                    "plugged_in": DriveCatalog.shared.isPlugged(d), "size": ByteFormat.string(d.total), "free": ByteFormat.string(d.free),
+                    "videos": d.videoCount, "video_size": ByteFormat.string(d.videoBytes), "photos": d.photoCount,
+                    "photo_size": ByteFormat.string(d.photoBytes), "edit_projects": d.projectCount, "last_seen": day(d.lastSeen)]
+                if let s = d.lastScanned { r["last_scanned"] = day(s) }
+                return r
+            }), false)
+        case "search_library":
+            let query = str("query"), drives = DriveCatalog.shared.drives
+            let names = Dictionary(drives.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            let hits = await Task.detached { DriveCatalog.search(query, drives: drives) }.value
+            if hits.isEmpty { return ("Nothing matched \"\(query)\".", false) }
+            return (json(hits.prefix(40).map { ["drive": names[$0.driveID] ?? $0.driveID, "folder": $0.folder, "matching_files": $0.files,
+                                                "size": ByteFormat.string($0.bytes), "example": $0.sample] as [String: Any] }), false)
         case "list_deals":
             let stage = str("stage")
             let list = deals.deals.filter { stage.isEmpty || stageKey($0.stage) == stage }
@@ -523,6 +557,13 @@ final class LensAI: ObservableObject {
         if navigator.section == .projects, let p = projects?.project(id: navigator.projectID) {
             parts.append("Looking at project \"\(p.name)\" (project_id \(p.id.uuidString))")
         }
+        switch navigator.section {
+        case .footage: parts.append("The Library lists her drives, Mac and Photos; use get_library and search_library for what's there")
+        case .gear: parts.append("Gear lists her kit; use get_gear")
+        case .money: parts.append("Money shows her books; use get_money")
+        case .logins: parts.append("Log-ins is where she connects email, calendar, bank and Claude")
+        default: break
+        }
         parts.append("Today is \(Date().formatted(date: .complete, time: .shortened))")
         return parts.joined(separator: ". ")
     }
@@ -589,6 +630,8 @@ final class LensAI: ObservableObject {
         Dictionary(uniqueKeysWithValues: Self.rateFields.map { ($0.key, r[keyPath: $0.value]) })
     }
 
+    private func day(_ d: Date) -> String { d.formatted(.iso8601.year().month().day()) }
+
     private func json(_ value: Any) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
               let s = String(data: data, encoding: .utf8) else { return "[]" }
@@ -649,8 +692,11 @@ final class LensAI: ObservableObject {
     - Prices: protect the price, scale the scope. If she wants to go cheaper, suggest what to cut before discounting.
     - Drafting emails: write in her warm, direct voice, short paragraphs, and use draft_email. You never send email.
     - If she asks for something Lens can't do (a new screen, a new button, a different layout, a connection that \
-    doesn't exist), say so and offer request_app_change with a clear title and a write-up Sean can build from: \
-    what she wants, why, and an example.
+    doesn't exist), offer request_app_change with a clear title and a full write-up to build from: \
+    what she wants, why, and an example. Once she approves, it is built and published automatically: Lens \
+    offers the update (bottom left) usually within an hour. Tell her that. If it can't be built, Sean follows up.
+    - She can attach photos, PDFs and files, or paste a link. Read them directly (use web_fetch for links). \
+    Photos of gear, receipts, contracts, shot lists, client briefs: work from what's actually in them.
     - The <screen> tag at the start of her message says what she is looking at; "this deal" means that one.
     - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
     history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
@@ -658,6 +704,11 @@ final class LensAI: ObservableObject {
 
     static let tools: [[String: Any]] = [
         ["type": "web_search_20260209", "name": "web_search", "max_uses": 5],
+        ["type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5],
+        tool("get_gear", "Emma's gear: every item with type, when bought, what she paid, serial, last service and how many shoots.", [:], []),
+        tool("get_library", "Every drive, the Mac and the Photos app Lens knows: size, free space, how many videos, photos and edit projects, when last seen and scanned.", [:], []),
+        tool("search_library", "Find folders on Emma's drives whose names or files match some words (a client, a place, a date like 2024-06). Works on unplugged drives too.",
+             ["query": ["type": "string"]], ["query"]),
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history.",
