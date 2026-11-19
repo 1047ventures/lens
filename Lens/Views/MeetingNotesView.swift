@@ -199,20 +199,19 @@ private struct FormattedText: View {
     }
 }
 
-/// Zoom summaries Lens couldn't match to a client. Emma picks the deal or project for each one.
-/// Shows nothing when there are none.
+/// Zoom summaries Lens wasn't sure about. For each one Lens asks "Which project is this for?", with its
+/// best guess first, and offers Add project when the call looks like new work. Shows nothing when there are none.
 struct UnmatchedNotesPanel: View {
     @EnvironmentObject private var zoom: ZoomNotes
-    @EnvironmentObject private var deals: DealStore
-    @EnvironmentObject private var projects: ProjectStore
     @State private var reading: MeetingNote?
+    @State private var drafting: ProjectDraft?
 
     var body: some View {
         if !zoom.unmatched.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     ColorLabel("Unmatched notes · \(zoom.unmatched.count)", Palette.violet)
-                    Text("Zoom call summaries Lens couldn't place. Pick where each one goes.")
+                    Text("Zoom calls Lens wasn't sure about. Tell it where each one goes and it remembers.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
                 ForEach(zoom.unmatched) { note in
@@ -223,6 +222,9 @@ struct UnmatchedNotesPanel: View {
             .accentBar(Palette.violet)
             .sheet(item: $reading) { note in
                 MeetingNoteView(note: note)
+            }
+            .sheet(item: $drafting) { draft in
+                ProjectDraftSheet(draft: draft)
             }
         }
     }
@@ -246,39 +248,7 @@ struct UnmatchedNotesPanel: View {
                 }
             }
             Spacer(minLength: 8)
-            HStack(spacing: 8) {
-                if let id = zoom.suggestedProject(for: note), let p = projects.project(id: id) {
-                    Button("Add to \(p.name)") { zoom.assign(note, toProject: id) }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .help("Lens thinks this call is about \(p.name)")
-                }
-                Button("Not for a client") { zoom.dismiss(note) }.buttonStyle(SecondaryButtonStyle())
-                Menu {
-                    let open = deals.deals.filter { $0.stage.isOpen }.sorted { $0.lastTouch > $1.lastTouch }
-                    if !open.isEmpty {
-                        Section("Pipeline") {
-                            ForEach(open) { d in
-                                Button("\(d.client) · \(d.title)") { zoom.assign(note, toDeal: d.id) }
-                            }
-                        }
-                    }
-                    let active = projects.active
-                    if !active.isEmpty {
-                        Section("Projects") {
-                            ForEach(active) { p in
-                                Button(p.client.isEmpty ? p.name : "\(p.client) · \(p.name)") { zoom.assign(note, toProject: p.id) }
-                            }
-                        }
-                    }
-                    if open.isEmpty && active.isEmpty {
-                        Text("No deals or projects yet")
-                    }
-                } label: {
-                    Text("Pick a deal or project")
-                }
-                .menuStyle(.borderedButton)
-                .fixedSize()
-            }
+            NoteQuestion(note: note, drafting: $drafting)
         }
         .padding(12)
         .background(Theme.raised.opacity(0.5))
@@ -325,5 +295,29 @@ struct ZoomCheck: View {
         }
         if zoom.lastChecked != nil { return "No summaries yet. They arrive a few minutes after your next Zoom call ends." }
         return "Lens hasn't looked yet. Click Check now."
+    }
+}
+
+/// "Which project is this for?" for one Zoom note, plus Add project when Lens has no guess
+/// (it looks like new work).
+struct NoteQuestion: View {
+    @EnvironmentObject private var zoom: ZoomNotes
+    let note: MeetingNote
+    @Binding var drafting: ProjectDraft?
+
+    var body: some View {
+        let guess = zoom.bestGuess(for: note)
+        HStack(alignment: .bottom, spacing: 8) {
+            if guess == nil {
+                Button("Add project") { drafting = ProjectDraft(project: zoom.draft(for: note), note: note) }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .help("Looks like new work. Make a project for it, filled in from this call.")
+            }
+            WhichProjectMenu(guess: guess, includeDeals: true,
+                             onPick: { zoom.assign(note, toProject: $0) },
+                             onPickDeal: { zoom.assign(note, toDeal: $0) },
+                             onNew: { drafting = ProjectDraft(project: zoom.draft(for: note), note: note) },
+                             onNone: { zoom.dismiss(note) })
+        }
     }
 }

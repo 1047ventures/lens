@@ -107,7 +107,8 @@ final class LensAI: ObservableObject {
 
     /// Sorts recent Gmail conversations for the email suggestions (Pipeline and Projects).
     /// One request, separate from the Ask Lens chat; the answer comes back as JSON matching `emailSchema`.
-    /// Nothing is changed here: Emma still taps Add on each suggestion.
+    /// Nothing is changed here. GmailSync files a conversation by itself only when Claude is sure it belongs
+    /// to a project already in Lens; everything else waits for Emma.
     func sortEmails(_ payload: String) async throws -> [[String: Any]] {
         guard let answer = try await structured(system: Self.emailPrompt, schema: Self.emailSchema, payload: payload) else {
             throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
@@ -117,7 +118,7 @@ final class LensAI: ObservableObject {
 
     /// Picks the project each Zoom summary belongs to, from Emma's open projects (or none).
     /// One request, separate from the Ask Lens chat. Nothing is changed here: ZoomNotes only
-    /// places a note when Claude is sure, and otherwise suggests it for Emma to add with one tap.
+    /// places a note when Claude is sure, and otherwise lists it first when it asks Emma which project it's for.
     func placeNotes(_ payload: String) async throws -> [[String: Any]] {
         guard let answer = try await structured(system: Self.notesPrompt, schema: Self.notesSchema, payload: payload) else {
             throw AIError("Claude's answer about your Zoom notes didn't come through. Lens will try again later.")
@@ -198,6 +199,8 @@ final class LensAI: ObservableObject {
     - "project": booked or clearly agreed work she is actively emailing about (planning a shoot, delivering a film,
       invoices for a job) that is not already in Lens.
     - "existing": about a deal or project already in Lens. Put its id in existing_id.
+      sure: true only when it clearly belongs to that one deal or project and to no other. When two could fit,
+      or the link is a guess, set sure to false. For every other kind, sure is false.
     - "other": everything else (newsletters, receipts, personal mail, notifications, spam, her own reminders).
     When unsure between inquiry or project and other, choose other. Never invent details: use "" when unknown.
     title: a short name for the job, like "Hartley wedding film" or "Bloom Co. brand video".
@@ -217,6 +220,7 @@ final class LensAI: ObservableObject {
                         "thread_id": ["type": "string"],
                         "kind": ["type": "string", "enum": ["inquiry", "project", "existing", "other"]],
                         "existing_id": ["type": "string"],
+                        "sure": ["type": "boolean"],
                         "person": ["type": "string"],
                         "email": ["type": "string"],
                         "client": ["type": "string"],
@@ -227,7 +231,7 @@ final class LensAI: ObservableObject {
                         "budget": ["type": "string"],
                         "source": ["type": "string"],
                     ],
-                    "required": ["thread_id", "kind", "existing_id", "person", "email", "client", "title", "wants",
+                    "required": ["thread_id", "kind", "existing_id", "sure", "person", "email", "client", "title", "wants",
                                  "event_date", "location", "budget", "source"],
                     "additionalProperties": false,
                 ],

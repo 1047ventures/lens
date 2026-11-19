@@ -88,6 +88,104 @@ final class ProjectStore: ObservableObject {
         update(p)
     }
 
+    /// Takes a Gmail conversation off, for when it landed on the wrong project.
+    func removeEmail(_ threadID: String, from projectID: UUID) {
+        guard var p = project(id: projectID), let list = p.emails, list.contains(where: { $0.id == threadID }) else { return }
+        p.emails = list.filter { $0.id != threadID }
+        update(p)
+    }
+
+    // MARK: - Filed automatically
+
+    /// Notes that Lens put something on a project by itself, so it shows in "Filed automatically".
+    func logAutoFiled(_ item: AutoFiled, on projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        var list = (p.autoFiled ?? []).filter { !($0.kind == item.kind && $0.itemID == item.itemID) }
+        list.insert(item, at: 0)
+        p.autoFiled = Array(list.prefix(40))
+        update(p)
+    }
+
+    /// Emma moved it or took it off: it's no longer something Lens filed here.
+    func dropAutoFiled(_ kind: AutoFiled.Kind, itemID: String, from projectID: UUID? = nil) {
+        for p in projects where projectID == nil || p.id == projectID {
+            guard let list = p.autoFiled, list.contains(where: { $0.kind == kind && $0.itemID == itemID }) else { continue }
+            edit(p.id) { $0.autoFiled = list.filter { !($0.kind == kind && $0.itemID == itemID) } }
+        }
+    }
+
+    /// What Lens filed by itself across all projects in the last few days, newest first (for Today).
+    func recentlyAutoFiled(days: Double = 7) -> [(project: Project, item: AutoFiled)] {
+        let since = Date().addingTimeInterval(-days * 86400)
+        return projects.flatMap { p in (p.autoFiled ?? []).filter { $0.date > since }.map { (project: p, item: $0) } }
+            .sorted { $0.item.date > $1.item.date }
+    }
+
+    /// Adds people who clearly belong to a project: someone in at least three of its emails and calls,
+    /// who doesn't show up like that on any other open project. Lens files them by itself (no role yet)
+    /// and lists them under "Filed automatically". People Emma took off aren't added again.
+    func addRegulars() {
+        func seen(in p: Project) -> [String: (name: String, count: Int)] {
+            var found: [String: (name: String, count: Int)] = [:]
+            func note(_ name: String, _ email: String, _ counted: inout Set<String>) {
+                let e = email.lowercased()
+                guard e.contains("@"), !PeopleStore.isAutomated(e), counted.insert(e).inserted else { return }
+                let current = found[e]
+                let better = (current?.name ?? e) == e ? name : current!.name
+                found[e] = (better, (current?.count ?? 0) + 1)
+            }
+            for thread in p.emails ?? [] {
+                var counted = Set<String>()
+                for raw in thread.people ?? [] {
+                    let a = GmailAPI.parseAddress(raw)
+                    note(a.name, a.email, &counted)
+                }
+            }
+            for call in p.meetingNotes ?? [] {
+                var counted = Set<String>()
+                for person in call.people ?? [] { note(person.name, person.email, &counted) }
+                for e in call.attendees ?? [] { note(e, e, &counted) }
+            }
+            return found
+        }
+        let open = active
+        let counts = Dictionary(uniqueKeysWithValues: open.map { ($0.id, seen(in: $0)) })
+        for p in open {
+            let known = Set((p.people ?? []).map { $0.email.lowercased() } + (p.notPeople ?? []).map { $0.lowercased() })
+            let regulars = (counts[p.id] ?? [:]).filter { email, v in
+                v.count >= 3 && !known.contains(email)
+                    && !open.contains { $0.id != p.id && (counts[$0.id]?[email]?.count ?? 0) >= 2 }
+            }
+            guard !regulars.isEmpty else { continue }
+            let added = regulars.sorted { $0.key < $1.key }.map { ProjectPerson(name: $0.value.name, email: $0.key, role: "") }
+            edit(p.id) { $0.people = ($0.people ?? []) + added }
+            for person in added {
+                logAutoFiled(AutoFiled(kind: .person, itemID: person.email, title: person.name, source: "Emails and calls"), on: p.id)
+            }
+        }
+    }
+
+    /// Takes a person Lens added off the project, and remembers not to add them again.
+    func removeAutoPerson(_ email: String, from projectID: UUID) {
+        let e = email.lowercased()
+        edit(projectID) { p in
+            p.people = (p.people ?? []).filter { $0.email.lowercased() != e }
+            if !(p.notPeople ?? []).contains(e) { p.notPeople = (p.notPeople ?? []) + [e] }
+        }
+        dropAutoFiled(.person, itemID: email, from: projectID)
+    }
+
+    /// Moves a person Lens added from one project to another.
+    func moveAutoPerson(_ email: String, from: UUID, to: UUID) {
+        let person = project(id: from)?.people?.first { $0.email.lowercased() == email.lowercased() }
+        removeAutoPerson(email, from: from)
+        edit(to) { p in
+            guard !(p.people ?? []).contains(where: { $0.email.lowercased() == email.lowercased() }) else { return }
+            p.people = (p.people ?? []) + [person ?? ProjectPerson(name: email, email: email.lowercased(), role: "")]
+            p.notPeople = p.notPeople?.filter { $0 != email.lowercased() }
+        }
+    }
+
     // MARK: - Time
 
     /// The project whose timer is running, if any. Only one runs at a time.

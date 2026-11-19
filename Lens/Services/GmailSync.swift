@@ -118,7 +118,8 @@ enum GmailAPI {
 
 // MARK: - Suggestions
 
-/// Something Lens found in Gmail that Emma can add with one tap, or ignore.
+/// Something Lens found in Gmail that Emma decides on: a new inquiry, new booked work (Add project),
+/// or a conversation Lens wasn't sure about ("Which project is this for?").
 struct EmailSuggestion: Codable, Identifiable, Hashable {
     enum Kind: String, Codable { case inquiry, project, attach }
 
@@ -133,7 +134,8 @@ struct EmailSuggestion: Codable, Identifiable, Hashable {
     var location: String
     var budget: String
     var source: String
-    /// For `.attach`: the deal or project this conversation belongs to.
+    /// For `.attach`: the deal or project this conversation belongs to. On Projects this is only Lens's best
+    /// guess (sure ones are filed by themselves); both empty means Lens has no guess.
     var targetDealID: UUID?
     var targetProjectID: UUID?
     var targetName: String?
@@ -147,8 +149,9 @@ struct EmailSuggestion: Codable, Identifiable, Hashable {
 }
 
 /// Looks through recent Gmail when Lens opens and every hour after, and turns new inquiries and booked
-/// work into suggestions. Conversations with people already in Lens are linked to their deal or project.
-/// Nothing new is added to Pipeline or Projects until Emma taps Add.
+/// work into suggestions. Conversations that clearly belong to a project (people on it, Emma's earlier
+/// choices, or Claude is sure) are filed there by themselves and listed under "Filed automatically".
+/// When Lens isn't sure it asks "Which project is this for?". No new deal or project is made until Emma says so.
 @MainActor
 final class GmailSync: ObservableObject {
     @Published private(set) var suggestions: [EmailSuggestion] = []
@@ -165,6 +168,10 @@ final class GmailSync: ObservableObject {
     private var ignored: Set<String> = []
     /// Gmail's change counter for each conversation already looked at, so it's only read again when something new arrives.
     private var seen: [String: String] = [:]
+    /// Emma's own choices: "person:<email>" → project, so their next emails go to the same place.
+    private var remembered: [String: UUID] = [:]
+    /// Conversations Emma said aren't for a project: thread id → those projects, so Lens doesn't put them back.
+    private var notFor: [String: [UUID]] = [:]
     private var loop: Task<Void, Never>?
 
     /// Website builders and directories whose lead emails count as inquiries.
@@ -203,7 +210,10 @@ final class GmailSync: ObservableObject {
     func suggestions(for kinds: Set<EmailSuggestion.Kind>, deals forDeals: Bool) -> [EmailSuggestion] {
         suggestions.filter { s in
             guard kinds.contains(s.kind) else { return false }
-            if s.kind == .attach { return forDeals ? s.targetDealID != nil : s.targetProjectID != nil }
+            if s.kind == .attach {
+                if forDeals { return s.targetDealID != nil && s.targetProjectID == nil }
+                return s.targetProjectID != nil || s.targetDealID == nil
+            }
             return true
         }
     }
@@ -234,7 +244,8 @@ final class GmailSync: ObservableObject {
                 guard !thread.messages.isEmpty else { seen[item.id] = item.history; continue }
                 let link = threadLink(thread, me: me)
                 // Already linked to a deal or project: just bring the conversation up to date.
-                if linkKnown(link, deals: deals, projects: projects) || linkByContact(thread, link, me: me, deals: deals, projects: projects) {
+                if linkKnown(link, deals: deals, projects: projects) || linkByMemory(link, deals: deals, projects: projects)
+                    || linkByContact(thread, link, me: me, deals: deals, projects: projects) {
                     people?.noteThread(thread, link: link, me: me, onFile: true)
                     suggestions.removeAll { $0.id == item.id && $0.kind != .attach }
                     seen[item.id] = item.history
@@ -257,6 +268,8 @@ final class GmailSync: ObservableObject {
                 for (thread, _) in fresh { seen[thread.id] = histories[thread.id] ?? "" }
             }
             suggestions.sort { $0.thread.lastDate > $1.thread.lastDate }
+            // People who keep turning up on one project's calls and emails go on its People list.
+            projects.addRegulars()
             lastChecked = Date()
             problem = nil
         } catch {
@@ -306,26 +319,56 @@ final class GmailSync: ObservableObject {
         people.remove(me)
         guard !people.isEmpty else { return false }
         var linked = false
-        let matches = deals.deals.filter { d in d.contacts.contains { people.contains($0.email.lowercased()) } }
+        let declined = notFor[link.id] ?? []
+        let matches = deals.deals.filter { d in
+            !(d.projectID.map(declined.contains) ?? false) && d.contacts.contains { people.contains($0.email.lowercased()) }
+        }
         // A person on several deals: only link when it's clear which one (a single open deal).
         let open = matches.filter { $0.stage.isOpen }
         let pick = open.count == 1 ? open : (open.isEmpty && matches.count == 1 ? matches : [])
         if let deal = pick.first {
             deals.attachEmail(link, to: deal.id)
-            if let projectID = deal.projectID { projects.attachEmail(link, to: projectID) }
+            if let projectID = deal.projectID { fileOnProject(link, projectID, deals: deals, projects: projects) }
             linked = true
         }
         // Someone on a project's people list (a director, an interviewee, crew): link it to that project,
         // when only one project that's still going has them.
         let onProjects = projects.active.filter { p in
-            (p.people ?? []).contains { $0.email.contains("@") && people.contains($0.email.lowercased()) }
+            !declined.contains(p.id) && (p.people ?? []).contains { $0.email.contains("@") && people.contains($0.email.lowercased()) }
         }
         if onProjects.count == 1, let p = onProjects.first {
-            projects.attachEmail(link, to: p.id)
-            if let deal = deals.deals.first(where: { $0.projectID == p.id }) { deals.attachEmail(link, to: deal.id) }
+            fileOnProject(link, p.id, deals: deals, projects: projects)
             linked = true
         }
         return linked
+    }
+
+    /// Emma put an earlier email with the same people on a project: this one goes there too.
+    private func linkByMemory(_ link: EmailThread, deals: DealStore, projects: ProjectStore) -> Bool {
+        let declined = notFor[link.id] ?? []
+        let picks = Set(Self.emails(in: link).compactMap { remembered["person:" + $0] }
+            .filter { id in !declined.contains(id) && projects.active.contains { $0.id == id } })
+        guard picks.count == 1, let id = picks.first else { return false }
+        fileOnProject(link, id, deals: deals, projects: projects)
+        return true
+    }
+
+    /// Files the conversation on the project (and the deal it came from) by itself, and lists it under
+    /// "Filed automatically" so Emma can see it and undo it.
+    private func fileOnProject(_ link: EmailThread, _ projectID: UUID, deals: DealStore, projects: ProjectStore) {
+        let already = (projects.project(id: projectID)?.emails ?? []).contains { $0.id == link.id }
+        projects.attachEmail(link, to: projectID)
+        if let deal = deals.deals.first(where: { $0.projectID == projectID }) { deals.attachEmail(link, to: deal.id) }
+        suggestions.removeAll { $0.id == link.id }
+        if !already {
+            projects.logAutoFiled(AutoFiled(kind: .email, itemID: link.id, title: link.subject.isEmpty ? "An email" : link.subject,
+                                            source: "Email"), on: projectID)
+        }
+    }
+
+    /// The email addresses in a conversation (not Emma's).
+    static func emails(in link: EmailThread) -> [String] {
+        (link.people ?? []).map { GmailAPI.parseAddress($0).email }.filter { $0.contains("@") }
     }
 
     /// Without Claude: website forms, directories and emails that say "inquiry" become inquiry suggestions.
@@ -384,6 +427,19 @@ final class GmailSync: ObservableObject {
             case "existing":
                 let id = UUID(uuidString: s("existing_id"))
                 suggestion.kind = .attach
+                let sure = (a["sure"] as? Bool) == true
+                // A booked deal counts as its project.
+                let projectID = projects.project(id: id)?.id ?? deals.deal(id: id)?.projectID
+                if let projectID, let project = projects.project(id: projectID) {
+                    if sure && !(notFor[link.id] ?? []).contains(projectID) {
+                        fileOnProject(link, projectID, deals: deals, projects: projects)
+                        return nil
+                    }
+                    // Not sure: Lens asks, with this project as its best guess.
+                    suggestion.targetProjectID = project.id
+                    suggestion.targetName = project.name
+                    return suggestion
+                }
                 if let deal = deals.deal(id: id) {
                     suggestion.targetDealID = deal.id
                     suggestion.targetName = deal.title
@@ -433,6 +489,81 @@ final class GmailSync: ObservableObject {
         }
     }
 
+    /// Emma answered "Which project is this for?". The email goes there (and on its deal), and Lens
+    /// remembers the people in it for next time.
+    func file(_ s: EmailSuggestion, into projectID: UUID) {
+        guard let deals, let projects else { return }
+        suggestions.removeAll { $0.id == s.id }
+        projects.attachEmail(s.thread, to: projectID)
+        if let deal = deals.deals.first(where: { $0.projectID == projectID }) { deals.attachEmail(s.thread, to: deal.id) }
+        notFor[s.id]?.removeAll { $0 == projectID }
+        for e in Self.emails(in: s.thread) { remembered["person:" + e] = projectID }
+        save()
+    }
+
+    /// A new project for booked work Lens spotted, filled in with what the email says.
+    func draft(for s: EmailSuggestion) -> Project {
+        let name = s.client.isEmpty ? s.person : s.client
+        var p = Project(name: s.displayTitle, client: name, shootDate: s.eventDate, location: s.location, stage: .booked)
+        p.events = [ProjectEvent(text: "Added from your email: \(s.thread.subject)")]
+        var people: [ProjectPerson] = []
+        var seen = Set<String>()
+        if s.email.contains("@") {
+            seen.insert(s.email.lowercased())
+            people.append(ProjectPerson(name: s.person.isEmpty ? s.email : s.person, email: s.email.lowercased(), role: "Client"))
+        }
+        for raw in s.thread.people ?? [] {
+            let a = GmailAPI.parseAddress(raw)
+            guard a.email.contains("@"), !PeopleStore.isAutomated(a.email), seen.insert(a.email).inserted else { continue }
+            people.append(ProjectPerson(name: a.name, email: a.email, role: ""))
+        }
+        p.people = people.isEmpty ? nil : people
+        return p
+    }
+
+    /// A project was just made: emails waiting for an answer from the same people go on it by themselves.
+    func refile(into projectID: UUID) {
+        guard let deals, let projects, let project = projects.project(id: projectID) else { return }
+        let people = Set((project.people ?? []).map { $0.email.lowercased() }.filter { $0.contains("@") })
+        guard !people.isEmpty else { return }
+        for s in suggestions where s.kind == .project || (s.kind == .attach && (s.targetProjectID != nil || s.targetDealID == nil)) {
+            guard !(notFor[s.id] ?? []).contains(projectID),
+                  !people.isDisjoint(with: Self.emails(in: s.thread) + [s.email.lowercased()]) else { continue }
+            fileOnProject(s.thread, projectID, deals: deals, projects: projects)
+        }
+        save()
+    }
+
+    /// From "Filed automatically": Lens put this email on the wrong project. Take it off there (and its
+    /// deal), forget what pointed there, and ask "Which project is this for?" again.
+    func notThisProject(_ threadID: String, from projectID: UUID) {
+        guard let thread = unfile(threadID, from: projectID) else { return }
+        notFor[threadID, default: []].append(projectID)
+        if !suggestions.contains(where: { $0.id == threadID }) {
+            suggestions.insert(EmailSuggestion(kind: .attach, person: thread.from, email: "", client: "", title: "", wants: "",
+                                               eventDate: nil, location: "", budget: "", source: "Email", thread: thread), at: 0)
+        }
+        save()
+    }
+
+    /// From "Filed automatically": put this email on another project instead. Lens remembers.
+    func move(_ threadID: String, from: UUID, to: UUID) {
+        guard let thread = unfile(threadID, from: from) else { return }
+        notFor[threadID, default: []].append(from)
+        file(EmailSuggestion(kind: .attach, person: thread.from, email: "", client: "", title: "", wants: "",
+                             eventDate: nil, location: "", budget: "", source: "Email", thread: thread), into: to)
+    }
+
+    private func unfile(_ threadID: String, from projectID: UUID) -> EmailThread? {
+        guard let deals, let projects else { return nil }
+        projects.dropAutoFiled(.email, itemID: threadID, from: projectID)
+        guard let thread = projects.project(id: projectID)?.emails?.first(where: { $0.id == threadID }) else { return nil }
+        projects.removeEmail(threadID, from: projectID)
+        for d in deals.deals where d.projectID == projectID { deals.removeEmail(threadID, from: d.id) }
+        for e in Self.emails(in: thread) where remembered["person:" + e] == projectID { remembered.removeValue(forKey: "person:" + e) }
+        return thread
+    }
+
     func ignore(_ s: EmailSuggestion) {
         suggestions.removeAll { $0.id == s.id }
         ignored.insert(s.id)
@@ -446,6 +577,8 @@ final class GmailSync: ObservableObject {
         var ignored: [String]?
         var seen: [String: String]?
         var lastChecked: Date?
+        var remembered: [String: UUID]?
+        var notFor: [String: [UUID]]?
     }
 
     private func load() {
@@ -457,6 +590,8 @@ final class GmailSync: ObservableObject {
         ignored = Set(saved.ignored ?? [])
         seen = saved.seen ?? [:]
         lastChecked = saved.lastChecked
+        remembered = saved.remembered ?? [:]
+        notFor = saved.notFor ?? [:]
     }
 
     private func save() {
@@ -465,7 +600,8 @@ final class GmailSync: ObservableObject {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = .prettyPrinted
-        let saved = Saved(suggestions: suggestions, ignored: Array(ignored.suffix(3000)), seen: seen, lastChecked: lastChecked)
+        let saved = Saved(suggestions: suggestions, ignored: Array(ignored.suffix(3000)), seen: seen, lastChecked: lastChecked,
+                          remembered: remembered, notFor: notFor)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("gmail.json"), options: .atomic) }
     }
 }

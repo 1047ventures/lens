@@ -159,6 +159,8 @@ struct ProjectsView: View {
 
 struct ProjectEditor: View {
     let initial: Project?
+    /// For a new project Lens filled in from a call or an email: name, client, people and keywords.
+    var prefill: Project? = nil
     let onSave: (Project) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -190,6 +192,13 @@ struct ProjectEditor: View {
                 Picker("Stage", selection: $stage) {
                     ForEach(ProjectStage.allCases) { Text($0.label).tag($0) }
                 }
+                if initial == nil, let people = prefill?.people, !people.isEmpty {
+                    LabeledContent("People") {
+                        Text(people.map(\.name).joined(separator: ", "))
+                            .foregroundStyle(.secondary).lineLimit(3).multilineTextAlignment(.trailing)
+                    }
+                    .help("Lens found these people in the call or email. You can change roles on the People tab.")
+                }
                 LabeledContent("Footage folder") {
                     HStack {
                         Text(folderPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "None")
@@ -214,7 +223,7 @@ struct ProjectEditor: View {
     }
 
     private func loadInitial() {
-        guard let initial else { return }
+        guard let initial = initial ?? prefill else { return }
         name = initial.name
         client = initial.client
         location = initial.location
@@ -237,7 +246,7 @@ struct ProjectEditor: View {
     }
 
     private func save() {
-        var project = initial ?? Project(name: name)
+        var project = initial ?? prefill ?? Project(name: name)
         let stageChanged = initial != nil && initial?.stage != stage
         project.name = name.trimmingCharacters(in: .whitespaces)
         project.client = client

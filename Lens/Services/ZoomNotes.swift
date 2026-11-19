@@ -5,9 +5,11 @@ import Foundation
 /// goes back as far as Zoom keeps them, then checks hourly. Otherwise it falls back to the summary
 /// emails Zoom sends to Gmail. Lens looks at who was on the call, the meeting title, the client, the
 /// people on each project and the project's name and keywords; when that isn't clear, Claude picks from
-/// her open projects. A note is only filed by itself when Lens is sure. Recent ones it isn't sure about
-/// wait in "Unmatched notes"; older ones are kept quietly so Ask Lens can still search them. When Emma
-/// moves a note, Lens remembers that choice for the people on the call and the meeting series.
+/// her open projects. When Lens is sure, it files the note by itself and lists it under "Filed automatically"
+/// on the project, where Emma can move it or take it off. Recent ones it isn't sure about wait in
+/// "Unmatched notes" with the question "Which project is this for?" (Lens's best guess listed first);
+/// older ones are kept quietly so Ask Lens can still search them. When Emma picks or moves a note, Lens
+/// remembers that choice for the people on the call and the meeting series.
 @MainActor
 final class ZoomNotes: ObservableObject {
     /// A summary that didn't clearly belong to one deal or project.
@@ -18,7 +20,7 @@ final class ZoomNotes: ObservableObject {
     @Published private(set) var foundCount = 0
     @Published private(set) var newestSummary: Date?
     @Published private(set) var problem: String?
-    /// Unmatched notes Lens thinks belong to a project: note id → project id.
+    /// Lens's best guess for unmatched notes: note id → project id. Listed first when Lens asks, never filed by itself.
     @Published private(set) var suggested: [String: UUID] = [:]
     /// While reading from Zoom: "Reading your Zoom summaries… 40 so far".
     @Published private(set) var progress: String?
@@ -100,6 +102,8 @@ final class ZoomNotes: ObservableObject {
                 await checkGmail(logins: logins, deals: deals, projects: projects)
             }
         } while again
+        // People who keep turning up on one project's calls and emails go on its People list.
+        projects.addRegulars()
     }
 
     // MARK: Straight from Zoom
@@ -218,7 +222,7 @@ final class ZoomNotes: ObservableObject {
         }
         switch match(note, deals: deals, projects: projects) {
         case .sure(let dealID, let projectID):
-            place(note, dealID: dealID, projectID: projectID)
+            place(note, dealID: dealID, projectID: projectID, auto: true)
         case .maybe(let projectID):
             if note.date > Date().addingTimeInterval(-Self.recentDays * 86400) {
                 unmatched.append(note)
@@ -239,7 +243,7 @@ final class ZoomNotes: ObservableObject {
             unmatched[i] = full
             // With who was in the call, Lens may now know where it goes.
             switch match(full, deals: deals, projects: projects) {
-            case .sure(let dealID, let projectID): place(full, dealID: dealID, projectID: projectID)
+            case .sure(let dealID, let projectID): place(full, dealID: dealID, projectID: projectID, auto: true)
             case .maybe(let projectID): if let projectID { suggested[full.id] = projectID }
             }
         }
@@ -304,7 +308,7 @@ final class ZoomNotes: ObservableObject {
                 }
                 switch match(note, deals: deals, projects: projects) {
                 case .sure(let dealID, let projectID):
-                    place(note, dealID: dealID, projectID: projectID)
+                    place(note, dealID: dealID, projectID: projectID, auto: true)
                 case .maybe(let projectID):
                     unmatched.append(note)
                     if let projectID { suggested[note.id] = projectID }
@@ -484,7 +488,7 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// Asks Claude to pick the project for notes Lens wasn't sure about, from Emma's open projects.
-    /// Sure answers are filed; the rest become one-tap suggestions.
+    /// Sure answers are filed by themselves; the rest become Lens's best guess when it asks Emma.
     private func askClaude(_ notes: [MeetingNote], projects: ProjectStore) async {
         guard let ai else { return }
         let open = projects.active
@@ -504,7 +508,7 @@ final class ZoomNotes: ObservableObject {
             guard let noteID = a["note_id"] as? String, let note = unmatched.first(where: { $0.id == noteID }),
                   let id = UUID(uuidString: (a["project_id"] as? String) ?? ""), open.contains(where: { $0.id == id }) else { continue }
             if (a["sure"] as? Bool) == true {
-                place(note, dealID: deals?.deals.first(where: { $0.projectID == id })?.id, projectID: id)
+                place(note, dealID: deals?.deals.first(where: { $0.projectID == id })?.id, projectID: id, auto: true)
             } else {
                 suggested[noteID] = id
             }
@@ -532,9 +536,17 @@ final class ZoomNotes: ObservableObject {
 
     // MARK: Emma's choices
 
-    private func place(_ note: MeetingNote, dealID: UUID?, projectID: UUID?) {
+    /// Puts the note on its deal and project. `auto`: Lens did it by itself, so it shows under
+    /// "Filed automatically" on the project.
+    private func place(_ note: MeetingNote, dealID: UUID?, projectID: UUID?, auto: Bool = false) {
         if let dealID { deals?.attachNote(note, to: dealID) }
-        if let projectID { projects?.attachNote(note, to: projectID) }
+        if let projectID {
+            projects?.attachNote(note, to: projectID)
+            if auto {
+                projects?.logAutoFiled(AutoFiled(kind: .note, itemID: note.id, title: note.title,
+                                                 source: note.fromZoom ? "Zoom call" : "Zoom summary email"), on: projectID)
+            }
+        }
         unmatched.removeAll { $0.id == note.id }
         suggested.removeValue(forKey: note.id)
         handled.insert(note.id)
@@ -545,13 +557,58 @@ final class ZoomNotes: ObservableObject {
         for key in Self.memoryKeys(note) { remembered[key] = projectID }
     }
 
-    /// Unmatched notes Lens thinks belong to this project, for the one-tap Add on the project page.
-    func suggestions(for projectID: UUID) -> [MeetingNote] {
+    /// Unmatched notes whose best guess is this project. On the project page Lens asks about them.
+    func waiting(for projectID: UUID) -> [MeetingNote] {
         unmatched.filter { suggested[$0.id] == projectID }
     }
 
-    /// The project Lens suggests for an unmatched note, if any.
-    func suggestedProject(for note: MeetingNote) -> UUID? { suggested[note.id] }
+    /// Lens's best guess for an unmatched note, if it has one. Listed first, not filed.
+    func bestGuess(for note: MeetingNote) -> UUID? {
+        guard let id = suggested[note.id], projects?.project(id: id) != nil else { return nil }
+        return id
+    }
+
+    /// A note Lens has, wherever it is.
+    func note(id: String) -> MeetingNote? {
+        guard let deals, let projects else { return nil }
+        return allNotes(deals: deals, projects: projects).first { $0.id == id }
+    }
+
+    /// A new project for a call that looks like new work, filled in with what Lens can tell:
+    /// the meeting name, who was on the call, and the meeting series as a keyword.
+    func draft(for note: MeetingNote) -> Project {
+        var p = Project(name: note.title, stage: .lead)
+        var people: [ProjectPerson] = []
+        var seen = Set<String>()
+        for person in note.people ?? [] where person.email.contains("@") && seen.insert(person.email.lowercased()).inserted {
+            people.append(ProjectPerson(name: person.name.isEmpty ? person.email : person.name, email: person.email.lowercased(), role: ""))
+        }
+        for e in note.attendees ?? [] where seen.insert(e.lowercased()).inserted {
+            people.append(ProjectPerson(name: e, email: e.lowercased(), role: ""))
+        }
+        p.people = people.isEmpty ? nil : people
+        if people.count == 1, let only = people.first, only.name != only.email { p.client = only.name }
+        if let series = Self.series(note.title) { p.keywords = [series] }
+        return p
+    }
+
+    /// A project was just made: file every waiting note that now clearly belongs to it (same people
+    /// or meeting series). They show under "Filed automatically" so Emma can undo any of them.
+    func refile(into projectID: UUID) {
+        guard let deals, let projects else { return }
+        for note in unmatched {
+            if case .sure(let dealID, let pid) = match(note, deals: deals, projects: projects), pid == projectID {
+                place(note, dealID: dealID, projectID: pid, auto: true)
+            }
+        }
+        save()
+    }
+
+    /// From "Filed automatically": Lens got it wrong. Take it off and ask again.
+    func notThisProject(_ noteID: String) {
+        guard let note = note(id: noteID) else { projects?.dropAutoFiled(.note, itemID: noteID); return }
+        unassign(note)
+    }
 
     /// Emma picked the deal for an unmatched summary (it goes on the deal's project too, once booked).
     func assign(_ note: MeetingNote, toDeal id: UUID) {
@@ -573,6 +630,7 @@ final class ZoomNotes: ObservableObject {
     }
 
     private func removeEverywhere(_ note: MeetingNote) {
+        projects?.dropAutoFiled(.note, itemID: note.id)
         for d in deals?.deals ?? [] where (d.meetingNotes ?? []).contains(where: { $0.id == note.id }) {
             deals?.removeNote(note.id, from: d.id)
         }

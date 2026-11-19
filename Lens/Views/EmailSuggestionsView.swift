@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// "From your email": new inquiries (on Pipeline) or booked work (on Projects) that Lens spotted in Gmail.
-/// Each one waits for Emma to tap Add or Ignore.
+/// Inquiries wait for Add or Ignore. On Projects, new work offers Add project (filled in), and emails Lens
+/// wasn't sure about ask "Which project is this for?". Ones it's sure about are filed by themselves.
 struct EmailSuggestionsPanel: View {
     enum Place { case pipeline, projects }
 
@@ -61,7 +62,9 @@ struct EmailSuggestionsPanel: View {
         if gmail.checking { return "Checking your email…" }
         if let last = gmail.lastChecked {
             let when = last.formatted(.relative(presentation: .named))
-            return items.isEmpty ? "Nothing new. Checked \(when)." : "Checked \(when). Nothing is added until you say so."
+            if items.isEmpty { return "Nothing new. Checked \(when)." }
+            return place == .pipeline ? "Checked \(when). Nothing is added until you say so."
+                                      : "Checked \(when). Emails Lens is sure about go on their project by themselves."
         }
         return "Lens looks every hour."
     }
@@ -72,6 +75,7 @@ private struct SuggestionRow: View {
     @EnvironmentObject private var navigator: Navigator
     let item: EmailSuggestion
     let place: EmailSuggestionsPanel.Place
+    @State private var drafting: ProjectDraft?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -96,6 +100,28 @@ private struct SuggestionRow: View {
                 }
             }
             Spacer(minLength: 8)
+            actions
+        }
+        .padding(12)
+        .background(Theme.raised.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .sheet(item: $drafting) { draft in ProjectDraftSheet(draft: draft) }
+    }
+
+    @ViewBuilder private var actions: some View {
+        if place == .projects && item.kind == .attach {
+            WhichProjectMenu(guess: item.targetProjectID,
+                             onPick: { gmail.file(item, into: $0) },
+                             onNew: { drafting = ProjectDraft(project: gmail.draft(for: item), email: item) },
+                             onNone: { gmail.ignore(item) })
+        } else if item.kind == .project {
+            HStack(spacing: 8) {
+                Button("Ignore") { gmail.ignore(item) }.buttonStyle(SecondaryButtonStyle())
+                Button("Add project") { drafting = ProjectDraft(project: gmail.draft(for: item), email: item) }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .help("Make a project for this, filled in from the email. You can check it before it's saved.")
+            }
+        } else {
             HStack(spacing: 8) {
                 Button("Ignore") { gmail.ignore(item) }.buttonStyle(SecondaryButtonStyle())
                 Button("Add") {
@@ -105,16 +131,15 @@ private struct SuggestionRow: View {
                 .buttonStyle(PrimaryButtonStyle())
             }
         }
-        .padding(12)
-        .background(Theme.raised.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var badge: String {
         switch item.kind {
         case .inquiry: return "New inquiry"
         case .project: return "Booked work"
-        case .attach: return "Belongs to \(item.targetName ?? "a gig")"
+        case .attach:
+            if place == .projects { return "Not sure which project" }
+            return "Belongs to \(item.targetName ?? "a gig")"
         }
     }
 
