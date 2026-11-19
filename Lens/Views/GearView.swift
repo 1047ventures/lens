@@ -59,7 +59,7 @@ struct GearView: View {
                         Text("Bought").frame(width: 84, alignment: .leading)
                         Text("Paid").frame(width: 84, alignment: .trailing)
                         Text("Worth now").frame(width: 92, alignment: .trailing)
-                        Text("Last looked after").frame(width: 170, alignment: .leading).padding(.leading, 18)
+                        Text("Last looked after").frame(minWidth: 70, maxWidth: 170, alignment: .leading).padding(.leading, 18)
                         Text("Shoots").frame(width: 60, alignment: .trailing)
                     }
                     .font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(Theme.muted)
@@ -84,7 +84,7 @@ struct GearView: View {
                                 Text((item.paidIsEstimate == true ? "~" : "") + Money.string(item.paid)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 84, alignment: .trailing)
                                 Text(Money.string(item.value())).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 92, alignment: .trailing)
                                 Text(serviceText(item)).font(.system(size: 12)).foregroundStyle(item.needsService ? Theme.amber : Theme.text3)
-                                    .lineLimit(1).frame(width: 170, alignment: .leading).padding(.leading, 18)
+                                    .lineLimit(1).frame(minWidth: 70, maxWidth: 170, alignment: .leading).padding(.leading, 18)
                                 Text(item.shoots.map(String.init) ?? "—").font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 60, alignment: .trailing)
                             }
                             .padding(.vertical, 9)
