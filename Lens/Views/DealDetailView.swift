@@ -5,6 +5,7 @@ import SwiftUI
 struct DealDetailView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
     let dealID: UUID
 
@@ -418,6 +419,9 @@ struct DealDetailView: View {
             }
             .panel()
             .accentBar(Palette.sand)
+            if !people.people(onDeal: deal.id).isEmpty {
+                PeoplePanel(target: .deal(deal.id))
+            }
             if let notes = deal.meetingNotes, !notes.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ColorLabel("Meeting notes · \(notes.count)", Palette.violet)

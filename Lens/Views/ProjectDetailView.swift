@@ -31,9 +31,9 @@ struct ProjectDetailView: View {
                     HStack(alignment: .top, spacing: 28) {
                         VStack(alignment: .leading, spacing: 28) { footagePanel; story }
                             .frame(minWidth: 420)
-                        VStack(alignment: .leading, spacing: 28) { details; meetingNotes; emails }.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) { details; PeoplePanel(target: .project(project.id)); meetingNotes; emails }.frame(width: 300)
                     }
-                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; meetingNotes; emails }
+                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; PeoplePanel(target: .project(project.id)); meetingNotes; emails }
                 }
             }
             .padding(.horizontal, 48)
