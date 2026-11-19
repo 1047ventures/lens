@@ -474,6 +474,10 @@ private struct GoogleControls: View {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
                     Text(logins.state.googleEmail ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Button("Disconnect") { Task { await logins.disconnectGoogle() } }.buttonStyle(SecondaryButtonStyle())
+                    Button("Start Google over") { Task { await logins.startGoogleOver() } }
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
+                        .help("Forgets Lens's saved Google setup and sign-in, so a new Google file can be used.")
                 }
                 if logins.googleNeedsNewSignIn {
                     Text("Lens now also reads Google Calendar. Sign in once more to allow it.")
