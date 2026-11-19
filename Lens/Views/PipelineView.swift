@@ -34,6 +34,8 @@ struct PipelineView: View {
                         .buttonStyle(PrimaryButtonStyle())
                 }
 
+                EmailSuggestionsPanel(place: .pipeline)
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
                         column("New inquiry", deals.deals(in: .inquiry), color: DealStage.inquiry.color)

@@ -49,6 +49,7 @@ FILES = [
 
     (f"{APP_NAME}/Views/ContentView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/WhatsNewView.swift",              f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/EmailSuggestionsView.swift",      f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/DuplicatesView.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/CacheCleanupView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/CleanupExplainedView.swift",      f"{APP_NAME}/Views"),
@@ -85,6 +86,7 @@ FILES = [
     (f"{APP_NAME}/Services/VoiceInput.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/Attachments.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/LensAI.swift",                 f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/GmailSync.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/Connections.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Models/Deal.swift",                     f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Services/Estimator.swift",              f"{APP_NAME}/Services"),

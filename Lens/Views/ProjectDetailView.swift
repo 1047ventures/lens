@@ -31,9 +31,9 @@ struct ProjectDetailView: View {
                     HStack(alignment: .top, spacing: 28) {
                         VStack(alignment: .leading, spacing: 28) { footagePanel; story }
                             .frame(minWidth: 420)
-                        details.frame(width: 300)
+                        VStack(alignment: .leading, spacing: 28) { details; emails }.frame(width: 300)
                     }
-                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details }
+                    VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; emails }
                 }
             }
             .padding(.horizontal, 48)
@@ -216,6 +216,16 @@ struct ProjectDetailView: View {
             .padding(.top, 4)
         }
         .panel(padding: 20)
+    }
+
+    @ViewBuilder private var emails: some View {
+        if let threads = project.emails, !threads.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Emails · \(threads.count)")
+                EmailThreadsList(threads: threads)
+            }
+            .panel(padding: 20)
+        }
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

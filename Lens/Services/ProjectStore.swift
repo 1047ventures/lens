@@ -53,6 +53,20 @@ final class ProjectStore: ObservableObject {
         update(updated)
     }
 
+    /// Links a Gmail conversation to a project, or refreshes it if it's already linked.
+    func attachEmail(_ thread: EmailThread, to projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        var list = p.emails ?? []
+        if let i = list.firstIndex(where: { $0.id == thread.id }) {
+            guard list[i] != thread else { return }
+            list[i] = thread
+        } else {
+            list.append(thread)
+        }
+        p.emails = list.sorted { $0.lastDate > $1.lastDate }
+        update(p)
+    }
+
     /// Creates a project for each top-level folder on a drive (and each folder inside an
     /// "Organized" folder, the structure the organizer builds). Skips Premiere cache folders,
     /// hidden folders, and folders that already belong to a project. Returns how many were added.
