@@ -452,10 +452,7 @@ struct MoneyView: View {
                         .foregroundStyle(Theme.muted).frame(width: 64, alignment: .leading)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(t.description).font(.system(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
-                        if let p = projects.project(id: t.projectID) {
-                            Button(p.name) { navigator.openProject(p.id) }.buttonStyle(.plain)
-                                .font(.system(size: 11)).foregroundStyle(Palette.blue)
-                        }
+                        projectTag(t)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Text(t.account.label).font(.system(size: 12)).foregroundStyle(Theme.text3).frame(width: 90, alignment: .leading)
@@ -489,6 +486,37 @@ struct MoneyView: View {
         }
         .panel()
         .accentBar(Palette.blue)
+    }
+
+    /// The project a transaction belongs to, picked in one click from the open projects.
+    /// When the description or date clearly fits one, Lens offers it.
+    @ViewBuilder private func projectTag(_ t: Txn) -> some View {
+        let open = projects.active
+        HStack(spacing: 10) {
+            Menu {
+                if let p = projects.project(id: t.projectID) {
+                    Button("Open \(p.name)") { navigator.openProject(p.id) }
+                    Button("Take off \(p.name)") { money.setProject(t, nil) }
+                    Divider()
+                }
+                ForEach(open.filter { $0.id != t.projectID }) { p in
+                    Button(p.name) { money.setProject(t, p.id); show("Added to \(p.name)") }
+                }
+            } label: {
+                Text(projects.project(id: t.projectID)?.name ?? "Add to project")
+                    .font(.system(size: 11))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .foregroundStyle(t.projectID == nil ? Theme.muted : Palette.blue)
+            if t.projectID == nil, let guess = MoneyStore.suggestedProject(for: t, in: open) {
+                Button("\(guess.name)?") { money.setProject(t, guess.id); show("Added to \(guess.name)") }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.teal)
+                    .help("Looks like it's for \(guess.name). Click to add it.")
+            }
+        }
     }
 
     // MARK: Import

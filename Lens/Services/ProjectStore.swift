@@ -88,6 +88,56 @@ final class ProjectStore: ObservableObject {
         update(p)
     }
 
+    // MARK: - Time
+
+    /// The project whose timer is running, if any. Only one runs at a time.
+    var timing: Project? { projects.first { $0.timerStartedAt != nil } }
+
+    /// Starts the timer on a project, stopping (and logging) any other one first.
+    func startTimer(_ projectID: UUID, kind: TimeKind) {
+        if let running = timing, running.id != projectID { stopTimer(running.id) }
+        guard var p = project(id: projectID), p.timerStartedAt == nil else { return }
+        p.timerStartedAt = Date()
+        p.timerKind = kind
+        update(p)
+    }
+
+    /// Stops the timer and logs the time. Anything under a minute is dropped.
+    func stopTimer(_ projectID: UUID) {
+        guard var p = project(id: projectID), let started = p.timerStartedAt else { return }
+        let hours = Date().timeIntervalSince(started) / 3600
+        p.timerStartedAt = nil
+        if hours >= 1.0 / 60 {
+            var list = p.timeEntries ?? []
+            list.append(TimeEntry(date: started, hours: (hours * 100).rounded() / 100,
+                                  kind: p.timerKind ?? TimeKind.guess(for: p.stage), note: "Timer"))
+            p.timeEntries = list.sorted { $0.date > $1.date }
+        }
+        update(p)
+    }
+
+    /// Adds time, or saves changes to time already logged.
+    func saveTime(_ entry: TimeEntry, to projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        var list = p.timeEntries ?? []
+        if let i = list.firstIndex(where: { $0.id == entry.id }) { list[i] = entry } else { list.append(entry) }
+        p.timeEntries = list.sorted { $0.date > $1.date }
+        update(p)
+    }
+
+    func deleteTime(_ entryID: UUID, from projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        p.timeEntries = (p.timeEntries ?? []).filter { $0.id != entryID }
+        update(p)
+    }
+
+    /// Stops suggesting a Zoom call or calendar event as time.
+    func skipTimeSource(_ source: String, on projectID: UUID) {
+        guard var p = project(id: projectID) else { return }
+        p.skippedTimeSources = (p.skippedTimeSources ?? []) + [source]
+        update(p)
+    }
+
     /// Creates a project for each top-level folder on a drive (and each folder inside an
     /// "Organized" folder, the structure the organizer builds). Skips Premiere cache folders,
     /// hidden folders, and folders that already belong to a project. Returns how many were added.
@@ -161,7 +211,15 @@ final class ProjectStore: ObservableObject {
         guard let data = try? Data(contentsOf: Self.storeURL) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        projects = (try? decoder.decode([Project].self, from: data)) ?? []
+        do {
+            projects = try decoder.decode([Project].self, from: data)
+        } catch {
+            // Keep a copy before anything is saved over it, so nothing is lost for good.
+            NSLog("Lens: couldn't read projects.json: \(error)")
+            let backup = Self.storeURL.deletingLastPathComponent()
+                .appendingPathComponent("projects-unreadable-\(Int(Date().timeIntervalSince1970)).json")
+            try? data.write(to: backup)
+        }
     }
 
     private func save() {
