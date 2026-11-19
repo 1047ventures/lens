@@ -77,6 +77,8 @@ FILES = [
     (f"{APP_NAME}/Views/GearView.swift",                  f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Models/Money.swift",                    f"{APP_NAME}/Models"),
     (f"{APP_NAME}/Services/MoneyStore.swift",             f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/GearIdentifier.swift",         f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Views/GearPhotoImportView.swift",       f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/Updater.swift",                f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/VoiceInput.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/LensAI.swift",                 f"{APP_NAME}/Services"),
