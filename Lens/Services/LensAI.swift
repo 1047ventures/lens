@@ -233,7 +233,7 @@ final class LensAI: ObservableObject {
 
         do {
             for _ in 0..<12 {   // at most 12 rounds of looking things up per question
-                let (content, stop) = try await stream(key: key)
+                let (content, stop) = try await streamRecovering(key: key)
                 messages.append(["role": "assistant", "content": content])
                 status = nil
                 if stop == "refusal" {
@@ -277,7 +277,8 @@ final class LensAI: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(key, forHTTPHeaderField: "x-api-key")
         request.setValue("2026-10-21", forHTTPHeaderField: "anthropic-version")
-        request.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
+        // thinking-binding-controls lets the API skip earlier reasoning it can't verify instead of failing the question.
+        request.setValue("server-side-fallback-2026-07-01,thinking-binding-controls-2026-08-01", forHTTPHeaderField: "anthropic-beta")
 
         var system: [[String: Any]] = [["type": "text", "text": Self.systemPrompt, "cache_control": ["type": "ephemeral"]]]
         if !notes.isEmpty {
@@ -291,6 +292,8 @@ final class LensAI: ObservableObject {
             "tools": Self.tools,
             "messages": messages,
             "output_config": ["effort": "high"],
+            // Earlier reasoning that no longer matches the chat is dropped, not turned into an error for Emma.
+            "thinking": ["type": "adaptive", "block_binding": ["prefix_mismatch_behavior": "drop_block"]],
             "cache_control": ["type": "ephemeral"],
             // If Claude declines on a safety classifier, the API retries on a suitable model.
             "fallbacks": "default",
@@ -306,7 +309,25 @@ final class LensAI: ObservableObject {
         case 401: return AIError("The Claude API key isn't valid. Check it in Log-ins.")
         case 429: return AIError("Claude is busy or the monthly limit was hit. Try again in a minute.")
         case 529, 500...599: return AIError("Claude is having a moment. Try again shortly.")
+        case 400 where message.contains("`thinking` block") || message.contains("block_binding"):
+            return AIError("Ask Lens lost track of its earlier answers in this chat.", staleThinking: true)
         default: return AIError("Claude couldn't answer: \(message)")
+        }
+    }
+
+    /// Streams one turn. If Claude rejects reasoning from earlier in this chat, Lens forgets that
+    /// reasoning (removing all of it is always allowed) and asks once more, so Emma just gets her answer.
+    private func streamRecovering(key: String) async throws -> (content: [[String: Any]], stop: String?) {
+        do {
+            return try await stream(key: key)
+        } catch let error as AIError where error.staleThinking {
+            messages = messages.map { message in
+                guard message["role"] as? String == "assistant", let content = message["content"] as? [[String: Any]] else { return message }
+                var copy = message
+                copy["content"] = content.filter { !["thinking", "redacted_thinking"].contains($0["type"] as? String ?? "") }
+                return copy
+            }
+            return try await stream(key: key)
         }
     }
 
@@ -424,7 +445,9 @@ final class LensAI: ObservableObject {
 
     struct AIError: LocalizedError {
         let message: String
-        init(_ message: String) { self.message = message }
+        /// Claude refused older reasoning from this chat; safe to retry without it.
+        var staleThinking = false
+        init(_ message: String, staleThinking: Bool = false) { self.message = message; self.staleThinking = staleThinking }
         var errorDescription: String? { message }
     }
 
