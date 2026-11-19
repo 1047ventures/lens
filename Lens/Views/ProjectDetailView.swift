@@ -11,11 +11,13 @@ struct ProjectDetailView: View {
     @State private var tab: ProjectTab = .overview
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var money: MoneyStore
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var moving = false
 
     private var files: [MediaFile] { project.files(in: viewModel.allFiles) }
+    private var books: ProjectBooks { ProjectBooks.make(project, money: money, deals: deals) }
 
     var body: some View {
         ScrollView {
@@ -42,12 +44,24 @@ struct ProjectDetailView: View {
                         }
                         VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance }
                     }
-                case .people: ProjectPeopleTab(project: project)
+                case .people:
+                    VStack(alignment: .leading, spacing: 28) {
+                        ProjectPeopleTab(project: project)
+                        PeoplePanel(target: .project(project.id))
+                    }
                 case .notes: ProjectNotesTab(project: project)
                 case .emails: ProjectEmailsTab(project: project)
                 case .proposal: ProjectProposalTab(project: project)
-                case .hours: ProjectHoursTab(project: project)
-                case .money: ProjectMoneyTab(project: project)
+                case .hours:
+                    VStack(alignment: .leading, spacing: 28) {
+                        ProjectTimePanel(project: project, books: books)
+                        ProjectHoursTab(project: project)
+                    }
+                case .money:
+                    VStack(alignment: .leading, spacing: 28) {
+                        ProjectMoneyPanel(project: project, books: books)
+                        ProjectMoneyTab(project: project)
+                    }
                 }
             }
             .padding(.horizontal, 48)
@@ -295,6 +309,7 @@ struct ProjectDetailView: View {
             detailRow("Shoot", project.shootDate?.formatted(date: .abbreviated, time: .shortened) ?? "")
             detailRow("Location", project.location)
             detailRow("Keywords", (project.keywords ?? []).joined(separator: ", "))
+            detailRow("Price", books.price.map { Money.string($0) } ?? "")
             HStack(spacing: 10) {
                 Button("Edit details") { editing = true }
                     .buttonStyle(SecondaryButtonStyle())

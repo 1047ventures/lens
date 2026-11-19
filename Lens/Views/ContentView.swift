@@ -3,6 +3,7 @@ import SwiftUI
 enum SidebarSection: String, CaseIterable, Identifiable {
     case today = "Today"
     case pipeline = "Pipeline"
+    case people = "People"
     case projects = "Projects"
     case footage = "Library"
     case gear = "Gear"
@@ -16,6 +17,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "sun.max"
         case .pipeline: return "line.3.horizontal.decrease"
+        case .people: return "person.2"
         case .projects: return "folder"
         case .footage: return "photo.stack"
         case .gear: return "camera"
@@ -25,7 +27,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         }
     }
 
-    static var main: [SidebarSection] { [.today, .pipeline, .projects, .footage, .gear, .money, .logins] }
+    static var main: [SidebarSection] { [.today, .pipeline, .people, .projects, .footage, .gear, .money, .logins] }
 }
 
 /// Shared navigation state, so any screen can jump to a section or open a project.
@@ -34,6 +36,10 @@ final class Navigator: ObservableObject {
     @Published var section: SidebarSection? = .today
     @Published var projectID: UUID?
     @Published var dealID: UUID?
+    /// The person whose page is open in People.
+    @Published var personID: UUID?
+    /// Whether the "Find a person" search is showing.
+    @Published var findingPerson = false
     /// The deal whose proposal builder is open.
     @Published var builderDealID: UUID?
     /// Whether the Ask Lens panel is open.
@@ -70,6 +76,11 @@ final class Navigator: ObservableObject {
         section = .pipeline
     }
 
+    func openPerson(_ id: UUID) {
+        personID = id
+        section = .people
+    }
+
     func openProject(_ id: UUID) {
         projectID = id
         section = .projects
@@ -86,6 +97,7 @@ struct ContentView: View {
     @StateObject private var navigator = Navigator()
     @StateObject private var gmail = GmailSync()
     @StateObject private var zoom = ZoomNotes()
+    @StateObject private var people = PeopleStore()
     @State private var whatsNew: [WhatsNew.Item] = []
 
     var body: some View {
@@ -97,6 +109,7 @@ struct ContentView: View {
                 switch navigator.section ?? .today {
                 case .today: TodayView()
                 case .pipeline: PipelineView()
+                case .people: PeopleView()
                 case .projects: ProjectsView()
                 case .footage: FootageView()
                 case .gear: GearView()
@@ -115,6 +128,20 @@ struct ContentView: View {
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
             }
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        navigator.findingPerson.toggle()
+                    } label: {
+                        Label("Find a person", systemImage: "person.crop.circle.badge.magnifyingglass")
+                    }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                    .help("Find a person (⇧⌘P)")
+                    .popover(isPresented: $navigator.findingPerson, arrowEdge: .bottom) {
+                        FindPersonPopover()
+                            .environmentObject(people)
+                            .environmentObject(navigator)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         navigator.askOpen.toggle()
@@ -160,14 +187,19 @@ struct ContentView: View {
         .environmentObject(navigator)
         .environmentObject(gmail)
         .environmentObject(zoom)
+        .environmentObject(people)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
-            ai.attach(deals: deals, projects: projects, navigator: navigator, money: money)
+            // People: everyone on a deal or project, kept up to date as those change.
+            people.attach(deals: deals, projects: projects, money: money)
+            ai.attach(deals: deals, projects: projects, navigator: navigator, money: money, people: people)
             // Look through Gmail now and every hour for new inquiries and booked work.
-            gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai)
+            gmail.attach(deals: deals, projects: projects, logins: logins, ai: ai, people: people)
             gmail.start()
-            // Zoom AI summaries arrive by email too: attach each to its deal or project.
+            // Zoom AI summaries, straight from Zoom (or from Gmail until Zoom is connected): attach each to its deal or project.
             zoom.attach(deals: deals, projects: projects, logins: logins, ai: ai)
+            ai.attachZoom(zoom)
+            logins.importZoomClient()
             zoom.start()
             // First time Lens opens, show the tour.
             if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
@@ -185,6 +217,13 @@ struct ContentView: View {
         .onChange(of: logins.gmailReady) { _, ready in
             if ready { Task { await gmail.check(); await zoom.check() } }
         }
+        // Zoom just got connected: start reading every summary in the background.
+        .onChange(of: logins.zoomConnected) { _, connected in
+            if connected { Task { await zoom.check() } }
+        }
+        // @Published sends the new list before it's stored, so pass it along rather than reading the store.
+        .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }
+        .onReceive(projects.$projects) { list in people.sync(deals: deals.deals, projects: list) }
         .onChange(of: viewModel.isScanning) { _, scanning in
             if !scanning { projects.reconcileArchives() }
         }
@@ -208,6 +247,7 @@ struct Sidebar: View {
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var logins: ConnectionStore
+    @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
 
     var body: some View {
@@ -227,6 +267,7 @@ struct Sidebar: View {
                 ForEach(SidebarSection.main) { section in
                     Label(section.rawValue, systemImage: section.systemImage)
                         .badge(section == .pipeline ? deals.open.filter(\.isStale).count
+                               : section == .people ? people.followUpsDue.count
                                : section == .logins ? logins.progress.total - logins.progress.done : 0)
                         .tag(section)
                 }
@@ -261,6 +302,7 @@ struct Sidebar: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
+                RunningTimerBadge()
                 UpdateBanner()
                 Button {
                     navigator.open(.settings)

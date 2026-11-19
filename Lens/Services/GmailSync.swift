@@ -161,6 +161,7 @@ final class GmailSync: ObservableObject {
     private weak var projects: ProjectStore?
     private weak var logins: ConnectionStore?
     private weak var ai: LensAI?
+    private weak var people: PeopleStore?
     private var ignored: Set<String> = []
     /// Gmail's change counter for each conversation already looked at, so it's only read again when something new arrives.
     private var seen: [String: String] = [:]
@@ -177,7 +178,8 @@ final class GmailSync: ObservableObject {
 
     init() { load() }
 
-    func attach(deals: DealStore, projects: ProjectStore, logins: ConnectionStore, ai: LensAI) {
+    func attach(deals: DealStore, projects: ProjectStore, logins: ConnectionStore, ai: LensAI, people: PeopleStore? = nil) {
+        self.people = people
         self.deals = deals
         self.projects = projects
         self.logins = logins
@@ -233,10 +235,13 @@ final class GmailSync: ObservableObject {
                 let link = threadLink(thread, me: me)
                 // Already linked to a deal or project: just bring the conversation up to date.
                 if linkKnown(link, deals: deals, projects: projects) || linkByContact(thread, link, me: me, deals: deals, projects: projects) {
+                    people?.noteThread(thread, link: link, me: me, onFile: true)
                     suggestions.removeAll { $0.id == item.id && $0.kind != .attach }
                     seen[item.id] = item.history
                     continue
                 }
+                // Put the conversation on the page of anyone in People, and suggest new people from real two-way conversations.
+                people?.noteThread(thread, link: link, me: me, onFile: false)
                 if ignored.contains(item.id) { seen[item.id] = item.history; continue }
                 fresh.append((thread, link))
             }

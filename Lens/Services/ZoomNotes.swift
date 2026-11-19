@@ -1,11 +1,13 @@
 import Foundation
 
-/// Finds the Zoom AI Companion summaries Zoom emails to Emma's Gmail and attaches each one to the
-/// deal or project it's about. Lens looks at who was on the call, the meeting title, the client,
-/// the people on each project (directors, interviewees, crew), and the project's name and keywords.
-/// When that isn't clear, Claude picks from her open projects. A note is only placed by itself when
-/// Lens is sure; otherwise it waits in "Unmatched notes", with a one-tap suggestion when there is one.
-/// When Emma moves a note, Lens remembers that choice for the people on the call and the meeting series.
+/// Finds Emma's Zoom AI Companion summaries and attaches each one to the deal or project it's about.
+/// When Zoom is connected, Lens reads every full summary straight from Zoom: on the first connect it
+/// goes back as far as Zoom keeps them, then checks hourly. Otherwise it falls back to the summary
+/// emails Zoom sends to Gmail. Lens looks at who was on the call, the meeting title, the client, the
+/// people on each project and the project's name and keywords; when that isn't clear, Claude picks from
+/// her open projects. A note is only filed by itself when Lens is sure. Recent ones it isn't sure about
+/// wait in "Unmatched notes"; older ones are kept quietly so Ask Lens can still search them. When Emma
+/// moves a note, Lens remembers that choice for the people on the call and the meeting series.
 @MainActor
 final class ZoomNotes: ObservableObject {
     /// A summary that didn't clearly belong to one deal or project.
@@ -18,6 +20,13 @@ final class ZoomNotes: ObservableObject {
     @Published private(set) var problem: String?
     /// Unmatched notes Lens thinks belong to a project: note id → project id.
     @Published private(set) var suggested: [String: UUID] = [:]
+    /// While reading from Zoom: "Reading your Zoom summaries… 40 so far".
+    @Published private(set) var progress: String?
+    /// How many summaries Lens has read straight from Zoom, and the newest one's date.
+    var zoomCount: Int { zoomRead.count }
+    @Published private(set) var zoomNewest: Date?
+    /// Every summary read from Zoom has been read, back to the oldest Zoom keeps.
+    @Published private(set) var backfillDone = false
 
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
@@ -29,6 +38,24 @@ final class ZoomNotes: ObservableObject {
     /// Summaries already placed (on a deal, a project, or set aside), so they aren't placed again.
     private var handled: Set<String> = []
     private var loop: Task<Void, Never>?
+    /// Older summaries that didn't match a client, or that Emma set aside. Not shown as a to-do,
+    /// but Ask Lens can still read them.
+    private(set) var kept: [MeetingNote] = []
+    /// Zoom meeting ids already read from Zoom.
+    private var zoomRead: Set<String> = []
+    /// Summaries older than this are still to be read on the first pass through her Zoom history.
+    private var backfillCursor: Date?
+    private var lastZoomSync: Date?
+    /// The Zoom app can only see her own meetings (not the whole account's summary list).
+    private var userLevel = false
+    /// Notes Emma said aren't for a client, so the same meeting read again from Zoom stays out of the way.
+    private var dismissedStubs: [Stub] = []
+    private var again = false
+
+    /// Zoom's AI summaries started in 2023, so there's nothing older to look for.
+    private static let oldest = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2023, month: 1, day: 1).date!
+    /// Unmatched summaries newer than this go on the to-do list; older ones are just kept.
+    private static let recentDays = 60.0
 
     init() { load() }
 
@@ -37,9 +64,10 @@ final class ZoomNotes: ObservableObject {
         self.deals = deals
         self.projects = projects
         self.logins = logins
+        updateReport()
     }
 
-    var ready: Bool { logins?.gmailReady ?? false }
+    var ready: Bool { (logins?.zoomConnected ?? false) || (logins?.gmailReady ?? false) }
 
     /// Checks now, then every hour while Lens is open.
     func start() {
@@ -57,10 +85,196 @@ final class ZoomNotes: ObservableObject {
     /// Gmail search for AI Companion meeting summaries (and Zoom Phone call summaries).
     static let query = "from:zoom.us {subject:\"meeting summary\" subject:\"meeting assets\" subject:\"call summary\" subject:recap} newer_than:120d -in:spam -in:trash"
 
+    /// Reads from Zoom when it's connected, otherwise from Gmail.
     func check() async {
-        guard !checking, ready, let logins, let deals, let projects else { return }
+        guard ready, let logins, let deals, let projects else { return }
+        // Already checking: go round once more when it finishes (for example, Zoom was just connected).
+        if checking { again = true; return }
         checking = true
-        defer { checking = false }
+        defer { checking = false; progress = nil }
+        repeat {
+            again = false
+            if logins.zoomConnected {
+                await checkZoom(logins: logins, deals: deals, projects: projects)
+            } else if logins.gmailReady {
+                await checkGmail(logins: logins, deals: deals, projects: projects)
+            }
+        } while again
+    }
+
+    // MARK: Straight from Zoom
+
+    private func checkZoom(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async {
+        var attempts = 0
+        while true {
+            do {
+                try await syncZoom(logins: logins, deals: deals, projects: projects)
+                problem = nil
+                lastChecked = Date()
+                break
+            } catch let failure as ZoomAuth.Failure where failure.code == "rate_limited" && attempts < 5 {
+                // Zoom wants a pause; carry on where Lens left off.
+                attempts += 1
+                save()
+                try? await Task.sleep(for: .seconds(60))
+            } catch {
+                problem = ZoomAuth.explain(error).message
+                break
+            }
+        }
+        unmatched.sort { $0.date > $1.date }
+        updateReport()
+        save()
+    }
+
+    private func syncZoom(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        let started = Date()
+        // New summaries since the last look, with a few days' overlap in case Zoom finished one late.
+        let since = (lastZoomSync ?? started.addingTimeInterval(-30 * 86400)).addingTimeInterval(-3 * 86400)
+        if !userLevel {
+            do {
+                try await readWindow(from: since, to: started, logins: logins, deals: deals, projects: projects)
+            } catch let failure as ZoomAuth.Failure where failure.code == "missing_scope" {
+                // This Zoom app can't list the account's summaries; go through her own meetings instead.
+                userLevel = true
+            }
+        }
+        if userLevel {
+            try await readPastMeetings(logins: logins, deals: deals, projects: projects)
+            backfillDone = true
+        }
+        if backfillCursor == nil { backfillCursor = since }
+        lastZoomSync = started
+        save()
+
+        // First time: go back through her Zoom history a month at a time, saving after each month.
+        while !backfillDone, let cursor = backfillCursor {
+            let from = max(cursor.addingTimeInterval(-30 * 86400), Self.oldest)
+            try await readWindow(from: from, to: cursor, logins: logins, deals: deals, projects: projects)
+            backfillCursor = from
+            if from <= Self.oldest { backfillDone = true }
+            updateReport()
+            save()
+        }
+    }
+
+    private func readWindow(from: Date, to: Date, logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        var page: String?
+        repeat {
+            let result = try await ZoomAPI.summaries(from: from, to: to, pageToken: page, token: try await logins.zoomAccessToken())
+            for ref in result.refs {
+                try await read(ref, logins: logins, deals: deals, projects: projects)
+            }
+            page = result.next
+        } while page != nil
+    }
+
+    private func readPastMeetings(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        var page: String?
+        repeat {
+            let result = try await ZoomAPI.pastMeetings(pageToken: page, token: try await logins.zoomAccessToken())
+            for ref in result.refs {
+                try await read(ref, logins: logins, deals: deals, projects: projects)
+            }
+            page = result.next
+        } while page != nil
+    }
+
+    /// Reads one meeting's full summary and puts it where it belongs.
+    private func read(_ ref: ZoomAPI.Ref, logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        let key = "zoom:" + ref.uuid
+        if handled.contains(key) || zoomRead.contains(ref.uuid) { return }
+        if allNotes(deals: deals, projects: projects).contains(where: { $0.zoomMeetingID == ref.uuid }) {
+            zoomRead.insert(ref.uuid)
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(150))   // gentle on Zoom
+        let token = try await logins.zoomAccessToken()
+        guard let s = try await ZoomAPI.summary(ref, token: token) else {
+            // No summary for this meeting. A call that only just ended may still get one, so look again later.
+            if (ref.start ?? .distantPast) < Date().addingTimeInterval(-86400) { handled.insert(key) }
+            return
+        }
+        let host = s.hostEmail?.lowercased() ?? ""
+        let people = await ZoomAPI.people(ref, token: token).filter { host.isEmpty || $0.email != host }
+        let shortText = s.overview.isEmpty ? (s.sections.first?.text ?? "") : s.overview
+        let note = MeetingNote(id: key, title: s.title, date: s.date, summary: shortText,
+                               link: s.link ?? "https://zoom.us/meeting", source: "zoom", zoomMeetingID: ref.uuid,
+                               overview: s.overview, sections: s.sections, nextSteps: s.nextSteps, people: people)
+        zoomRead.insert(ref.uuid)
+        handled.insert(key)
+        if zoomNewest.map({ note.date > $0 }) ?? true { zoomNewest = note.date }
+        progress = "Reading your Zoom summaries… \(zoomRead.count) so far"
+        if !logins.isConfirmed("zoom") { logins.setConfirmed("zoom", true) }
+
+        // The same call Lens already has from its Gmail email: swap in the full summary, same place.
+        if let twin = allNotes(deals: deals, projects: projects).first(where: { !$0.fromZoom && Self.sameMeeting($0, note) }) {
+            upgrade(twin, to: note, deals: deals, projects: projects)
+            return
+        }
+        if dismissedStubs.contains(where: { $0.matches(note) }) {
+            kept.append(note)
+            return
+        }
+        switch match(note, deals: deals, projects: projects) {
+        case .sure(let dealID, let projectID):
+            place(note, dealID: dealID, projectID: projectID)
+        case .maybe(let projectID):
+            if note.date > Date().addingTimeInterval(-Self.recentDays * 86400) {
+                unmatched.append(note)
+                if let projectID { suggested[note.id] = projectID }
+            } else {
+                kept.append(note)
+            }
+        }
+    }
+
+    /// Replaces a Gmail note with the full Zoom summary, keeping it wherever it already is.
+    private func upgrade(_ old: MeetingNote, to new: MeetingNote, deals: DealStore, projects: ProjectStore) {
+        var full = new
+        full.id = old.id
+        for d in deals.deals where (d.meetingNotes ?? []).contains(where: { $0.id == old.id }) { deals.attachNote(full, to: d.id) }
+        for p in projects.projects where (p.meetingNotes ?? []).contains(where: { $0.id == old.id }) { projects.attachNote(full, to: p.id) }
+        if let i = unmatched.firstIndex(where: { $0.id == old.id }) {
+            unmatched[i] = full
+            // With who was in the call, Lens may now know where it goes.
+            switch match(full, deals: deals, projects: projects) {
+            case .sure(let dealID, let projectID): place(full, dealID: dealID, projectID: projectID)
+            case .maybe(let projectID): if let projectID { suggested[full.id] = projectID }
+            }
+        }
+        if let i = kept.firstIndex(where: { $0.id == old.id }) { kept[i] = full }
+    }
+
+    /// The Gmail email and the Zoom summary of one call: same meeting name, within two days.
+    nonisolated static func sameMeeting(_ a: MeetingNote, _ b: MeetingNote) -> Bool {
+        normal(a.title) == normal(b.title) && abs(a.date.timeIntervalSince(b.date)) < 2 * 86400
+    }
+
+    nonisolated private static func normal(_ title: String) -> String {
+        String(title.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    /// Every note Lens has: on deals, on projects, unmatched and kept.
+    func allNotes(deals: DealStore, projects: ProjectStore) -> [MeetingNote] {
+        var seen = Set<String>()
+        let all = deals.deals.flatMap { $0.meetingNotes ?? [] } + projects.projects.flatMap { $0.meetingNotes ?? [] } + unmatched + kept
+        return all.filter { seen.insert($0.id).inserted }
+    }
+
+    /// "143 summaries read · newest Nov 18", shown in Log-ins.
+    private func updateReport() {
+        guard let logins else { return }
+        guard logins.zoomConnected else { logins.zoomReport = nil; return }
+        let n = zoomRead.count
+        var text = "\(n) summar\(n == 1 ? "y" : "ies") read"
+        if let newest = zoomNewest { text += " · newest \(newest.formatted(.dateTime.month(.abbreviated).day()))" }
+        logins.zoomReport = text
+    }
+
+    // MARK: From Gmail (when Zoom isn't connected)
+
+    private func checkGmail(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async {
         do {
             let token = try await logins.googleAccessToken()
             let me = logins.ownerEmail
@@ -83,6 +297,11 @@ final class ZoomNotes: ObservableObject {
                                        attendees: Self.attendees(message, summary: summary, me: me))
                 foundCount += 1
                 if alreadyOnFile(note.id, deals: deals, projects: projects) { handled.insert(note.id); continue }
+                // Lens already read this call's full summary from Zoom.
+                if allNotes(deals: deals, projects: projects).contains(where: { $0.fromZoom && Self.sameMeeting($0, note) }) {
+                    handled.insert(note.id)
+                    continue
+                }
                 switch match(note, deals: deals, projects: projects) {
                 case .sure(let dealID, let projectID):
                     place(note, dealID: dealID, projectID: projectID)
@@ -184,7 +403,7 @@ final class ZoomNotes: ObservableObject {
             }
         }
         let title = note.title.lowercased()
-        let haystack = (note.title + "\n" + note.summary + "\n" + (note.attendees ?? []).joined(separator: " ")).lowercased()
+        let haystack = (note.title + "\n" + note.fullText + "\n" + (note.attendees ?? []).joined(separator: " ")).lowercased()
         var targets: [Target] = []
         var linkedProjects = Set<UUID>()
         for d in deals.deals {
@@ -247,7 +466,8 @@ final class ZoomNotes: ObservableObject {
     static func memoryKeys(_ note: MeetingNote) -> [String] {
         var keys: [String] = []
         if let series = series(note.title) { keys.append("series:" + series) }
-        keys += (note.attendees ?? []).map { "person:" + $0.lowercased() }
+        let emails = (note.attendees ?? []) + (note.people ?? []).map(\.email).filter { $0.contains("@") }
+        keys += Set(emails.map { $0.lowercased() }).sorted().map { "person:" + $0 }
         return keys
     }
 
@@ -276,7 +496,7 @@ final class ZoomNotes: ObservableObject {
         }
         let calls: [[String: Any]] = notes.map {
             ["note_id": $0.id, "title": $0.title, "date": $0.date.formatted(.iso8601.year().month().day()),
-             "attendees": $0.attendees ?? [], "summary": String($0.summary.prefix(3000))]
+             "attendees": $0.attendees ?? [], "summary": String($0.fullText.prefix(3000))]
         }
         guard let data = try? JSONSerialization.data(withJSONObject: ["projects": known, "notes": calls], options: [.sortedKeys]),
               let answers = try? await ai.placeNotes(String(decoding: data, as: UTF8.self)) else { return }
@@ -359,13 +579,16 @@ final class ZoomNotes: ObservableObject {
         for p in projects?.projects ?? [] where (p.meetingNotes ?? []).contains(where: { $0.id == note.id }) {
             projects?.removeNote(note.id, from: p.id)
         }
+        kept.removeAll { $0.id == note.id }
     }
 
-    /// Not about any client: set it aside for good.
+    /// Not about any client: set it aside for good (Ask Lens can still read it).
     func dismiss(_ note: MeetingNote) {
         unmatched.removeAll { $0.id == note.id }
         suggested.removeValue(forKey: note.id)
         handled.insert(note.id)
+        dismissedStubs.append(Stub(title: note.title, date: note.date))
+        if !kept.contains(where: { $0.id == note.id }) { kept.append(note) }
         save()
     }
 
@@ -380,6 +603,15 @@ final class ZoomNotes: ObservableObject {
 
     // MARK: Saving (zoom_notes.json)
 
+    /// Enough to recognise a meeting Emma set aside.
+    private struct Stub: Codable {
+        var title: String
+        var date: Date
+        func matches(_ note: MeetingNote) -> Bool {
+            ZoomNotes.sameMeeting(MeetingNote(id: "", title: title, date: date, summary: "", link: ""), note)
+        }
+    }
+
     private struct Saved: Codable {
         var unmatched: [MeetingNote]?
         var handled: [String]?
@@ -388,6 +620,14 @@ final class ZoomNotes: ObservableObject {
         var newestSummary: Date?
         var suggested: [String: UUID]?
         var remembered: [String: UUID]?
+        var kept: [MeetingNote]?
+        var zoomRead: [String]?
+        var zoomNewest: Date?
+        var backfillCursor: Date?
+        var backfillDone: Bool?
+        var lastZoomSync: Date?
+        var userLevel: Bool?
+        var dismissed: [Stub]?
     }
 
     private func load() {
@@ -402,6 +642,14 @@ final class ZoomNotes: ObservableObject {
         newestSummary = saved.newestSummary
         suggested = saved.suggested ?? [:]
         remembered = saved.remembered ?? [:]
+        kept = saved.kept ?? []
+        zoomRead = Set(saved.zoomRead ?? [])
+        zoomNewest = saved.zoomNewest
+        backfillCursor = saved.backfillCursor
+        backfillDone = saved.backfillDone ?? false
+        lastZoomSync = saved.lastZoomSync
+        userLevel = saved.userLevel ?? false
+        dismissedStubs = saved.dismissed ?? []
     }
 
     private func save() {
@@ -410,7 +658,9 @@ final class ZoomNotes: ObservableObject {
         encoder.outputFormatting = .prettyPrinted
         let saved = Saved(unmatched: unmatched, handled: Array(handled), lastChecked: lastChecked,
                           foundCount: foundCount, newestSummary: newestSummary,
-                          suggested: suggested, remembered: remembered)
+                          suggested: suggested, remembered: remembered, kept: kept, zoomRead: Array(zoomRead),
+                          zoomNewest: zoomNewest, backfillCursor: backfillCursor, backfillDone: backfillDone,
+                          lastZoomSync: lastZoomSync, userLevel: userLevel, dismissed: dismissedStubs)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("zoom_notes.json"), options: .atomic) }
     }
 }

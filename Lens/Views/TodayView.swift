@@ -6,6 +6,7 @@ struct TodayView: View {
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var logins: ConnectionStore
+    @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
 
     private struct Item: Identifiable {
@@ -187,6 +188,22 @@ struct TodayView: View {
                                actionTitle: "Open deal") { navigator.openDeal(deal.id) })
         }
 
+        for person in people.followUpsDue {
+            let date = person.followUp ?? Date()
+            let late = !Calendar.current.isDateInToday(date)
+            let detail = [person.followUpNote, person.subtitle].first { !$0.isEmpty } ?? "Time to check in"
+            result.append(Item(tone: late ? .overdue : .soon,
+                               kicker: late ? "Follow-up was due \(date.formatted(.dateTime.month(.abbreviated).day()))" : "Follow up today",
+                               title: person.name, detail: detail,
+                               actionTitle: "Open person") { navigator.openPerson(person.id) })
+        }
+
+        for item in people.goneQuiet.prefix(4) {
+            result.append(Item(tone: .neutral, kicker: "Not in touch for \(item.days) days", title: item.person.name,
+                               detail: "On \(item.deal.title), still open. Worth a hello?",
+                               actionTitle: "Open person") { navigator.openPerson(item.person.id) })
+        }
+
         if viewModel.hasScanned {
             let reclaim = viewModel.overview.cacheBytes + viewModel.overview.duplicateWastedBytes
             if reclaim > 0 {
@@ -226,6 +243,10 @@ struct TodayView: View {
         if let top = nudges.max(by: { (deals.value(of: $0) ?? 0) < (deals.value(of: $1) ?? 0) }) {
             parts.append(nudges.count == 1 ? "\(top.title) has gone quiet for \(top.daysSinceTouch()) days, worth a nudge."
                                            : "\(nudges.count) deals need a nudge, starting with \(top.title).")
+        }
+        let due = people.followUpsDue
+        if !due.isEmpty {
+            parts.append(due.count == 1 ? "\(due[0].name) is due a follow-up." : "\(due.count) people are due a follow-up.")
         }
         if viewModel.hasScanned {
             let reclaim = viewModel.overview.cacheBytes + viewModel.overview.duplicateWastedBytes

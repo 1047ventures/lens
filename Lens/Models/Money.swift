@@ -85,6 +85,10 @@ struct Txn: Codable, Identifiable, Hashable {
     var category: MoneyCategory
     var projectID: UUID?
     var note: String?
+    /// File name of a receipt photo or PDF (in Application Support/Lens/Receipts). Optional so older books still load.
+    var receiptFile: String? = nil
+    /// True when Emma typed it in rather than it coming from a statement.
+    var addedByHand: Bool? = nil
 }
 
 /// Money a client owes: a deposit or a balance, with a due date.

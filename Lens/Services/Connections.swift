@@ -328,9 +328,19 @@ final class LoopbackReceiver: @unchecked Sendable {
         self.listener = listener
     }
 
-    static func start() async throws -> LoopbackReceiver {
+    /// `port` asks for a fixed port first (some services want the exact address they were given);
+    /// if it's taken, any free port is used.
+    static func start(port fixed: UInt16? = nil, timeout: Error = GoogleAuth.explain(code: "timeout")) async throws -> LoopbackReceiver {
+        if let fixed, let nwPort = NWEndpoint.Port(rawValue: fixed),
+           let receiver = try? await start(on: nwPort, timeout: timeout) {
+            return receiver
+        }
+        return try await start(on: .any, timeout: timeout)
+    }
+
+    private static func start(on port: NWEndpoint.Port, timeout: Error) async throws -> LoopbackReceiver {
         let params = NWParameters.tcp
-        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
         let receiver = LoopbackReceiver(listener: try NWListener(using: params))
         receiver.listener.newConnectionHandler = { [weak receiver] connection in receiver?.handle(connection) }
         receiver.port = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
@@ -348,7 +358,7 @@ final class LoopbackReceiver: @unchecked Sendable {
         }
         // Give up after five minutes so a forgotten browser tab doesn't leave Lens waiting forever.
         receiver.queue.asyncAfter(deadline: .now() + 300) { [weak receiver] in
-            receiver?.finish(.failure(GoogleAuth.explain(code: "timeout")))
+            receiver?.finish(.failure(timeout))
         }
         return receiver
     }
@@ -435,6 +445,9 @@ struct LoginState: Codable {
     var googleConnectedAt: Date?
     /// Which permissions Google actually granted at the last sign-in (space separated).
     var googleScopes: String?
+    /// The Zoom account Lens reads summaries from, once connected.
+    var zoomEmail: String?
+    var zoomConnectedAt: Date?
 }
 
 @MainActor
@@ -447,6 +460,11 @@ final class ConnectionStore: ObservableObject {
     /// Google's own wording for the last error, only passed along to Ask Lens.
     @Published var googleErrorCode: String?
     @Published private(set) var googleCalendarNames: [String] = []
+    @Published var zoomBusy = false
+    @Published var zoomError: String?
+    @Published var zoomErrorCode: String?
+    /// "143 summaries read · newest Nov 18", kept up to date by ZoomNotes.
+    @Published var zoomReport: String?
 
     private let eventStore = EKEventStore()
 
@@ -595,6 +613,100 @@ final class ConnectionStore: ObservableObject {
         save()
     }
 
+    // MARK: Zoom
+
+    var zoomClientID: String { Keychain.get("zoom.clientID") ?? "" }
+    var hasZoomClient: Bool { !zoomClientID.isEmpty && Keychain.get("zoom.clientSecret") != nil }
+    var zoomConnected: Bool { state.zoomEmail != nil && Keychain.get("zoom.refreshToken") != nil }
+    private var zoomToken: (token: String, expires: Date)?
+    private var zoomRefreshing: Task<String, Error>?
+
+    /// Picks up the Zoom file Claude put in Downloads, if there is one. A new file replaces the old setup.
+    func importZoomClient() {
+        let before = zoomClientID
+        guard ZoomClientFile.importIfNeeded() else { return }
+        if !before.isEmpty && before != zoomClientID { forgetZoomSignIn() }
+        zoomError = nil
+        zoomErrorCode = nil
+        objectWillChange.send()
+    }
+
+    private func forgetZoomSignIn() {
+        Keychain.delete("zoom.refreshToken")
+        state.zoomEmail = nil
+        state.zoomConnectedAt = nil
+        zoomToken = nil
+        zoomReport = nil
+        save()
+    }
+
+    func connectZoom() async {
+        importZoomClient()
+        guard hasZoomClient, let secret = Keychain.get("zoom.clientSecret") else { return }
+        zoomBusy = true
+        zoomError = nil
+        zoomErrorCode = nil
+        defer { zoomBusy = false }
+        do {
+            let tokens = try await ZoomAuth.signIn(clientID: zoomClientID, clientSecret: secret)
+            Keychain.set(tokens.refresh, for: "zoom.refreshToken")
+            zoomToken = (tokens.access, tokens.expires)
+            let me = try? await ZoomAPI.me(token: tokens.access)
+            state.zoomEmail = (me?.email).flatMap { $0.isEmpty ? nil : $0 } ?? "Zoom account"
+            state.zoomConnectedAt = Date()
+            save()
+        } catch {
+            let failure = ZoomAuth.explain(error)
+            zoomError = failure.message
+            zoomErrorCode = failure.code
+        }
+    }
+
+    /// A short-lived Zoom access token. Zoom swaps the saved refresh token for a new one each time,
+    /// so only one refresh runs at once and the new one is saved straight away.
+    func zoomAccessToken() async throws -> String {
+        if let cached = zoomToken, cached.expires > Date().addingTimeInterval(60) { return cached.token }
+        if let running = zoomRefreshing { return try await running.value }
+        guard let secret = Keychain.get("zoom.clientSecret"), let refresh = Keychain.get("zoom.refreshToken") else {
+            throw ZoomAuth.explain(code: "not_connected")
+        }
+        let clientID = zoomClientID
+        let task = Task { () throws -> String in
+            let tokens = try await ZoomAuth.refresh(refresh, clientID: clientID, clientSecret: secret)
+            Keychain.set(tokens.refresh, for: "zoom.refreshToken")
+            self.zoomToken = (tokens.access, tokens.expires)
+            return tokens.access
+        }
+        zoomRefreshing = task
+        defer { zoomRefreshing = nil }
+        do {
+            return try await task.value
+        } catch {
+            // Zoom no longer accepts the saved sign-in: show Connect Zoom again.
+            if (error as? ZoomAuth.Failure)?.code == "invalid_grant" || (error as? ZoomAuth.Failure)?.code == "invalid_request" {
+                forgetZoomSignIn()
+                zoomError = ZoomAuth.explain(code: "invalid_grant").message
+                zoomErrorCode = "invalid_grant"
+            }
+            throw error
+        }
+    }
+
+    func disconnectZoom() async {
+        if let token = Keychain.get("zoom.refreshToken"), let secret = Keychain.get("zoom.clientSecret") {
+            await ZoomAuth.revoke(token, clientID: zoomClientID, clientSecret: secret)
+        }
+        forgetZoomSignIn()
+        zoomError = nil
+        zoomErrorCode = nil
+    }
+
+    /// Plain-English question for the Get help button.
+    var zoomHelpQuestion: String {
+        "Connecting Zoom in Lens isn't working. Lens showed: \"\(zoomError ?? "an error")\"" +
+        (zoomErrorCode.map { " (code: \($0))" } ?? "") + ". What should I do next?"
+    }
+
     // MARK: Calendar
 
     func requestCalendar() async {
@@ -694,8 +806,9 @@ final class ConnectionStore: ObservableObject {
             return otherDriveAccounts.isEmpty ? .todo("Google Drive for desktop isn't installed")
                                               : .todo("Not signed in as Emma on this Mac")
         case .zoom:
-            if isConfirmed("zoom") { return gmail != nil ? .connected("Summaries arrive in Gmail") : .partial("Waiting on Google") }
-            return .todo("Turn on emailed AI summaries")
+            if zoomConnected { return .connected(zoomReport ?? "Reading your summaries") }
+            if isConfirmed("zoom") { return gmail != nil ? .partial("Emailed summaries only. Connect Zoom for all of them") : .partial("Waiting on Google") }
+            return .todo(hasZoomClient ? "Ready to connect" : "Not connected yet")
         case .website:
             if isConfirmed("website") { return gmail != nil ? .connected(field("website").isEmpty ? "Form emails arrive in Gmail" : field("website")) : .partial("Waiting on Google") }
             return .todo("Point form emails at Gmail")

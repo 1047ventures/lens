@@ -5,6 +5,8 @@ struct ProjectsView: View {
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var money: MoneyStore
+    @EnvironmentObject private var deals: DealStore
     @State private var editing: Project?
     @State private var creating = false
     @State private var importMessage: String?
@@ -98,6 +100,7 @@ struct ProjectsView: View {
                                     .foregroundStyle(Theme.muted)
                             }
                             Spacer(minLength: 16)
+                            glance(for: project)
                             VStack(alignment: .trailing, spacing: 6) {
                                 Text(project.stage.label)
                                     .font(.system(size: 12, weight: .semibold))
@@ -115,6 +118,30 @@ struct ProjectsView: View {
             .background(Theme.panel)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+        }
+    }
+
+    /// Hours and what she keeps, at a glance.
+    @ViewBuilder private func glance(for project: Project) -> some View {
+        let books = ProjectBooks.make(project, money: money, deals: deals)
+        if books.hours > 0 || books.keep != nil || books.spent > 0 {
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(spacing: 5) {
+                    if project.isTiming { Circle().fill(Theme.coral).frame(width: 7, height: 7) }
+                    Text(books.hours > 0 ? Hours.short(books.hours) : "No time yet")
+                        .font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(books.hours > 0 ? Theme.text2 : Theme.muted)
+                }
+                if let keep = books.keep {
+                    Text(keep >= 0 ? "Keep \(Money.short(keep))" : "Over by \(Money.short(-keep))")
+                        .font(.system(size: 12)).monospacedDigit()
+                        .foregroundStyle(keep >= 0 ? Theme.teal : Theme.coral)
+                } else if books.spent > 0 {
+                    Text("Spent \(Money.short(books.spent))")
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
+                }
+            }
+            .frame(width: 130, alignment: .trailing)
         }
     }
 
@@ -143,6 +170,7 @@ struct ProjectEditor: View {
     @State private var stage: ProjectStage = .lead
     @State private var folderPath: String?
     @State private var keywords = ""
+    @State private var priceText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -154,6 +182,7 @@ struct ProjectEditor: View {
                 TextField("Location", text: $location)
                 TextField("Keywords", text: $keywords, prompt: Text("CU, documentary"))
                     .help("Words that show a Zoom call or email is about this project, separated by commas")
+                TextField("Price", text: $priceText, prompt: Text("Leave empty to use the won deal's price"))
                 Toggle("Has a shoot date", isOn: $hasDate)
                 if hasDate {
                     DatePicker("Shoot date", selection: $shootDate)
@@ -194,6 +223,7 @@ struct ProjectEditor: View {
         stage = initial.stage
         folderPath = initial.folderPath
         keywords = (initial.keywords ?? []).joined(separator: ", ")
+        priceText = initial.price.map { String(Int($0.rounded())) } ?? ""
     }
 
     private func chooseFolder() {
@@ -217,6 +247,7 @@ struct ProjectEditor: View {
         project.folderPath = folderPath
         let words = keywords.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         project.keywords = words.isEmpty ? nil : words
+        project.price = MoneyStore.parseAmount(priceText).flatMap { $0 > 0 ? $0 : nil }
         if stageChanged { project.events.append(ProjectEvent(text: "Moved to \(stage.label)")) }
         onSave(project)
         dismiss()

@@ -13,7 +13,7 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
-        ("1.0.33", [
+        ("1.0.36", [
             Item(icon: "folder.fill", title: "Everything for a project in one place",
                  detail: "Each project now has tabs for People, Meeting notes, Emails, Proposal and files, Hours and Money, with a count on each."),
             Item(icon: "person.2.fill", title: "People on a project",
@@ -22,6 +22,26 @@ enum WhatsNew {
                  detail: "Lens looks at who was on the call, the meeting name and your project keywords. If it isn't sure, tap Add to put a note on the project, or Move to send it elsewhere. Lens remembers."),
             Item(icon: "doc.richtext.fill", title: "Your proposal on the project",
                  detail: "Open, print or save the proposal as a PDF from the project, and add contracts, treatments and call sheets from Drive or your Mac."),
+        ]),
+        ("1.0.35", [
+            Item(icon: "video.fill", title: "Connect Zoom",
+                 detail: "In Log-ins, click Connect Zoom and Lens reads every full Zoom AI summary, old and new, with next steps and who was there. Nothing to upload."),
+            Item(icon: "doc.text.fill", title: "Read the whole summary",
+                 detail: "Click a meeting note to see all of it, nicely laid out, with a link to open it in Zoom. Ask Lens can search them all too."),
+        ]),
+        ("1.0.34", [
+            Item(icon: "timer", title: "Track your hours",
+                 detail: "Start a timer on any project, or add time by hand. A small timer shows in the sidebar while it runs."),
+            Item(icon: "creditcard.fill", title: "See what you keep",
+                 detail: "Each project shows what you spent and what you keep. Add an expense with its receipt, or tag one in Money in a click."),
+        ]),
+        ("1.0.33", [
+            Item(icon: "person.2.fill", title: "People, everyone you work with",
+                 detail: "A new People section gathers your clients, directors, interviewees, crew and vendors, with every deal, project, email, Zoom note and payment on their page."),
+            Item(icon: "bell.fill", title: "Never forget a follow-up",
+                 detail: "Pick a follow-up date on anyone and Today reminds you. It also points out people on open deals you haven't heard from in a month."),
+            Item(icon: "magnifyingglass", title: "Find anyone fast",
+                 detail: "Press Shift Command P from anywhere to find a person, or ask Ask Lens things like who you haven't heard from lately."),
         ]),
         ("1.0.32", [
             Item(icon: "bubble.left.and.bubble.right.fill", title: "Ask Lens keeps going",
