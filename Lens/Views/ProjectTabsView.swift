@@ -33,6 +33,7 @@ struct ProjectPeopleTab: View {
     @State private var name = ""
     @State private var email = ""
     @State private var role = ""
+    @State private var showSuggestions = false
 
     private var people: [ProjectPerson] { project.people ?? [] }
 
@@ -40,7 +41,7 @@ struct ProjectPeopleTab: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 14) {
                 SectionLabel("People · \(people.count)")
-                Text("Zoom notes and emails with anyone here go on this project by themselves. Lens also adds people it keeps seeing in this project's calls and emails.")
+                Text("Only emails and calls with the people listed here go on this project. Take someone off with the x and their emails come off too.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text3)
                 if people.isEmpty {
                     Text("No one yet. Add the people you're working with, or pick from the suggestions below.")
@@ -52,7 +53,11 @@ struct ProjectPeopleTab: View {
             .panel(padding: 22)
 
             let found = suggestions
-            if !found.isEmpty {
+            if !found.isEmpty && !showSuggestions {
+                Button("Show \(found.count) other \(found.count == 1 ? "person" : "people") from this project's emails") { showSuggestions = true }
+                    .buttonStyle(.link).font(.system(size: 12))
+            }
+            if !found.isEmpty && showSuggestions {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         ColorLabel("Maybe on this project · \(found.count)", Palette.violet)
@@ -116,12 +121,12 @@ struct ProjectPeopleTab: View {
             .menuStyle(.borderedButton)
             .fixedSize()
             Button {
-                projects.edit(project.id) { p in p.people = (p.people ?? []).filter { $0.id != person.id } }
+                projects.removePerson(person, from: project.id)
             } label: {
                 Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             }
             .buttonStyle(.plain)
-            .help("Take \(person.name) off this project")
+            .help("Take \(person.name) off this project, with emails that only had them in it")
         }
         .padding(.vertical, 6)
     }
@@ -146,7 +151,11 @@ struct ProjectPeopleTab: View {
     private func add(_ person: ProjectPerson) {
         var p = person
         if p.name.isEmpty { p.name = p.email }
-        projects.edit(project.id) { $0.people = ($0.people ?? []) + [p] }
+        let e = p.email.lowercased()
+        projects.edit(project.id) {
+            $0.people = ($0.people ?? []) + [p]
+            $0.notPeople = $0.notPeople?.filter { $0 != e }
+        }
     }
 
     private func change(_ person: ProjectPerson, _ update: (inout ProjectPerson) -> Void) {
@@ -170,11 +179,12 @@ struct ProjectPeopleTab: View {
     /// Everyone on the project's emails and calls who isn't listed yet, most often seen first.
     private var suggestions: [(name: String, email: String, count: Int)] {
         let me = logins.ownerEmail.lowercased()
-        let known = Set(people.map { $0.email.lowercased() }).union(UserDefaults.standard.stringArray(forKey: dismissKey) ?? [])
+        let known = Set(people.map { $0.email.lowercased() } + (project.notPeople ?? []).map { $0.lowercased() })
+            .union(UserDefaults.standard.stringArray(forKey: dismissKey) ?? [])
         var found: [String: (name: String, count: Int)] = [:]
         func note(_ name: String, _ email: String) {
             let e = email.lowercased()
-            guard e.contains("@"), e != me, !known.contains(e),
+            guard e.contains("@"), e != me, !known.contains(e), !PeopleStore.isAutomated(e),
                   !["noreply", "no-reply", "donotreply", "notifications", "calendar-notification", "mailer-daemon"].contains(where: e.contains),
                   !e.hasSuffix("zoom.us") else { return }
             let current = found[e]

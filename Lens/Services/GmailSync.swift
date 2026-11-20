@@ -310,8 +310,7 @@ final class GmailSync: ObservableObject {
                 for (thread, _) in fresh { seen[thread.id] = histories[thread.id] ?? "" }
             }
             suggestions.sort { $0.thread.lastDate > $1.thread.lastDate }
-            // People who keep turning up on one project's calls and emails go on its People list.
-            projects.addRegulars()
+                // Emma decides who is on a project: Lens only suggests people (People tab).
             lastChecked = Date()
             problem = nil
         } catch {
@@ -502,6 +501,8 @@ final class GmailSync: ObservableObject {
     /// Files the conversation on the project (and the deal it came from) by itself, and lists it under
     /// "Filed automatically" so the user can see it and undo it.
     private func fileOnProject(_ link: EmailThread, _ projectID: UUID, deals: DealStore, projects: ProjectStore) {
+        // Only conversations with someone on the project's People list go on a project.
+        guard let project = projects.project(id: projectID), ProjectRelevance.belongs(link, to: project) else { return }
         let already = (projects.project(id: projectID)?.emails ?? []).contains { $0.id == link.id }
         projects.attachEmail(link, to: projectID)
         if let deal = deals.deals.first(where: { $0.projectID == projectID }) { deals.attachEmail(link, to: deal.id) }
@@ -538,7 +539,7 @@ final class GmailSync: ObservableObject {
                 guard fromContact || names.contains(where: text.contains) else { continue }
                 deals.attachEmail(link, to: deal.id)
                 if let projectID = deals.deal(id: deal.id)?.projectID, let p = projects.project(id: projectID),
-                   ProjectRelevance.isAbout(p, text: text, emails: Self.emails(in: link)) || fromContact {
+                   ProjectRelevance.belongs(link, to: p) {
                     projects.attachEmail(link, to: projectID)
                 }
                 suggestions.removeAll { $0.id == link.id }
@@ -566,9 +567,8 @@ final class GmailSync: ObservableObject {
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard !thread.messages.isEmpty else { continue }
                 let link = threadLink(thread, me: logins.ownerEmail)
-                // Only conversations about this job: they name it, or the client is on them.
-                let text = thread.messages.map { m -> String in m.subject + " " + String(m.text.prefix(4000)) }.joined(separator: " ")
-                guard ProjectRelevance.isAbout(project, text: text, emails: Self.emails(in: link)) else { continue }
+                // Only conversations with someone on the project's People list.
+                guard let current = projects.project(id: project.id), ProjectRelevance.belongs(link, to: current) else { continue }
                 // Older history: filed quietly, not listed one by one under "Filed automatically".
                 projects.attachEmail(link, to: project.id)
                 if let deal = deals.deals.first(where: { $0.projectID == project.id }) { deals.attachEmail(link, to: deal.id) }

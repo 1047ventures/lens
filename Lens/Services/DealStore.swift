@@ -121,7 +121,6 @@ final class DealStore: ObservableObject {
         let price = chosen.map { estimate($0).total }
         d.events.append(ProjectEvent(text: "Booked into its project" + (price.map { " · \(Money.string($0))" } ?? "")))
         update(d)
-        for t in d.emails ?? [] { projects.attachEmail(t, to: projectID) }
         for n in d.meetingNotes ?? [] { projects.attachNote(n, to: projectID) }
         projects.edit(projectID) { p in
             var people = p.people ?? []
@@ -134,6 +133,10 @@ final class DealStore: ObservableObject {
             if let price { p.price = price }
             if p.client.isEmpty { p.client = d.client }
             if p.shootDate == nil { p.shootDate = d.eventDate }
+        }
+        // The deal's emails go on the project when someone on the project is in them.
+        if let p = projects.project(id: projectID) {
+            for t in d.emails ?? [] where ProjectRelevance.belongs(t, to: p) { projects.attachEmail(t, to: projectID) }
         }
     }
 
