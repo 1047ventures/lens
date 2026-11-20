@@ -18,6 +18,11 @@ enum WhatsNew {
                  detail: "Connect them once in Log-ins and Lens reads your DMs and Page messages every hour. Real inquiries show up on Pipeline."),
             Item(icon: "star.fill", title: "Directories and reviews, no setup",
                  detail: "Leads from The Knot, Thumbtack, Google and more come in by themselves, and your Google reviews are listed in Log-ins."),
+        ("1.0.48", [
+            Item(icon: "phone.fill", title: "Your My Notes calls",
+                 detail: "Once Zoom is connected, every call you recorded with Zoom My Notes comes in with its notes and full transcript, and goes on the right project."),
+            Item(icon: "text.quote", title: "A summary for every recording",
+                 detail: "When a My Notes call only has a recording, Lens writes the summary and next steps for you."),
         ]),
         ("1.0.47", [
             Item(icon: "clock.arrow.circlepath", title: "A project's whole history",

@@ -449,6 +449,17 @@ private struct ZoomControls: View {
                 if let email = logins.state.zoomEmail {
                     Text(email).font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
+                if zoom.myNotesCount > 0 {
+                    Text("\(zoom.myNotesCount) call\(zoom.myNotesCount == 1 ? "" : "s") from My Notes read")
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                if let problem = zoom.myNotesProblem {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                        Button("Get help") { ask("Lens showed: \"\(problem)\". How do I add the My Notes permissions to my Lens app in Zoom?") }
+                            .buttonStyle(SecondaryButtonStyle())
+                    }
+                }
                 if let progress = zoom.progress {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)

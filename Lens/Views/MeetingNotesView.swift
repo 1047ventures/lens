@@ -79,7 +79,7 @@ struct MeetingNoteView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    ColorLabel(note.fromZoom ? "Zoom summary" : "Zoom summary email", Palette.violet)
+                    ColorLabel(note.fromMyNotes ? "Zoom My Notes" : note.fromZoom ? "Zoom summary" : "Zoom summary email", Palette.violet)
                     Text(note.title).font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(note.date.formatted(date: .complete, time: .shortened))

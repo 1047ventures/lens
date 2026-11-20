@@ -143,6 +143,48 @@ final class LensAI: ObservableObject {
         return answer["notes"] as? [[String: Any]] ?? []
     }
 
+    /// A summary of a call from its transcript, laid out like a Zoom AI summary. Used for calls Emma
+    /// recorded with Zoom My Notes when Zoom didn't write notes for them.
+    func summarizeCall(title: String, transcript: String) async throws -> (overview: String, sections: [MeetingNoteSection], nextSteps: [String])? {
+        let payload = "Call: \(title)\n\nTranscript:\n" + String(transcript.prefix(150_000))
+        guard let answer = try await structured(system: Self.callPrompt, schema: Self.callSchema, payload: payload) else { return nil }
+        let overview = (answer["overview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sections: [MeetingNoteSection] = (answer["sections"] as? [[String: Any]] ?? []).compactMap { s in
+            let text = (s["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : MeetingNoteSection(title: s["title"] as? String ?? "", text: text)
+        }
+        let steps = (answer["next_steps"] as? [String] ?? []).filter { !$0.isEmpty }
+        guard !overview.isEmpty || !sections.isEmpty else { return nil }
+        return (overview, sections, steps)
+    }
+
+    private static let callPrompt = """
+    You summarize a call for a freelance filmmaker and videographer (Emma) from its transcript, the way Zoom's AI \
+    summary would. Write an overview of two to four sentences, then a few titled sections covering what was \
+    discussed and decided (creative direction, schedule, people, budget, logistics), then next steps as short \
+    action items with who does them. Use the speakers' names when the transcript gives them. Plain English, \
+    no em dashes. Only include what was actually said.
+    """
+
+    private static let callSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "overview": ["type": "string"],
+            "sections": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": ["title": ["type": "string"], "text": ["type": "string"]],
+                    "required": ["title", "text"],
+                    "additionalProperties": false,
+                ],
+            ],
+            "next_steps": ["type": "array", "items": ["type": "string"]],
+        ],
+        "required": ["overview", "sections", "next_steps"],
+        "additionalProperties": false,
+    ]
+
     /// One request that answers in JSON matching `schema`. Nil when the answer can't be read.
     private func structured(system: String, schema: [String: Any], payload: String) async throws -> [String: Any]? {
         guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else { throw AIError("Connect Claude in Log-ins first.") }
