@@ -310,6 +310,19 @@ final class PeopleStore: ObservableObject {
         if changed { save() }
     }
 
+    /// Someone who messaged Emma on Instagram or Facebook (read straight from Meta).
+    func noteDM(name: String, handle: String, site: String) {
+        guard !name.isEmpty || !handle.isEmpty else { return }
+        var p = Person(name: name.isEmpty ? handle : name, automatic: true)
+        if !handle.isEmpty, site == "Instagram" { p.link = "@" + handle }
+        p.met = site
+        p.addedFrom = site
+        p.addedOn = Date()
+        guard !isHidden(p) else { return }
+        if !p.link.isEmpty, people.contains(where: { $0.link.lowercased() == p.link.lowercased() }) { return }
+        if absorb(p) { save() }
+    }
+
     /// Who wrote, from an Instagram or Facebook message email. Nil when it isn't about a message.
     static func socialSender(subject: String, fromName: String) -> (name: String, handle: String?)? {
         let s = subject.trimmingCharacters(in: .whitespacesAndNewlines)

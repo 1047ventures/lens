@@ -173,6 +173,19 @@ final class GmailSync: ObservableObject {
     @Published private(set) var lastChecked: Date?
     /// A plain sentence when the last check didn't work.
     @Published private(set) var problem: String?
+    /// What went wrong reading Instagram or Facebook messages, if anything.
+    @Published private(set) var socialProblem: String?
+    @Published private(set) var socialChecked: Date?
+    /// Google reviews, from the emails Google sends when someone leaves one. Newest first.
+    @Published private(set) var reviews: [Review] = []
+
+    struct Review: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let snippet: String
+        let date: Date
+        let link: String
+    }
 
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
@@ -217,6 +230,8 @@ final class GmailSync: ObservableObject {
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.check()
+                await self?.checkSocial()
+                await self?.checkReviews()
                 try? await Task.sleep(for: .seconds(3600))
             }
         }
@@ -303,6 +318,102 @@ final class GmailSync: ObservableObject {
             problem = (error as? LocalizedError)?.errorDescription ?? "Lens couldn't check your email just now."
         }
         save()
+    }
+
+    // MARK: Instagram and Facebook messages
+
+    /// Reads Instagram DMs and Facebook Page messages (when connected in Log-ins). New conversations go
+    /// through the same sorting as email: real inquiries become suggestions on Pipeline, and the people
+    /// who wrote go in People.
+    func checkSocial() async {
+        guard let deals, let projects else { return }
+        var conversations: [MetaMessages.Conversation] = []
+        var problems: [String] = []
+        for site in MetaMessages.Site.allCases where MetaMessages.isConnected(site) {
+            do { conversations += try await MetaMessages.conversations(site) } catch {
+                problems.append((error as? LocalizedError)?.errorDescription ?? "Lens couldn't read \(site.rawValue) just now.")
+            }
+        }
+        socialProblem = problems.isEmpty ? nil : problems.joined(separator: " ")
+        let me = logins?.ownerEmail ?? ""
+        var fresh: [(GmailAPI.Thread, EmailThread)] = []
+        var versions: [String: String] = [:]
+        for c in conversations {
+            let key = c.site.rawValue.lowercased() + ":" + c.id
+            guard seen[key] != c.updated else { continue }
+            versions[key] = c.updated
+            guard let them = c.messages.first(where: { !$0.mine }), let last = c.messages.last else { seen[key] = c.updated; continue }
+            let name = them.fromName.isEmpty ? (them.handle.isEmpty ? "Someone" : them.handle) : them.fromName
+            let address = "\(name) <\(c.site.rawValue.lowercased()):\(them.handle.isEmpty ? name : them.handle)>"
+            let subject = "\(c.site.rawValue) message from \(name)"
+            let messages = c.messages.map { m in
+                GmailAPI.Message(from: m.mine ? "Emma <\(me)>" : address, to: m.mine ? address : "Emma <\(me)>",
+                                 replyTo: "", subject: subject, date: m.date, text: m.text)
+            }
+            let thread = GmailAPI.Thread(id: key, messages: messages, snippet: String(last.text.prefix(220)))
+            let link = EmailThread(id: key, subject: subject, from: last.mine ? "You" : name,
+                                   snippet: String(last.text.prefix(220)), lastDate: last.date,
+                                   messageCount: c.messages.count, link: c.site.inbox,
+                                   people: ["\(name)" + (them.handle.isEmpty ? "" : " (@\(them.handle))")])
+            people?.noteDM(name: name, handle: them.handle, site: c.site.rawValue)
+            // Already on a deal or project: bring it up to date there.
+            if linkKnown(link, deals: deals, projects: projects) || ignored.contains(key) { seen[key] = c.updated; continue }
+            fresh.append((thread, link))
+        }
+        if !fresh.isEmpty {
+            var sorted: [EmailSuggestion] = []
+            if canSortWithClaude, let found = try? await sortWithClaude(fresh, deals: deals, projects: projects, me: me) {
+                sorted = found
+            } else {
+                sorted = fresh.compactMap { Self.dmByRules($0.0, $0.1) }
+            }
+            for var s in sorted {
+                // Say where it came from, not "Email".
+                if s.source.isEmpty || s.source == "Email" { s.source = s.id.hasPrefix("instagram:") ? "Instagram" : "Facebook" }
+                suggestions.removeAll { $0.id == s.id }
+                suggestions.append(s)
+            }
+            suggestions.sort { $0.thread.lastDate > $1.thread.lastDate }
+        }
+        for (key, version) in versions where fresh.contains(where: { $0.0.id == key }) { seen[key] = version }
+        socialChecked = Date()
+        save()
+    }
+
+    /// Without Claude: a DM that talks about booking, prices or a shoot becomes an inquiry suggestion.
+    private static func dmByRules(_ thread: GmailAPI.Thread, _ link: EmailThread) -> EmailSuggestion? {
+        guard let first = thread.messages.first(where: { !$0.from.hasPrefix("Emma <") }) else { return nil }
+        let text = thread.messages.map(\.text).joined(separator: " ").lowercased()
+        let asks = ["book", "available", "availability", "price", "pricing", "rate", "quote", "wedding", "shoot", "film",
+                    "video", "videographer", "photograph", "hire", "project", "budget", "date"]
+        guard asks.contains(where: text.contains) else { return nil }
+        let person = GmailAPI.parseAddress(first.from).name
+        return EmailSuggestion(kind: .inquiry, person: person, email: "", client: person, title: "",
+                               wants: String(first.text.prefix(300)), eventDate: nil, location: "", budget: "",
+                               source: link.id.hasPrefix("instagram:") ? "Instagram" : "Facebook", thread: link)
+    }
+
+    // MARK: Google reviews
+
+    /// Google emails Emma whenever someone reviews her Business Profile. Lens lists those reviews.
+    func checkReviews() async {
+        guard let logins, logins.gmailReady else { return }
+        do {
+            let token = try await logins.googleAccessToken()
+            let q = "from:google.com {subject:review subject:reviewed} newer_than:2y -in:spam -in:trash"
+            var found: [Review] = []
+            for item in try await GmailAPI.threadIDs(matching: q, max: 25, token: token) {
+                if let known = reviews.first(where: { $0.id == item.id }) { found.append(known); continue }
+                let thread = try await GmailAPI.thread(item.id, token: token)
+                guard let m = thread.messages.first, m.subject.lowercased().contains("review") else { continue }
+                let account = logins.ownerEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                found.append(Review(id: item.id, title: m.subject, snippet: String(thread.snippet.prefix(200)), date: m.date,
+                                    link: "https://mail.google.com/mail/?authuser=\(account)#all/\(item.id)"))
+            }
+            reviews = found.sorted { $0.date > $1.date }
+        } catch {
+            // Reviews are a nice extra; the next hourly check tries again.
+        }
     }
 
     /// An Instagram or Facebook notification email.

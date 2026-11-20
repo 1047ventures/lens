@@ -834,11 +834,12 @@ final class ConnectionStore: ObservableObject {
             if isConfirmed("website") { return gmail != nil ? .connected(field("website").isEmpty ? "Form emails arrive in Gmail" : field("website")) : .partial("Waiting on Google") }
             return .todo("Point form emails at Gmail")
         case .social:
-            return isConfirmed("social") ? .partial("Paste DMs for now; direct link later") : .todo("Switch to a professional account")
+            let on = MetaMessages.Site.allCases.filter(MetaMessages.isConnected).map(\.rawValue)
+            if on.count == 2 { return .connected("Instagram and Facebook messages") }
+            if let one = on.first { return .partial("\(one) connected") }
+            return .todo("One-time setup, then messages come in")
         case .directories:
-            let listed = field("directories").split(separator: ",").count
-            if isConfirmed("directories") { return gmail != nil ? .connected("\(listed) listing\(listed == 1 ? "" : "s"), leads via Gmail") : .partial("Waiting on Google") }
-            return .todo("Pick where she's listed")
+            return gmail != nil ? .connected("Leads and reviews arrive through Gmail") : .partial("Waiting on Google")
         case .freshbooks:
             let connected = UserDefaults.standard.string(forKey: "freshbooks.accountID") != nil
                 && !(Keychain.get("freshbooks.refreshToken") ?? "").isEmpty
