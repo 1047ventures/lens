@@ -20,6 +20,8 @@ enum WhatsNew {
                  detail: "A project only keeps emails that name the job or include the client. Unrelated ones were cleared."),
             Item(icon: "person.crop.circle.badge.xmark", title: "Delete and hide",
                  detail: "Delete an inquiry from its page, and hide people Lens suggests for a project."),
+            Item(icon: "person.crop.circle.badge.checkmark", title: "Only real people in People",
+                 detail: "Lens only adds someone when you've actually emailed back and forth, or they filled in your form. Auto-replies and company emails were cleared, and Clear out junk does it again."),
             Item(icon: "slider.horizontal.3", title: "The quote lives on the project",
                  detail: "The project's Proposal tab shows the booked option with its rates, hours and price, ready to edit."),
         ]),
