@@ -30,12 +30,12 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
-                needsYou
                 if logins.googleCalendarReady {
                     DashCard(title: "Today", color: Palette.blue) {
                         DayTimeline(events: events, loaded: eventsLoaded)
                     }
                 }
+                needsYou
                 tiles(numbers)
                 pair {
                     DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
