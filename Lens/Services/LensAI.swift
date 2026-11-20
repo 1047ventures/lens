@@ -724,7 +724,7 @@ final class LensAI: ObservableObject {
                 if !q.kind.isEmpty { d["kind"] = q.kind }
                 if let days = q.shootDays { d["shoot_days"] = days }
                 if !q.deliverables.isEmpty { d["deliverables"] = q.deliverables }
-                if !q.items.isEmpty { d["items"] = q.items.map { $0.amount.map { a in "\($0.name): \(Money.string(a))" } ?? $0.name } }
+                if !q.items.isEmpty { d["items"] = q.items.map { item in item.amount.map { a in "\(item.name): \(Money.string(a))" } ?? item.name } }
                 return d
             }
             return (json(["quotes_found": hits.count, "quotes": list]), false)
