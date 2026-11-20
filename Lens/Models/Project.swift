@@ -69,7 +69,7 @@ struct ProjectFile: Codable, Hashable, Identifiable {
 
     var isWebLink: Bool { location.lowercased().hasPrefix("http") }
 
-    static let kinds = ["Contract", "Treatment", "Call sheet", "Script", "Release form", "Other"]
+    static let kinds = ["Proposal", "Quote", "Contract", "Treatment", "Call sheet", "Script", "Release form", "Other"]
 }
 
 /// Something Lens put on a project by itself (a Zoom note, an email, a person), so the user can see it

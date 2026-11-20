@@ -99,6 +99,7 @@ struct ContentView: View {
     @StateObject private var gmail = GmailSync()
     @StateObject private var zoom = ZoomNotes()
     @StateObject private var people = PeopleStore()
+    @StateObject private var quotes = QuoteStore()
     @State private var whatsNew: [WhatsNew.Item] = []
 
     var body: some View {
@@ -189,6 +190,7 @@ struct ContentView: View {
         .environmentObject(gmail)
         .environmentObject(zoom)
         .environmentObject(people)
+        .environmentObject(quotes)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
             // People: everyone on a deal or project, kept up to date as those change.
@@ -201,6 +203,7 @@ struct ContentView: View {
             zoom.attach(deals: deals, projects: projects, logins: logins, ai: ai)
             ai.attachZoom(zoom)
             ai.attachLogins(logins)
+            ai.attachQuotes(quotes)
             logins.importZoomClient()
             zoom.start()
             // First time Lens opens, show the tour.

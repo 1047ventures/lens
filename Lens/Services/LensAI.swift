@@ -71,6 +71,7 @@ final class LensAI: ObservableObject {
     private weak var zoom: ZoomNotes?
     private weak var people: PeopleStore?
     private weak var logins: ConnectionStore?
+    private weak var quotes: QuoteStore?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
@@ -87,6 +88,7 @@ final class LensAI: ObservableObject {
 
     func attachZoom(_ zoom: ZoomNotes) { self.zoom = zoom }
     func attachLogins(_ logins: ConnectionStore) { self.logins = logins }
+    func attachQuotes(_ quotes: QuoteStore) { self.quotes = quotes }
 
     /// Said just before the picture of Lens's window in her message, so older pictures can be found and dropped.
     private static let screenMarker = "This is the Lens window as she sees it right now:"
@@ -158,6 +160,45 @@ final class LensAI: ObservableObject {
         return (overview, sections, steps)
     }
 
+    /// Reads a proposal or quote file: who it's for, the total, line items and what it covered.
+    func readQuote(_ blocks: [[String: Any]]) async throws -> [String: Any]? {
+        let content = blocks + [["type": "text", "text": "Read this proposal or quote."]]
+        return try await structured(system: Self.quotePrompt, schema: Self.quoteSchema, payload: content)
+    }
+
+    private static let quotePrompt = """
+    You read a proposal or quote that a freelance filmmaker and videographer (Emma) sent to a client. Pull out: \
+    the client's name, a short title for the job, the date it was written (YYYY-MM-DD, or "" if not shown), the \
+    total price in dollars (the main or recommended package if there are several; 0 if no price), each line item \
+    or package with its price, the kind of work (Wedding, Documentary, Brand film, Event, Music video, Commercial, \
+    Other), the number of shoot days (0 if not stated), and the deliverables in one short sentence. Only use \
+    what's in the document.
+    """
+
+    private static let quoteSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "client": ["type": "string"],
+            "title": ["type": "string"],
+            "date": ["type": "string"],
+            "total": ["type": "number"],
+            "items": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": ["name": ["type": "string"], "amount": ["type": "number"]],
+                    "required": ["name", "amount"],
+                    "additionalProperties": false,
+                ],
+            ],
+            "kind_of_work": ["type": "string"],
+            "shoot_days": ["type": "number"],
+            "deliverables": ["type": "string"],
+        ],
+        "required": ["client", "title", "date", "total", "items", "kind_of_work", "shoot_days", "deliverables"],
+        "additionalProperties": false,
+    ]
+
     private static let callPrompt = """
     You summarize a call for a freelance filmmaker and videographer (Emma) from its transcript, the way Zoom's AI \
     summary would. Write an overview of two to four sentences, then a few titled sections covering what was \
@@ -186,7 +227,7 @@ final class LensAI: ObservableObject {
     ]
 
     /// One request that answers in JSON matching `schema`. Nil when the answer can't be read.
-    private func structured(system: String, schema: [String: Any], payload: String) async throws -> [String: Any]? {
+    private func structured(system: String, schema: [String: Any], payload: Any) async throws -> [String: Any]? {
         guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else { throw AIError("Connect Claude in Log-ins first.") }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
@@ -559,6 +600,7 @@ final class LensAI: ObservableObject {
         case "get_gear": return "Checking your gear…"
         case "get_library", "search_library": return "Looking through your drives…"
         case "get_rates": return "Checking your rates…"
+        case "list_quotes": return "Looking through your past quotes…"
         case "list_people", "get_person": return "Looking through People…"
         case "draft_email": return "Drafting the email…"
         case "open_screen": return "Opening it…"
@@ -668,6 +710,24 @@ final class LensAI: ObservableObject {
             return (json(dealDetail(deal)), false)
         case "list_projects":
             return (json(projects.projects.map { projectSummary($0) }), false)
+        case "list_quotes":
+            let words = str("query").lowercased().split(separator: " ").map(String.init).filter { $0.count >= 3 }
+            let all = quotes?.history(deals: deals) ?? []
+            let hits = words.isEmpty ? all : all.filter { q in
+                let text = [q.client, q.title, q.kind, q.deliverables, q.items.map(\.name).joined(separator: " ")].joined(separator: " ").lowercased()
+                return words.contains(where: text.contains)
+            }
+            let list: [[String: Any]] = hits.prefix(60).map { q in
+                var d: [String: Any] = ["date": day(q.date), "client": q.client, "title": q.title, "status": q.status.isEmpty ? "Unknown" : q.status,
+                                        "source": q.source]
+                if let a = q.amount { d["total"] = Money.string(a) }
+                if !q.kind.isEmpty { d["kind"] = q.kind }
+                if let days = q.shootDays { d["shoot_days"] = days }
+                if !q.deliverables.isEmpty { d["deliverables"] = q.deliverables }
+                if !q.items.isEmpty { d["items"] = q.items.map { item in item.amount.map { a in "\(item.name): \(Money.string(a))" } ?? item.name } }
+                return d
+            }
+            return (json(["quotes_found": hits.count, "quotes": list]), false)
         case "get_project":
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
@@ -1155,6 +1215,9 @@ final class LensAI: ObservableObject {
     - Keep replies short and plain: a sentence or two, or a short list. No jargon. Money in dollars.
     - When the user corrects you, states a preference, or explains how they like to work, offer to remember it with \
     the remember tool, phrased as a short rule.
+    - Pricing a new job or writing a quote: look at list_quotes for similar past work (same kind, similar days \
+    and deliverables) and get_rates, then suggest a price with a short reason ("your last two brand films with \
+    2 shoot days were $6,500 and $7,200"). Say which past quotes were accepted or declined.
     - Prices: protect the price, scale the scope. If she wants to go cheaper, suggest what to cut before discounting.
     - Drafting emails: write in her warm, direct voice, short paragraphs, and use draft_email. You never send email.
     - If she asks for something Lens can't do (a new screen, a new button, a different layout, a connection that \
@@ -1204,6 +1267,8 @@ final class LensAI: ObservableObject {
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what the owner keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
+        tool("list_quotes", "Emma's past quotes and proposals (uploaded files, ones found in email, and proposals made in Lens) with date, client, total, line items, kind of work, shoot days, deliverables and whether it was accepted. Use it whenever she prices a new job: compare with similar past work.",
+             ["query": ["type": "string", "description": "Optional words to match (client, kind of work, deliverable). Empty for all."]], []),
         tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what the owner keeps.", [:], []),
         tool("get_project", "Everything in one project: details, history, the people on it with their roles (director, interviewee…), every Zoom call summary (meeting_notes), emails, the proposal from its deal (proposal_deal), attached files, time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour). Use it for questions across a whole project.", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
