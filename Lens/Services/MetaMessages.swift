@@ -82,9 +82,24 @@ enum MetaMessages {
         var out = try await conversations(site, host: site, platform: site == .instagram ? "instagram" : nil, token: token)
         // A Facebook Page linked to an Instagram professional account also reads its Instagram DMs,
         // so one Page code covers both (when there's no separate Instagram code).
-        if site == .facebook, !isConnected(.instagram),
-           let dms = try? await conversations(.instagram, host: .facebook, platform: "instagram", token: token) {
-            out += dms
+        if site == .facebook, !isConnected(.instagram) {
+            do {
+                let dms = try await conversations(.instagram, host: .facebook, platform: "instagram", token: token)
+                out += dms
+                if dms.isEmpty {
+                    let linked = await linkedInstagram()
+                    UserDefaults.standard.set(linked == nil
+                        ? "Meta doesn't see an Instagram account linked to this Facebook Page. Link it in your Page's settings (Linked accounts, then Instagram)."
+                        : "Meta sent no Instagram conversations for \(linked ?? "your Instagram"). In the Instagram app, turn on Allow access to messages (search settings for \"access to messages\").",
+                        forKey: "meta.instagramProblem")
+                } else {
+                    UserDefaults.standard.removeObject(forKey: "meta.instagramProblem")
+                }
+            } catch {
+                // Facebook still works; say plainly why Instagram didn't come in, in Meta's own words.
+                let why = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                UserDefaults.standard.set(why, forKey: "meta.instagramProblem")
+            }
         }
         return out
     }
@@ -156,6 +171,10 @@ enum MetaMessages {
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         if let error = json["error"] as? [String: Any] {
             let code = error["code"] as? Int ?? 0
+            // Instagram through the Facebook Page: show Meta's own words, so the fix is clear.
+            if site == .facebook, query["platform"] == "instagram" {
+                throw Failure(message: "Instagram didn't come in. Meta says: \((error["message"] as? String) ?? "no reason given")")
+            }
             if code == 190 {
                 throw Failure(message: "\(site.rawValue) needs a new token. Make one in your Meta app and paste it here again.")
             }
