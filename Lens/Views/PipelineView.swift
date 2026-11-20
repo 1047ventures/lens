@@ -42,10 +42,10 @@ struct PipelineView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
-                        column("New inquiry", deals.deals(in: .inquiry), color: DealStage.inquiry.color)
-                        column("Proposal out", deals.deals(in: .proposalOut), color: DealStage.proposalOut.color)
-                        column("Talking terms", deals.deals(in: .talking), color: DealStage.talking.color)
-                        column("Closed lately", deals.recentlyClosed, color: Palette.slate, showTotal: false)
+                        // Inquiry, then quote, then (once booked) it becomes a project and leaves Pipeline.
+                        column("New inquiries", deals.deals(in: .inquiry), color: DealStage.inquiry.color)
+                        column("Quote sent", deals.deals(in: .proposalOut) + deals.deals(in: .talking), color: DealStage.proposalOut.color)
+                        column("Booked or passed lately", deals.recentlyClosed, color: Palette.slate, showTotal: false)
                     }
                     .padding(.bottom, 4)
                 }

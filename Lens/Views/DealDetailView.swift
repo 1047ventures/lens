@@ -15,6 +15,7 @@ struct DealDetailView: View {
     @State private var showFollowUp = false
     @State private var showLost = false
     @State private var showWon = false
+    @State private var confirmDelete = false
 
     private var deal: Deal? { deals.deal(id: dealID) }
 
@@ -112,13 +113,14 @@ struct DealDetailView: View {
         HStack(spacing: 10) {
             switch deal.stage {
             case .inquiry:
-                EmptyView()
-            case .proposalOut:
-                Button("They're talking terms") { deals.setStage(.talking, for: deal, note: "Talking terms") }
-                    .buttonStyle(PrimaryButtonStyle())
-                Button("Mark won…") { showWon = true }.buttonStyle(SecondaryButtonStyle())
-            case .talking:
-                Button("Mark won…") { showWon = true }.buttonStyle(PrimaryButtonStyle())
+                Button("Quote sent") { deals.setStage(.proposalOut, for: deal, note: "Quote sent") }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .help("Move this to Quote sent on Pipeline")
+                Button("Book it…") { showWon = true }.buttonStyle(SecondaryButtonStyle())
+                    .help("They said yes: make it a project")
+            case .proposalOut, .talking:
+                Button("Book it…") { showWon = true }.buttonStyle(PrimaryButtonStyle())
+                    .help("They said yes: make it a project")
             case .won:
                 if let id = deal.projectID {
                     Button("Open the project") { navigator.openProject(id) }.buttonStyle(PrimaryButtonStyle())
@@ -141,8 +143,19 @@ struct DealDetailView: View {
             }
             if deal.stage.isOpen {
                 Button("Log a follow-up") { showFollowUp = true }.buttonStyle(SecondaryButtonStyle())
-                Button("Mark lost…") { showLost = true }.buttonStyle(SecondaryButtonStyle())
+                Button("Didn't book…") { showLost = true }.buttonStyle(SecondaryButtonStyle())
             }
+            Button(confirmDelete ? "Delete for good?" : "Delete") {
+                if confirmDelete {
+                    deals.delete(deal)
+                    navigator.dealID = nil
+                } else {
+                    confirmDelete = true
+                }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .foregroundStyle(confirmDelete ? Theme.coral : Theme.text2)
+            .help("Remove this inquiry from Lens. Its emails stay in Gmail.")
             Spacer()
         }
     }
@@ -901,7 +914,7 @@ struct WonSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Mark won").font(.system(size: 18, weight: .bold))
+            Text("Book it").font(.system(size: 18, weight: .bold))
             if let deal = deals.deal(id: dealID) {
                 Text("Which option did they pick?").font(.system(size: 13)).foregroundStyle(Theme.text3)
                 ForEach(deal.options) { option in

@@ -61,6 +61,9 @@ struct PeopleView: View {
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
+                        Button("Clear out junk") { people.tidy() }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .help("Removes auto-replies, companies and one-way emails Lens added, unless they're on a deal or project or you've added anything to them")
                         Button("Scan a card") { scanning = true }
                             .buttonStyle(SecondaryButtonStyle())
                         Button("Add a person") { creating = true }

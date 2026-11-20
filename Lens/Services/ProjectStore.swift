@@ -334,3 +334,62 @@ final class ProjectStore: ObservableObject {
         return dir.appendingPathComponent("projects.json")
     }
 }
+
+// MARK: - Is this email about this project?
+
+/// Decides whether an email conversation is really about a project, so a project doesn't fill up with
+/// every email that happens to include one of its people.
+@MainActor
+enum ProjectRelevance {
+    /// Words that point to this job: the project's name, the client, the people marked Client, and
+    /// Emma's keywords. Generic words ("project", "shoot", "video"…) are left out.
+    static func words(_ p: Project) -> [String] {
+        let common: Set<String> = ["project", "projects", "shoot", "shoots", "video", "videos", "photo", "photos", "film",
+                                   "films", "photography", "videography", "wedding", "event", "the", "and", "for", "with",
+                                   "session", "documentary", "commercial", "brand", "content", "interview", "meeting"]
+        var out: [String] = []
+        let phrases = [p.name, p.client] + (p.people ?? []).filter { $0.role.lowercased() == "client" }.map(\.name)
+        for phrase in phrases {
+            let lower = phrase.lowercased().trimmingCharacters(in: .whitespaces)
+            if lower.count >= 4 { out.append(lower) }
+            for w in lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+                where w.count >= 4 && !common.contains(w) { out.append(w) }
+        }
+        for k in p.keywords ?? [] {
+            let lower = k.lowercased().trimmingCharacters(in: .whitespaces)
+            if lower.count >= 2 && !common.contains(lower) { out.append(lower) }
+        }
+        return Array(Set(out))
+    }
+
+    /// The email addresses of the people Emma marked as the client.
+    static func clientEmails(_ p: Project) -> Set<String> {
+        Set((p.people ?? []).filter { $0.role.lowercased() == "client" }.map { $0.email.lowercased() }.filter { $0.contains("@") })
+    }
+
+    /// True when the conversation names the job (in the given text) or includes the client.
+    static func isAbout(_ p: Project, text: String, emails: [String]) -> Bool {
+        let t = text.lowercased()
+        let clients = clientEmails(p)
+        if emails.contains(where: { clients.contains($0.lowercased()) }) { return true }
+        return words(p).contains { w in
+            w.count <= 3 ? t.range(of: "\\b\(NSRegularExpression.escapedPattern(for: w))\\b", options: .regularExpression) != nil : t.contains(w)
+        }
+    }
+
+    /// One-time tidy: takes off a project the emails that neither name the job nor include its client.
+    static func tidy(_ projects: ProjectStore) {
+        for p in projects.projects {
+            let key = "emailTidy.v1.\(p.id.uuidString)"
+            guard !UserDefaults.standard.bool(forKey: key) else { continue }
+            UserDefaults.standard.set(true, forKey: key)
+            guard !words(p).isEmpty || !clientEmails(p).isEmpty else { continue }
+            for t in p.emails ?? [] {
+                let emails = (t.people ?? []).map { GmailAPI.parseAddress($0).email }
+                if !isAbout(p, text: t.subject + " " + t.snippet + " " + (t.people ?? []).joined(separator: " "), emails: emails) {
+                    projects.removeEmail(t.id, from: p.id)
+                }
+            }
+        }
+    }
+}

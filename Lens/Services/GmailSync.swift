@@ -531,8 +531,16 @@ final class GmailSync: ObservableObject {
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard !thread.messages.isEmpty else { continue }
                 let link = threadLink(thread, me: logins.ownerEmail)
+                // A deal's emails are its client's: keep only conversations that mention the client or the job.
+                let text = thread.messages.map { m -> String in m.subject + " " + String(m.text.prefix(4000)) }.joined(separator: " ").lowercased()
+                let names = [deal.client, deal.title].map { $0.lowercased() }.filter { $0.count >= 4 }
+                let fromContact = Self.emails(in: link).contains { e in deal.contacts.contains { $0.email.lowercased() == e.lowercased() } }
+                guard fromContact || names.contains(where: text.contains) else { continue }
                 deals.attachEmail(link, to: deal.id)
-                if let projectID = deals.deal(id: deal.id)?.projectID { projects.attachEmail(link, to: projectID) }
+                if let projectID = deals.deal(id: deal.id)?.projectID, let p = projects.project(id: projectID),
+                   ProjectRelevance.isAbout(p, text: text, emails: Self.emails(in: link)) || fromContact {
+                    projects.attachEmail(link, to: projectID)
+                }
                 suggestions.removeAll { $0.id == link.id }
                 seen[item.id] = item.history
             }
@@ -558,6 +566,9 @@ final class GmailSync: ObservableObject {
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard !thread.messages.isEmpty else { continue }
                 let link = threadLink(thread, me: logins.ownerEmail)
+                // Only conversations about this job: they name it, or the client is on them.
+                let text = thread.messages.map { m -> String in m.subject + " " + String(m.text.prefix(4000)) }.joined(separator: " ")
+                guard ProjectRelevance.isAbout(project, text: text, emails: Self.emails(in: link)) else { continue }
                 // Older history: filed quietly, not listed one by one under "Filed automatically".
                 projects.attachEmail(link, to: project.id)
                 if let deal = deals.deals.first(where: { $0.projectID == project.id }) { deals.attachEmail(link, to: deal.id) }

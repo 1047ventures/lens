@@ -66,6 +66,27 @@ final class PeopleStore: ObservableObject {
         save()
     }
 
+    /// Clears out people Lens added by itself who aren't real contacts: machine senders, and people from
+    /// one-way email (never a back-and-forth) who aren't on a deal or project and Emma never touched.
+    /// Returns how many were removed. Removed people aren't added again.
+    @discardableResult
+    func tidy() -> Int {
+        let before = people.count
+        people.removeAll { p in
+            guard p.automatic, p.dealIDs.isEmpty, p.projectIDs.isEmpty, p.notes.isEmpty, p.followUp == nil,
+                  p.phone.isEmpty, p.tags.isEmpty, p.touches.isEmpty else { return false }
+            if p.emails.contains(where: Self.isAutomated) { hidden.formUnion(p.emails); return true }
+            guard (p.addedFrom ?? "Gmail") == "Gmail" else { return false }
+            // No conversation with more than one message: nobody wrote back and forth.
+            let realTalk = p.threads.contains { $0.messageCount >= 2 && !Self.isAutoReply($0.subject) }
+            if !realTalk { hidden.formUnion(p.emails); return true }
+            return false
+        }
+        let removed = before - people.count
+        if removed > 0 { save() }
+        return removed
+    }
+
     func delete(_ person: Person) {
         people.removeAll { $0.id == person.id }
         hidden.formUnion(person.emails)
@@ -247,6 +268,10 @@ final class PeopleStore: ObservableObject {
             }
         }
         let emmaWrote = thread.messages.contains { GmailAPI.parseAddress($0.from).email == me }
+        // Auto-replies, bounces and out-of-office notes never add anyone.
+        let autoReply = thread.messages.contains { Self.isAutoReply($0.subject) }
+        // Who actually wrote a message here (not just copied on it).
+        let wrote = Set(thread.messages.map { GmailAPI.parseAddress($0.from).email.lowercased() })
         // A website form or a wedding directory sent it: the person is in Reply-To.
         let formSource: String? = thread.messages.lazy.compactMap { m -> String? in
             let domain = GmailAPI.parseAddress(m.from).email.split(separator: "@").last.map(String.init) ?? ""
@@ -271,7 +296,9 @@ final class PeopleStore: ObservableObject {
                 }
                 people[i].threads = Array(list.sorted { $0.lastDate > $1.lastDate }.prefix(40))
                 changed = true
-            } else if senders.contains(email), emmaWrote || onFile || formSource != nil, !hidden.contains(email) {
+            } else if !autoReply, senders.contains(email), !hidden.contains(email),
+                      // A real conversation: Emma wrote and they wrote back. Or a website or booking form.
+                      (emmaWrote && wrote.contains(email.lowercased())) || formSource != nil {
                 let clean = name == email ? "" : name
                 var p = Person(name: clean.isEmpty ? email : clean, emails: [email], automatic: true)
                 p.threads = [link]
@@ -375,6 +402,16 @@ final class PeopleStore: ObservableObject {
     }
 
     /// No-reply senders, newsletters, notifications and services: never people.
+    /// "Automatic reply", "Out of office", "Undeliverable"… subjects that come from machines, not people.
+    static func isAutoReply(_ subject: String) -> Bool {
+        let s = subject.lowercased()
+        return ["automatic reply", "auto reply", "autoreply", "auto-reply", "out of office", "out of the office",
+                "away from", "undeliverable", "delivery status", "delivery failure", "mail delivery", "returned mail",
+                "auto:", "vacation", "thank you for contacting", "thanks for contacting", "we received your",
+                "your order", "order confirmation", "receipt", "verify your", "confirm your", "password", "security alert",
+                "unsubscribe", "newsletter", "webinar", "% off", "sale ends"].contains(where: s.contains)
+    }
+
     static func isAutomated(_ email: String) -> Bool {
         let e = email.lowercased()
         let parts = e.split(separator: "@")
@@ -382,12 +419,21 @@ final class PeopleStore: ObservableObject {
         let local = String(parts[0]), domain = String(parts[1])
         let words = ["noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply", "notification",
                      "newsletter", "mailer-daemon", "postmaster", "bounce", "unsubscribe", "digest", "automated",
-                     "alerts", "updates", "marketing", "receipts", "billing", "invoice", "calendar-server"]
+                     "alerts", "updates", "marketing", "receipts", "billing", "invoice", "calendar-server",
+                     "reply", "orders", "order-", "shop", "store", "promo", "deals", "offers", "rewards", "account",
+                     "security", "verify", "confirm", "feedback", "survey", "community", "events@", "press@"]
         if words.contains(where: local.contains) { return true }
-        if ["news", "info-news", "notify", "support", "help", "team", "hello-news"].contains(local) { return true }
+        if ["news", "info-news", "notify", "support", "help", "team", "hello-news", "service", "customerservice",
+            "care", "sales", "admin", "accounts", "membership", "members", "jobs", "careers"].contains(local) { return true }
         let services = ["zoom.us", "calendar.google.com", "mailchimp.com", "mcsv.net", "substack.com", "facebookmail.com",
                         "sendgrid.net", "mailgun.org", "constantcontact.com", "hubspotemail.net", "klaviyomail.com",
-                        "amazonses.com", "intuit.com", "paypal.com", "venmo.com", "stripe.com"]
+                        "amazonses.com", "intuit.com", "paypal.com", "venmo.com", "stripe.com",
+                        "google.com", "apple.com", "amazon.com", "linkedin.com", "instagram.com", "facebook.com",
+                        "x.com", "twitter.com", "uber.com", "lyft.com", "airbnb.com", "etsy.com", "shopify.com",
+                        "adobe.com", "dropbox.com", "notion.so", "slack.com", "canva.com", "github.com", "microsoft.com",
+                        "youtube.com", "spotify.com", "netflix.com", "freshbooks.com", "acuityscheduling.com",
+                        "calendly.com", "docusign.net", "eventbrite.com", "squarespace.com", "wix.com", "vimeo.com",
+                        "frame.io", "bhphotovideo.com", "adorama.com", "usps.com", "ups.com", "fedex.com"]
             + GmailSync.leadSenders.map(\.domain)
         return services.contains { domain == $0 || domain.hasSuffix("." + $0) }
     }

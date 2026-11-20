@@ -241,6 +241,10 @@ final class QuoteStore: ObservableObject {
                 }
             }
             add(quote)
+            // A quote on a new inquiry means it's been sent: it moves to Quote sent on Pipeline.
+            if let dealID, let deal = deals.deal(id: dealID), deal.stage == .inquiry {
+                deals.setStage(.proposalOut, for: deal, note: "Quote sent")
+            }
             // Emma's own proposal replaces the options Lens worked out, so the deal shows what she really offered.
             if let dealID, var deal = deals.deal(id: dealID), quote.amount != nil || !quote.packages.isEmpty {
                 deal.options = Self.options(from: quote)
