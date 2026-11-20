@@ -110,7 +110,25 @@ enum MetaMessages {
         if let ig = (me["instagram_business_account"] as? [String: Any])?["id"] { myIDs.insert("\(ig)") }
         var query = ["fields": "id,updated_time,messages.limit(10){id,created_time,from,to,message}", "limit": "25"]
         if let platform { query["platform"] = platform }
-        let json = try await get(host, "me/conversations", query, token: token)
+        var json: [String: Any]
+        do {
+            json = try await get(host, "me/conversations", query, token: token)
+        } catch where platform == "instagram" {
+            // Instagram through a Page can refuse the all-in-one request. Ask the way Meta's guide does:
+            // the conversations first, then each conversation's messages, then each message.
+            json = try await get(host, "me/conversations", ["platform": "instagram", "fields": "id,updated_time", "limit": "25"], token: token)
+            var filled: [[String: Any]] = []
+            for c in json["data"] as? [[String: Any]] ?? [] {
+                guard let id = c["id"] as? String else { continue }
+                var row = c
+                if let detail = try? await get(host, id, ["fields": "messages"], token: token),
+                   let ids = (detail["messages"] as? [String: Any])?["data"] as? [[String: Any]] {
+                    row["messages"] = ["data": Array(ids.prefix(10))]
+                }
+                filled.append(row)
+            }
+            json["data"] = filled
+        }
         var out: [Conversation] = []
         for c in json["data"] as? [[String: Any]] ?? [] {
             guard let id = c["id"] as? String else { continue }
