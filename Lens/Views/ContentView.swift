@@ -208,6 +208,13 @@ struct ContentView: View {
             ai.attachZoom(zoom)
             ai.attachLogins(logins)
             ai.attachQuotes(quotes)
+            // A deal that was attached to a project but never booked (an older way of linking): finish
+            // booking it, so its emails, people and price are on the project and it leaves Pipeline.
+            for d in deals.deals where d.stage != .won && d.stage != .lost {
+                if let pid = d.projectID, projects.project(id: pid) != nil {
+                    deals.link(d, to: pid, option: nil, projects: projects)
+                }
+            }
             ai.attachHistory(history)
             // Every work conversation in Gmail, summarized, with people's details and quotes pulled out.
             history.attach(logins: logins, gmail: gmail, people: people, quotes: quotes, ai: ai)
