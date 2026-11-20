@@ -161,16 +161,17 @@ struct EmailThread: Codable, Hashable, Identifiable {
     var people: [String]? = nil
 }
 
-/// A Zoom AI Companion summary of a call, attached to a deal or project. It comes either straight
-/// from Zoom (the full summary) or, when Zoom isn't connected, from the summary email in Gmail.
+/// A summary of a call, attached to a deal or project. It comes straight from Zoom (the full AI Companion
+/// summary), from the summary email in Gmail when Zoom isn't connected, or from one of her own Zoom
+/// recordings, which Lens listens to and Claude writes up the same way.
 struct MeetingNote: Codable, Hashable, Identifiable {
-    var id: String          // Gmail's thread id for the summary email, or "zoom:<meeting uuid>"
+    var id: String          // Gmail's thread id for the summary email, "zoom:<meeting uuid>", or "recording:<…>"
     var title: String       // the meeting's name, e.g. "Smith wedding planning"
     var date: Date
     var summary: String     // the email text, or the overview for a summary read from Zoom
     var link: String        // opens the summary email in Gmail, or the summary in Zoom
     // Added for summaries read straight from Zoom. Optional so older saved notes still load.
-    var source: String?                 // "zoom" when read from Zoom; nil for the Gmail email
+    var source: String?                 // "zoom" when read from Zoom, "recording" when written from her recording; nil for the Gmail email
     var zoomMeetingID: String?          // Zoom's id for that one meeting (its uuid)
     var overview: String?
     var sections: [MeetingNoteSection]?
@@ -178,8 +179,23 @@ struct MeetingNote: Codable, Hashable, Identifiable {
     var people: [MeetingPerson]?
     /// Email addresses of the people on the call, when the summary email lists them. Optional so older notes still load.
     var attendees: [String]? = nil
+    /// Every word of the call, for notes Lens wrote from a recording. Optional so older notes still load.
+    var transcript: String? = nil
 
     var fromZoom: Bool { source == "zoom" }
+    var fromRecording: Bool { source == "recording" }
+
+    /// Where the note came from, as she sees it on the Meeting notes tab.
+    var sourceLabel: String {
+        if fromRecording { return "Your recording" }
+        return fromZoom ? "Zoom summary" : "Zoom summary email"
+    }
+
+    /// What the link at the bottom of the note says.
+    var linkLabel: String {
+        if fromRecording { return link.hasPrefix("file:") ? "Play the recording ↗" : "Open in Zoom ↗" }
+        return fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗"
+    }
 
     /// Everything in the note as plain text, for matching and for Ask Lens.
     var fullText: String {

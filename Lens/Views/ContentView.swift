@@ -97,6 +97,7 @@ struct ContentView: View {
     @StateObject private var navigator = Navigator()
     @StateObject private var gmail = GmailSync()
     @StateObject private var zoom = ZoomNotes()
+    @StateObject private var recordings = RecordingNotes()
     @StateObject private var people = PeopleStore()
     @State private var whatsNew: [WhatsNew.Item] = []
 
@@ -187,6 +188,7 @@ struct ContentView: View {
         .environmentObject(navigator)
         .environmentObject(gmail)
         .environmentObject(zoom)
+        .environmentObject(recordings)
         .environmentObject(people)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
@@ -202,6 +204,9 @@ struct ContentView: View {
             ai.attachLogins(logins)
             logins.importZoomClient()
             zoom.start()
+            // Her own Zoom recordings (on this Mac and in the Zoom cloud): listened to, written up, filed like Zoom notes.
+            recordings.attach(zoom: zoom, logins: logins, ai: ai)
+            recordings.start()
             // First time Lens opens, show the tour.
             if !UserDefaults.standard.bool(forKey: "tourSeen") { navigator.startTour() }
             Updater.shared.start()
@@ -220,7 +225,7 @@ struct ContentView: View {
         }
         // Zoom just got connected: start reading every summary in the background.
         .onChange(of: logins.zoomConnected) { _, connected in
-            if connected { Task { await zoom.check() } }
+            if connected { Task { await zoom.check(); await recordings.check() } }
         }
         // @Published sends the new list before it's stored, so pass it along rather than reading the store.
         .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }

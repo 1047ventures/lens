@@ -93,6 +93,8 @@ FILES = [
     (f"{APP_NAME}/Services/GmailSync.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomNotes.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomAPI.swift",                f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/RecordingNotes.swift",         f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/Transcriber.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/MeetingNotesView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/FilingViews.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectTabsView.swift",           f"{APP_NAME}/Views"),

@@ -23,6 +23,8 @@ in step 7.
    - Meetings: `meeting:read:list_meetings` (list her meetings, used if the list above isn't allowed)
    - Meetings: `meeting:read:list_past_participants` (who was in each meeting)
    - Users: `user:read:user` (which Zoom account is connected)
+   - Recordings: `cloud_recording:read:list_user_recordings` (list her cloud recordings)
+   - Recordings: `cloud_recording:read:recording` (read a recording's transcript and audio, for calls without a summary)
    Nothing else. Lens never changes or deletes anything in Zoom.
 6. Left side: **Basic Information** (or **App Credentials**). Have her click the copy button next to
    **Client ID** and then **Client Secret**, one at a time, and paste each into Claude Code on her Mac.
@@ -39,3 +41,5 @@ in step 7.
 
 If Zoom says the address doesn't match, check step 4 (both boxes, exactly `http://127.0.0.1:8765/zoom`).
 If Lens says Zoom isn't letting it read summaries, check the scopes in step 5.
+If her Zoom app was set up before the two Recordings scopes were added, add them in step 5 and have her
+click **Connect Zoom** once more. Until then Lens still reads the recordings saved on her Mac.

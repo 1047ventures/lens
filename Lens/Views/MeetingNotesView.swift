@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The Zoom meeting summaries on a deal or project, newest first. Long summaries fold up.
 struct MeetingNotesList: View {
@@ -22,8 +23,9 @@ struct MeetingNotesList: View {
                         .buttonStyle(.plain)
                         .help("Read the whole summary")
                         Spacer()
-                        Text(note.date.formatted(date: .abbreviated, time: .omitted))
+                        Text("\(note.sourceLabel) · \(note.date.formatted(date: .abbreviated, time: .omitted))")
                             .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .help(note.fromRecording ? "Lens listened to your recording and wrote this up" : "Written by Zoom's AI Companion")
                     }
                     if !note.summary.isEmpty {
                         Text(note.summary).font(.system(size: 12)).foregroundStyle(Theme.text3)
@@ -42,7 +44,7 @@ struct MeetingNotesList: View {
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
                         }
                         if let url = URL(string: note.link) {
-                            Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 12))
+                            Link(note.linkLabel, destination: url).font(.system(size: 12))
                         }
                         Spacer()
                         let others = projects.active.filter { $0.id != projectID }
@@ -74,12 +76,13 @@ struct MeetingNotesList: View {
 struct MeetingNoteView: View {
     let note: MeetingNote
     @Environment(\.dismiss) private var dismiss
+    @State private var showTranscript = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    ColorLabel(note.fromZoom ? "Zoom summary" : "Zoom summary email", Palette.violet)
+                    ColorLabel(note.sourceLabel, Palette.violet)
                     Text(note.title).font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(note.date.formatted(date: .complete, time: .shortened))
@@ -109,7 +112,7 @@ struct MeetingNoteView: View {
                     }
                     let overview = (note.overview ?? "").isEmpty ? note.summary : (note.overview ?? "")
                     if !overview.isEmpty {
-                        block(note.fromZoom ? "Overview" : "Summary") { FormattedText(text: overview) }
+                        block(note.fromZoom || note.fromRecording ? "Overview" : "Summary") { FormattedText(text: overview) }
                     }
                     ForEach(Array((note.sections ?? []).enumerated()), id: \.offset) { _, section in
                         block(section.title.isEmpty ? "More" : section.title) { FormattedText(text: section.text) }
@@ -127,6 +130,16 @@ struct MeetingNoteView: View {
                             }
                         }
                     }
+                    if let transcript = note.transcript, !transcript.isEmpty {
+                        block("Everything that was said") {
+                            DisclosureGroup(showTranscript ? "Hide the transcript" : "Show the transcript", isExpanded: $showTranscript) {
+                                Text(transcript).font(.system(size: 13)).foregroundStyle(Theme.text2)
+                                    .lineSpacing(3).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                                    .padding(.top, 8)
+                            }
+                            .font(.system(size: 13)).foregroundStyle(Theme.text)
+                        }
+                    }
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,10 +147,11 @@ struct MeetingNoteView: View {
             Divider().overlay(Theme.line)
             HStack {
                 if let url = URL(string: note.link) {
-                    Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 13))
+                    Link(note.linkLabel, destination: url).font(.system(size: 13))
                 }
                 Spacer()
-                Text("Written by Zoom's AI Companion").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text(note.fromRecording ? "Written by Lens from your recording" : "Written by Zoom's AI Companion")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
             }
             .padding(.horizontal, 24).padding(.vertical, 14)
         }
@@ -211,7 +225,7 @@ struct UnmatchedNotesPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     ColorLabel("Unmatched notes · \(zoom.unmatched.count)", Palette.violet)
-                    Text("Zoom calls Lens wasn't sure about. Tell it where each one goes and it remembers.")
+                    Text("Calls Lens wasn't sure about. Tell it where each one goes and it remembers.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
                 ForEach(zoom.unmatched) { note in
@@ -233,7 +247,7 @@ struct UnmatchedNotesPanel: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(note.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                Text("Zoom call · \(note.date.formatted(date: .abbreviated, time: .omitted))")
+                Text("\(note.sourceLabel) · \(note.date.formatted(date: .abbreviated, time: .omitted))")
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 if !note.summary.isEmpty {
                     Text(note.summary).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
@@ -243,7 +257,7 @@ struct UnmatchedNotesPanel: View {
                     Button("Read the whole summary") { reading = note }
                         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
                     if let url = URL(string: note.link) {
-                        Link(note.fromZoom ? "Open in Zoom ↗" : "Open the email ↗", destination: url).font(.system(size: 12))
+                        Link(note.fromRecording || note.fromZoom ? note.linkLabel : "Open the email ↗", destination: url).font(.system(size: 12))
                     }
                 }
             }
@@ -319,5 +333,69 @@ struct NoteQuestion: View {
                              onNew: { drafting = ProjectDraft(project: zoom.draft(for: note), note: note) },
                              onNone: { zoom.dismiss(note) })
         }
+    }
+}
+
+/// On the Meeting notes tab: Lens turning her Zoom recordings into notes. Shows progress while it
+/// listens ("Listening to your recordings… 3 of 12"), where it looks, and lets her add a folder.
+struct RecordingsStatus: View {
+    @EnvironmentObject private var recordings: RecordingNotes
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if recordings.working, let progress = recordings.progress {
+                    ProgressView().controlSize(.small)
+                    Text(progress).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                } else {
+                    Image(systemName: "waveform").font(.system(size: 12)).foregroundStyle(Palette.violet)
+                    Text(summary).font(.system(size: 13)).foregroundStyle(Theme.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button("Add a folder…") { pickFolder() }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .help("Pick another folder where you keep recordings of your calls")
+                Button("Look now") { Task { await recordings.check() } }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(recordings.working)
+            }
+            if !recordings.folders.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Also looking in").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    ForEach(recordings.folders, id: \.self) { path in
+                        HStack(spacing: 4) {
+                            Text(URL(fileURLWithPath: path).lastPathComponent).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                            Button { recordings.removeFolder(path) } label: {
+                                Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Stop looking in this folder")
+                        }
+                        .help(path)
+                    }
+                }
+            }
+            if let problem = recordings.problem {
+                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var summary: String {
+        let n = recordings.written
+        let done = n == 0 ? "" : " \(n) written up so far."
+        return "Lens listens to your Zoom recordings in Documents, Zoom and writes them up as notes.\(done)"
+    }
+
+    private func pickFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Look here"
+        panel.message = "Pick the folder where you keep recordings of your calls."
+        if panel.runModal() == .OK, let url = panel.url { recordings.addFolder(url) }
     }
 }

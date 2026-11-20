@@ -143,6 +143,73 @@ final class LensAI: ObservableObject {
         return answer["notes"] as? [[String: Any]] ?? []
     }
 
+    /// What Claude wrote from the transcript of one of her recordings, laid out like a Zoom AI summary.
+    struct RecordingSummary {
+        var overview: String
+        var sections: [MeetingNoteSection]
+        var nextSteps: [String]
+        var speakers: [String]
+    }
+
+    /// Writes up one recorded call from its transcript. Only the words go to Claude, never the audio.
+    /// One request, separate from the Ask Lens chat. Nothing in Lens is changed here.
+    func summarizeRecording(title: String, date: Date, transcript: String) async throws -> RecordingSummary {
+        // Very long calls: the start and the end carry the most (who's who, then the next steps).
+        var words = transcript
+        if words.count > 300_000 { words = String(words.prefix(220_000)) + "\n[…]\n" + String(words.suffix(80_000)) }
+        let payload = "Meeting name: \(title)\nDate: \(date.formatted(date: .complete, time: .shortened))\n\nTranscript:\n\(words)"
+        guard let answer = try await structured(system: Self.recordingPrompt, schema: Self.recordingSchema, payload: payload),
+              let overview = answer["overview"] as? String else {
+            throw AIError("Claude couldn't write up this recording just now. Lens will try again later.")
+        }
+        let sections = (answer["sections"] as? [[String: Any]] ?? []).compactMap { d -> MeetingNoteSection? in
+            let t = (d["title"] as? String) ?? "", text = (d["text"] as? String) ?? ""
+            return text.isEmpty ? nil : MeetingNoteSection(title: Self.plain(t), text: Self.plain(text))
+        }
+        return RecordingSummary(overview: Self.plain(overview), sections: sections,
+                                nextSteps: (answer["next_steps"] as? [String] ?? []).map(Self.plain).filter { !$0.isEmpty },
+                                speakers: (answer["speakers"] as? [String] ?? []).filter { !$0.isEmpty })
+    }
+
+    /// No em dashes in what she reads.
+    private static func plain(_ text: String) -> String {
+        text.replacingOccurrences(of: " — ", with: ", ").replacingOccurrences(of: "—", with: ", ")
+    }
+
+    private static let recordingPrompt = """
+    You write meeting notes for a freelance filmmaker and videographer from the transcript of a call she recorded
+    in Zoom. Write them the way Zoom's AI Companion writes a meeting summary:
+    - overview: two to four plain sentences on what the call was about and what was decided.
+    - sections: one per topic discussed, each with a short title (like "Interview schedule" or "Budget") and the
+      key points as short bullet lines starting with "- ". Keep names, dates, places, numbers and decisions.
+    - next_steps: who will do what, one short line each, like "Emma to send the shot list by Friday".
+    - speakers: the names of the people who spoke, only when the transcript makes it clear (they introduce
+      themselves or are named when spoken to). Leave it empty when unsure.
+    The transcript comes from automatic speech recognition, so it has no speaker labels unless shown, and some
+    words may be misheard: use common sense, and never invent facts that aren't there. Plain English, no jargon,
+    no em dashes. If nothing meaningful was said, give a one-sentence overview saying so and leave the rest empty.
+    """
+
+    private static let recordingSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "overview": ["type": "string"],
+            "sections": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": ["title": ["type": "string"], "text": ["type": "string"]],
+                    "required": ["title", "text"],
+                    "additionalProperties": false,
+                ],
+            ],
+            "next_steps": ["type": "array", "items": ["type": "string"]],
+            "speakers": ["type": "array", "items": ["type": "string"]],
+        ],
+        "required": ["overview", "sections", "next_steps", "speakers"],
+        "additionalProperties": false,
+    ]
+
     /// One request that answers in JSON matching `schema`. Nil when the answer can't be read.
     private func structured(system: String, schema: [String: Any], payload: String) async throws -> [String: Any]? {
         guard let key = Keychain.get("anthropic.apiKey"), !key.isEmpty else { throw AIError("Connect Claude in Log-ins first.") }
@@ -595,7 +662,7 @@ final class LensAI: ObservableObject {
                 .map(String.init).filter { $0.count > 2 && !Self.stopWords.contains($0) }
             let limit = min(max((input["limit"] as? Int) ?? 6, 1), 20)
             let scored: [(MeetingNote, String, Int)] = notes.map { item in
-                let text = (item.note.title + "\n" + item.note.fullText).lowercased()
+                let text = (item.note.title + "\n" + item.note.fullText + "\n" + (item.note.transcript ?? "")).lowercased()
                 let score = words.reduce(0) { $0 + (text.contains($1) ? (item.note.title.lowercased().contains($1) ? 3 : 1) : 0) }
                 return (item.note, item.place, score)
             }
@@ -606,7 +673,11 @@ final class LensAI: ObservableObject {
             var out: [[String: Any]] = []
             for (i, hit) in hits.prefix(words.isEmpty ? 30 : 20).enumerated() {
                 var d = meetingNoteHeader(hit.0, place: hit.1)
-                if i < limit && !words.isEmpty { d["summary"] = String(hit.0.fullText.prefix(8000)) }
+                if i < limit && !words.isEmpty {
+                    d["summary"] = String(hit.0.fullText.prefix(8000))
+                    let bits = Self.excerpts(hit.0.transcript ?? "", words: words)
+                    if !bits.isEmpty { d["transcript_excerpts"] = bits }
+                }
                 out.append(d)
             }
             return (json(["notes_searched": notes.count, "matches": hits.count, "notes": out]), false)
@@ -616,6 +687,7 @@ final class LensAI: ObservableObject {
             }
             var d = meetingNoteHeader(hit.note, place: hit.place)
             d["summary"] = String(hit.note.fullText.prefix(20000))
+            if let t = hit.note.transcript, !t.isEmpty { d["transcript"] = String(t.prefix(60000)) }
             return (json(d), false)
         case "list_deals":
             let stage = str("stage")
@@ -1000,11 +1072,32 @@ final class LensAI: ObservableObject {
     private func meetingNoteHeader(_ note: MeetingNote, place: String) -> [String: Any] {
         var d: [String: Any] = ["note_id": note.id, "title": note.title,
                                 "date": note.date.formatted(date: .abbreviated, time: .shortened),
-                                "where": place, "from": note.fromZoom ? "Zoom" : "Gmail summary email"]
+                                "where": place, "from": note.sourceLabel]
+        if let t = note.transcript, !t.isEmpty { d["has_transcript"] = true }
         if let people = note.people, !people.isEmpty {
             d["people"] = people.map { $0.email.isEmpty ? $0.name : "\($0.name) <\($0.email)>" }
         }
         return d
+    }
+
+    /// A few short passages of a transcript around the words asked about.
+    private static func excerpts(_ transcript: String, words: [String], max: Int = 4) -> [String] {
+        guard !transcript.isEmpty else { return [] }
+        let lower = transcript.lowercased()
+        var out: [String] = []
+        var used: [Range<String.Index>] = []
+        for w in words {
+            var from = lower.startIndex
+            while out.count < max, let r = lower.range(of: w, range: from..<lower.endIndex) {
+                from = r.upperBound
+                let start = lower.index(r.lowerBound, offsetBy: -250, limitedBy: lower.startIndex) ?? lower.startIndex
+                let end = lower.index(r.upperBound, offsetBy: 250, limitedBy: lower.endIndex) ?? lower.endIndex
+                if used.contains(where: { $0.overlaps(start..<end) }) { continue }
+                used.append(start..<end)
+                out.append("…" + String(transcript[start..<end]) + "…")
+            }
+        }
+        return out
     }
 
     private static let stopWords: Set<String> = ["the", "and", "what", "did", "say", "said", "about", "with", "for", "from",
@@ -1143,9 +1236,9 @@ final class LensAI: ObservableObject {
         tool("get_library", "Every drive, the Mac and the Photos app Lens knows: size, free space, how many videos, photos and edit projects, when last seen and scanned.", [:], []),
         tool("search_library", "Find folders on the owner's drives whose names or files match some words (a client, a place, a date like 2024-06). Works on unplugged drives too.",
              ["query": ["type": "string"]], ["query"]),
-        tool("search_meeting_notes", "Search every Zoom meeting summary Lens has (on deals, on projects, and not placed): overview, each topic, next steps and who was there. Give a few key words (a name, a topic like \"shoot schedule\"). The best matches come back in full; open others with get_meeting_note. With no query, lists the newest.",
+        tool("search_meeting_notes", "Search every meeting note Lens has (on deals, on projects, and not placed): Zoom summaries, Zoom summary emails, and notes Lens wrote from her own Zoom recordings, including every word of those recordings (transcript_excerpts shows where the words came up). Searches the overview, each topic, next steps, who was there and the transcripts. Give a few key words (a name, a topic like \"shoot schedule\"). The best matches come back in full; open others with get_meeting_note. With no query, lists the newest.",
              ["query": ["type": "string"], "limit": ["type": "integer", "description": "How many matches to return in full (default 6)"]], []),
-        tool("get_meeting_note", "One meeting summary in full, by its note_id.", ["note_id": ["type": "string"]], ["note_id"]),
+        tool("get_meeting_note", "One meeting note in full, by its note_id. Notes from her recordings include the full transcript.", ["note_id": ["type": "string"]], ["note_id"]),
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what the owner keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",

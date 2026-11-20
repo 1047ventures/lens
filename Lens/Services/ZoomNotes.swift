@@ -237,6 +237,8 @@ final class ZoomNotes: ObservableObject {
     private func upgrade(_ old: MeetingNote, to new: MeetingNote, deals: DealStore, projects: ProjectStore) {
         var full = new
         full.id = old.id
+        // A note Lens wrote from her recording keeps every word of the call.
+        if full.transcript == nil { full.transcript = old.transcript }
         for d in deals.deals where (d.meetingNotes ?? []).contains(where: { $0.id == old.id }) { deals.attachNote(full, to: d.id) }
         for p in projects.projects where (p.meetingNotes ?? []).contains(where: { $0.id == old.id }) { projects.attachNote(full, to: p.id) }
         if let i = unmatched.firstIndex(where: { $0.id == old.id }) {
@@ -257,6 +259,37 @@ final class ZoomNotes: ObservableObject {
 
     nonisolated private static func normal(_ title: String) -> String {
         String(title.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    // MARK: From her recordings
+
+    /// Lens already has a note for this call: a Zoom summary of the same meeting, or a note written from
+    /// another copy of the same recording (on the Mac and in the Zoom cloud). Same meeting name, within a few hours.
+    func hasNote(zoomUUID: String?, title: String, date: Date) -> Bool {
+        guard let deals, let projects else { return false }
+        let probe = MeetingNote(id: "", title: title, date: date, summary: "", link: "")
+        return allNotes(deals: deals, projects: projects).contains { n in
+            if let zoomUUID, n.zoomMeetingID == zoomUUID { return true }
+            return Self.normal(n.title) == Self.normal(probe.title) && abs(n.date.timeIntervalSince(date)) < 3 * 3600
+        }
+    }
+
+    /// A note Claude wrote from one of her recordings. Filed the same way as a Zoom summary: on the project
+    /// by itself when Lens is sure, otherwise it waits in "Which project is this for?", however old the call is.
+    func fileRecording(_ note: MeetingNote) async {
+        guard let deals, let projects else { return }
+        if handled.contains(note.id) || allNotes(deals: deals, projects: projects).contains(where: { $0.id == note.id }) { return }
+        handled.insert(note.id)
+        switch match(note, deals: deals, projects: projects) {
+        case .sure(let dealID, let projectID):
+            place(note, dealID: dealID, projectID: projectID, auto: true)
+        case .maybe(let projectID):
+            unmatched.append(note)
+            if let projectID { suggested[note.id] = projectID }
+            if ai?.hasKey == true { await askClaude([note], projects: projects) }
+        }
+        unmatched.sort { $0.date > $1.date }
+        save()
     }
 
     /// Every note Lens has: on deals, on projects, unmatched and kept.
@@ -407,25 +440,28 @@ final class ZoomNotes: ObservableObject {
             }
         }
         let title = note.title.lowercased()
-        let haystack = (note.title + "\n" + note.fullText + "\n" + (note.attendees ?? []).joined(separator: " ")).lowercased()
+        // A recording has every word that was said, and people call each other by first name.
+        let spoken = note.fromRecording
+        let haystack = (note.title + "\n" + note.fullText + "\n" + (note.transcript ?? "") + "\n"
+                        + (note.attendees ?? []).joined(separator: " ")).lowercased()
         var targets: [Target] = []
         var linkedProjects = Set<UUID>()
         for d in deals.deals {
             var keys = Self.names(d.client, weight: 2)
             for c in d.contacts {
                 if c.email.contains("@") { keys.append((c.email.lowercased(), 3)) }
-                keys += Self.names(c.name, weight: 2)
+                keys += Self.names(c.name, weight: 2, firstName: spoken)
             }
             var active = d.stage.isOpen
             if let pid = d.projectID, let p = projects.project(id: pid) {
                 linkedProjects.insert(pid)
-                keys += Self.projectKeys(p)
+                keys += Self.projectKeys(p, firstNames: spoken)
                 active = active || p.stage != .archived
             }
             targets.append(Target(dealID: d.id, projectID: d.projectID, active: active, keys: keys))
         }
         for p in projects.projects where !linkedProjects.contains(p.id) {
-            targets.append(Target(dealID: nil, projectID: p.id, active: p.stage != .archived, keys: Self.projectKeys(p)))
+            targets.append(Target(dealID: nil, projectID: p.id, active: p.stage != .archived, keys: Self.projectKeys(p, firstNames: spoken)))
         }
 
         func score(_ t: Target) -> Int {
@@ -450,11 +486,12 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// What points to a project: its client, its people, its name and the user's keywords.
-    private static func projectKeys(_ p: Project) -> [(text: String, weight: Int)] {
+    /// `firstNames`: for recordings, where "Thanks, Sarah" is how people show up.
+    private static func projectKeys(_ p: Project, firstNames: Bool = false) -> [(text: String, weight: Int)] {
         var keys = names(p.client, weight: 2)
         for person in p.people ?? [] {
             if person.email.contains("@") { keys.append((person.email.lowercased(), 3)) }
-            keys += names(person.name, weight: 2)
+            keys += names(person.name, weight: 2, firstName: firstNames)
         }
         let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if name.count >= 4 { keys.append((name, 2)) }
@@ -515,8 +552,9 @@ final class ZoomNotes: ObservableObject {
         }
     }
 
-    /// A full name, plus the last name on its own ("the Smiths" still finds Jane Smith).
-    private static func names(_ raw: String, weight: Int) -> [(text: String, weight: Int)] {
+    /// A full name, plus the last name on its own ("the Smiths" still finds Jane Smith), and for a
+    /// recording the first name on its own too (it counts a little, like a last name).
+    private static func names(_ raw: String, weight: Int, firstName: Bool = false) -> [(text: String, weight: Int)] {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard name.count >= 3, name != "new client" else { return [] }
         var keys = [(name, weight)]
@@ -524,6 +562,9 @@ final class ZoomNotes: ObservableObject {
         if words.count >= 2, let last = words.last, last.count >= 4,
            !["wedding", "films", "studio", "group", "company", "family", "foundation"].contains(last) {
             keys.append((last, 1))
+        }
+        if firstName, words.count >= 2, let first = words.first, first.count >= 3, !["the", "mr", "mrs", "ms", "dr"].contains(first) {
+            keys.append((first, 1))
         }
         return keys
     }
@@ -544,7 +585,7 @@ final class ZoomNotes: ObservableObject {
             projects?.attachNote(note, to: projectID)
             if auto {
                 projects?.logAutoFiled(AutoFiled(kind: .note, itemID: note.id, title: note.title,
-                                                 source: note.fromZoom ? "Zoom call" : "Zoom summary email"), on: projectID)
+                                                 source: note.fromRecording ? "Your recording" : note.fromZoom ? "Zoom call" : "Zoom summary email"), on: projectID)
             }
         }
         unmatched.removeAll { $0.id == note.id }

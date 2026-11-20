@@ -191,7 +191,8 @@ struct ProjectNotesTab: View {
         let all = (project.meetingNotes ?? []).sorted { $0.date > $1.date }
         let q = search.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return all }
-        return all.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.summary.localizedCaseInsensitiveContains(q) }
+        return all.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.fullText.localizedCaseInsensitiveContains(q)
+            || ($0.transcript ?? "").localizedCaseInsensitiveContains(q) }
     }
 
     var body: some View {
@@ -200,13 +201,13 @@ struct ProjectNotesTab: View {
             if !waiting.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     ColorLabel("Might be for this project · \(waiting.count)", Palette.violet)
-                    Text("Zoom calls that might be about \(project.name). Lens wasn't sure, so it's asking.")
+                    Text("Calls that might be about \(project.name). Lens wasn't sure, so it's asking.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(waiting) { note in
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(note.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                                Text(note.date.formatted(date: .abbreviated, time: .omitted))
+                                Text("\(note.sourceLabel) · \(note.date.formatted(date: .abbreviated, time: .omitted))")
                                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
                                 if !note.summary.isEmpty {
                                     Text(note.summary).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
@@ -234,9 +235,10 @@ struct ProjectNotesTab: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 220)
                 }
+                RecordingsStatus()
                 if notes.isEmpty {
                     Text(search.isEmpty
-                         ? "No Zoom notes yet. Calls with the people on this project, or that mention it, show up here."
+                         ? "No meeting notes yet. Zoom summaries and recordings of calls with the people on this project, or that mention it, show up here."
                          : "No notes mention \"\(search)\".")
                         .font(.system(size: 14)).foregroundStyle(Theme.muted)
                 } else {

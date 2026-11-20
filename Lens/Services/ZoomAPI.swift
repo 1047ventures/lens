@@ -348,6 +348,94 @@ enum ZoomAPI {
         }
     }
 
+    // MARK: Cloud recordings
+
+    /// One call recorded to her Zoom cloud: Zoom's transcript file when there is one, and the audio.
+    struct CloudRecording: Sendable {
+        let uuid: String
+        let topic: String
+        let start: Date
+        let transcriptURL: String?
+        /// The audio-only file, or the video when there's no audio-only one.
+        let audioURL: String?
+        let audioExtension: String
+        let shareURL: String?
+    }
+
+    private static func day(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
+    }
+
+    /// Her cloud recordings between two dates (one page; Zoom allows up to a month at a time).
+    static func recordings(from: Date, to: Date, pageToken: String?, token: String) async throws -> (items: [CloudRecording], next: String?) {
+        var query = [URLQueryItem(name: "page_size", value: "300"),
+                     URLQueryItem(name: "from", value: day(from)),
+                     URLQueryItem(name: "to", value: day(to))]
+        if let pageToken, !pageToken.isEmpty { query.append(URLQueryItem(name: "next_page_token", value: pageToken)) }
+        let json = try await get("users/me/recordings", query: query, token: token) ?? [:]
+        let items: [CloudRecording] = (json["meetings"] as? [[String: Any]] ?? []).compactMap { m in
+            guard let uuid = m["uuid"] as? String else { return nil }
+            let files = (m["recording_files"] as? [[String: Any]] ?? []).filter { ($0["status"] as? String ?? "completed") == "completed" }
+            func file(_ type: String) -> [String: Any]? { files.first { ($0["file_type"] as? String)?.uppercased() == type } }
+            let transcript = file("TRANSCRIPT")
+            let audio = file("M4A") ?? file("MP4")
+            guard transcript != nil || audio != nil else { return nil }
+            return CloudRecording(uuid: uuid, topic: (m["topic"] as? String) ?? "Zoom call",
+                                  start: date(m["start_time"]) ?? Date(),
+                                  transcriptURL: transcript?["download_url"] as? String,
+                                  audioURL: audio?["download_url"] as? String,
+                                  audioExtension: ((audio?["file_extension"] as? String) ?? (audio?["file_type"] as? String) ?? "m4a").lowercased(),
+                                  shareURL: m["share_url"] as? String)
+        }
+        let next = json["next_page_token"] as? String
+        return (items, (next?.isEmpty ?? true) ? nil : next)
+    }
+
+    /// Downloads one recording file from her Zoom cloud to a file on this Mac.
+    static func download(_ link: String, to file: URL, token: String) async throws {
+        guard var c = URLComponents(string: link) else { throw ZoomAuth.explain(code: "unknown") }
+        // Zoom accepts the sign-in on the address too, which survives its redirect to the file.
+        c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "access_token", value: token)]
+        guard let url = c.url else { throw ZoomAuth.explain(code: "unknown") }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 600
+        let temp: URL, response: URLResponse
+        do { (temp, response) = try await URLSession.shared.download(for: request) } catch { throw ZoomAuth.explain(error) }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 429 { throw ZoomAuth.explain(code: "rate_limited") }
+        if status == 401 || status == 403 { throw ZoomAuth.explain(code: "missing_scope") }
+        guard (200..<300).contains(status) else { throw ZoomAuth.explain(code: "unknown") }
+        try? FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: temp, to: file)
+    }
+
+    /// Zoom's transcript file (WebVTT) as plain lines: "[03:12] Sarah Lee: we could shoot on the quad".
+    static func transcriptText(_ vtt: String) -> String {
+        var out: [String] = []
+        var stamp: String?
+        for raw in vtt.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line == "WEBVTT" || Int(line) != nil { continue }
+            if line.contains("-->") {
+                let start = line.components(separatedBy: "-->").first?.trimmingCharacters(in: .whitespaces) ?? ""
+                let parts = start.split(separator: ":").map(String.init)
+                if parts.count == 3, let h = Int(parts[0]), let m = Int(parts[1]) {
+                    let sec = Int(Double(parts[2]) ?? 0)
+                    stamp = h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%02d:%02d", m, sec)
+                }
+                continue
+            }
+            out.append(stamp.map { "[\($0)] " + line } ?? line)
+            stamp = nil
+        }
+        return out.joined(separator: "\n")
+    }
+
     /// Splits a Markdown summary into the opening overview, titled sections, and next steps.
     static func parseMarkdown(_ text: String) -> (overview: String, sections: [MeetingNoteSection], nextSteps: [String]) {
         var overview: [String] = []
