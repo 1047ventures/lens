@@ -114,7 +114,7 @@ extension BuilderStep {
 extension Deal {
     var hasFeedbackDeadline: Bool { milestones.contains { $0.phase.localizedCaseInsensitiveContains("feedback") } }
 
-    /// True when the headline or pitch opens with Emma instead of the client.
+    /// True when the headline or pitch opens with the user instead of the client.
     var opensWithSelf: Bool {
         [story.headline, story.logline].contains { text in
             let t = text.lowercased()
@@ -758,7 +758,7 @@ struct ProposalBuilderView: View {
             }
             .panel()
 
-            BField("Testimonial to feature", "\u{201C}Emma made our team look like themselves on their best day.\u{201D} — Client name", text(\.testimonial), lines: 2...5)
+            BField("Testimonial to feature", "\u{201C}They made our team look like themselves on their best day.\u{201D} — Client name", text(\.testimonial), lines: 2...5)
         }
     }
 

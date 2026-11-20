@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Looks at a photo of gear and asks Claude what it is. Small, self-contained service used by
-/// "Add from photo" in Gear. Nothing here changes Emma's data.
+/// "Add from photo" in Gear. Nothing here changes the user's data.
 enum GearIdentifier {
 
     struct Guess {

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Every account Lens needs, what it gets from each, and the exact steps to connect it.
 /// Lens never sees or stores passwords: each connection uses the service's own sign-in,
-/// a Mac permission prompt, or something Emma already has (like email notifications).
+/// a Mac permission prompt, or something the user already has (like email notifications).
 struct LoginsView: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator
@@ -17,10 +17,10 @@ struct LoginsView: View {
 
     private let groups = [
         Group(id: "Google account", color: Palette.blue, note: "One sign-in covers most of what Lens reads.", items: [.google, .calendar, .drive]),
-        Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes her calls.", items: [.zoom]),
-        Group(id: "Where clients find her", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
-        Group(id: "Money", color: Palette.lime, note: "She logs in on their own sites. Lens only reads statements.", items: [.bank, .paypal, .venmo]),
-        Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending ideas to Sean.", items: [.claude, .github]),
+        Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes your calls.", items: [.zoom]),
+        Group(id: "Where clients find you", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
+        Group(id: "Money", color: Palette.lime, note: "You log in on their own sites. Lens only reads statements.", items: [.bank, .paypal, .venmo]),
+        Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending feature ideas.", items: [.claude, .github]),
         Group(id: "Coming later", color: Palette.slate, note: "", items: [.homeServer]),
     ]
 
@@ -70,11 +70,11 @@ struct LoginsView: View {
         let p = logins.progress
         return VStack(alignment: .leading, spacing: 12) {
             Text("Log-ins").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.text)
-            Text("Everything Lens needs to see the whole business. Lens never sees or stores passwords: each one opens the service's own sign-in, or uses something Emma already has.")
+            Text("Everything Lens needs to see the whole business. Lens never sees or stores passwords: each one opens the service's own sign-in, or uses something you already have.")
                 .font(.system(size: 15)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Text("Emma's Google account").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text("Your Google account").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
                 TextField(ConnectionStore.defaultOwnerEmail, text: Binding(get: { logins.field("ownerEmail") }, set: { logins.setField("ownerEmail", $0) }))
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                 Text("Lens ignores any other account on this Mac.").font(.system(size: 12)).foregroundStyle(Theme.muted)
@@ -203,7 +203,7 @@ struct LoginsView: View {
         case .zoom: ZoomControls()
         case .website:
             VStack(alignment: .leading, spacing: 8) {
-                TextField("Her website, e.g. emmapionberlin.com", text: Binding(get: { logins.field("website") }, set: { logins.setField("website", $0) }))
+                TextField("Your website, e.g. yourname.com", text: Binding(get: { logins.field("website") }, set: { logins.setField("website", $0) }))
                     .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
                 confirm("website", "Done: contact-form emails go to the Gmail above")
             }
@@ -259,7 +259,7 @@ struct LoginsView: View {
         if accounts.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 if !logins.otherDriveAccounts.isEmpty {
-                    Text("Ignoring \(logins.otherDriveAccounts.joined(separator: ", ")): not Emma's account. Sign Drive for desktop in as \(logins.ownerEmail) on her Mac.")
+                    Text("Ignoring \(logins.otherDriveAccounts.joined(separator: ", ")): not your account. Sign Drive for desktop in as \(logins.ownerEmail) on this Mac.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 Button("Download Google Drive for desktop") {
@@ -310,7 +310,7 @@ struct LoginsView: View {
     private func statementControls(_ id: LoginID) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if id == .bank {
-                TextField("Her bank's website, e.g. chase.com", text: Binding(get: { logins.field("bankWebsite") }, set: { logins.setField("bankWebsite", $0) }))
+                TextField("Your bank's website, e.g. chase.com", text: Binding(get: { logins.field("bankWebsite") }, set: { logins.setField("bankWebsite", $0) }))
                     .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
             }
             HStack(spacing: 10) {
@@ -345,18 +345,18 @@ struct LoginsView: View {
     static let info: [LoginID: Info] = [
         .google: Info(
             name: "Google (Gmail, Drive, Sheets, Docs, Calendar)", icon: "envelope.fill",
-            covers: "Inquiries, client threads, Zoom summaries, payment emails, project folders, her calendar",
-            gets: ["Reads her email to find inquiries and attach client threads to projects",
-                   "Writes reply drafts she reviews and sends herself",
+            covers: "Inquiries, client threads, Zoom summaries, payment emails, project folders, your calendar",
+            gets: ["Reads your email to find inquiries and attach client threads to projects",
+                   "Writes reply drafts you review and send yourself",
                    "Creates shared project folders and documents (only touches files Lens made)",
                    "Reads the intake form's answer sheet",
-                   "Reads her Google Calendar to spot clashes and suggest times"],
-            never: "Never sends email on its own, never deletes mail, never changes her calendar, never sees her password.",
-            steps: ["Click **Sign in with Google** and sign in as Emma."]),
+                   "Reads your Google Calendar to spot clashes and suggest times"],
+            never: "Never sends email on its own, never deletes mail, never changes your calendar, never sees your password.",
+            steps: ["Click **Sign in with Google** and sign in with your account."]),
         .calendar: Info(
             name: "Calendar", icon: "calendar",
             covers: "Shoots, calls and milestones, plus clash checks when proposing dates",
-            gets: ["Sees her events to spot clashes and suggest call times",
+            gets: ["Sees your events to spot clashes and suggest call times",
                    "Adds shoot days and milestones when a deal is won"],
             never: "Never deletes or changes events it didn't create.",
             steps: ["Sign in with Google above. Your Google Calendar comes with it.",
@@ -366,15 +366,15 @@ struct LoginsView: View {
             covers: "Where shared project folders and statements live",
             gets: ["A Drive folder on the Mac where Lens builds each project's folder from a template"],
             never: "Never deletes anything in Drive.",
-            steps: ["Install **Google Drive for desktop** and sign in as Emma.",
+            steps: ["Install **Google Drive for desktop** and sign in with your account.",
                     "Leave it running; Lens finds it on its own."]),
         .zoom: Info(
             name: "Zoom (calls + AI Companion)", icon: "phone.fill",
             covers: "Every call's full summary attached to the right inquiry or project",
-            gets: ["Every AI Companion summary in her Zoom account, old and new, in full: overview, each topic, next steps and who was there",
+            gets: ["Every AI Companion summary in your Zoom account, old and new, in full: overview, each topic, next steps and who was there",
                    "Each one placed on the matching inquiry or project, by the client's name and email",
-                   "Ask Lens can read and search them all, so she can ask what someone said on a call"],
-            never: "Never sees her Zoom password, never changes or deletes anything in Zoom, never joins her calls.",
+                   "Ask Lens can read and search them all, so you can ask what someone said on a call"],
+            never: "Never sees your Zoom password, never changes or deletes anything in Zoom, never joins your calls.",
             steps: ["Click **Connect Zoom** below, sign in to Zoom and press **Allow**.",
                     "That's it. Lens reads all your summaries in the background, then checks for new ones every hour.",
                     "Make sure **Meeting summary** is on in Zoom's AI setting (link below), so every call gets one."]),
@@ -383,16 +383,16 @@ struct LoginsView: View {
             covers: "Form inquiries land in the pipeline on their own",
             gets: ["Each form email becomes a new inquiry with a drafted reply and intake link"],
             never: "No website login needed.",
-            steps: ["In her website builder (Squarespace, Wix, Showit…), set the contact form to email the Gmail connected above.",
+            steps: ["In your website builder (Squarespace, Wix, Showit…), set the contact form to email the Gmail connected above.",
                     "Send yourself a test inquiry once Google is connected."]),
         .social: Info(
             name: "Instagram + Facebook", icon: "camera.aperture",
-            covers: "DMs and comments from people who find her on social",
+            covers: "DMs and comments from people who find you on social",
             gets: ["Now: \"Paste a DM\" turns a message into an inquiry with a ready-to-copy reply",
-                   "Later: a direct link once her account is professional (Meta only allows this for business and creator accounts)"],
-            never: "No app can read personal-account DMs, so nothing is read until she connects.",
+                   "Later: a direct link once your account is professional (Meta only allows this for business and creator accounts)"],
+            never: "No app can read personal-account DMs, so nothing is read until you connect.",
             steps: ["In Instagram: Settings → Account type and tools → **Switch to professional account** (Creator or Business).",
-                    "Link it to her Facebook Page (create a simple one if needed).",
+                    "Link it to your Facebook Page (create a simple one if needed).",
                     "Tick below. Lens adds the direct Meta sign-in in a later phase."]),
         .directories: Info(
             name: "Directories + reviews", icon: "list.star",
@@ -400,23 +400,23 @@ struct LoginsView: View {
             gets: ["Lead emails from each directory, turned into inquiries tagged with where they came from",
                    "Win rate and revenue by source in Money"],
             never: "No directory logins needed.",
-            steps: ["Tap each place she's listed.",
+            steps: ["Tap each place you're listed.",
                     "In each one's settings, send lead notifications to the Gmail connected above."]),
         .bank: Info(
             name: "Bank + credit card", icon: "building.columns.fill",
             covers: "Income, expenses and balances for the Money tab",
             gets: ["Checking and credit card transactions, straight into Money",
                    "Deposit and payment alert emails, once Google is connected"],
-            never: "Lens never sees or saves her password. She logs in on the bank's own page; Lens only reads the statements she downloads.",
-            steps: ["Type her bank's website below and tap **Log in and get transactions**.",
+            never: "Lens never sees or saves your password. You log in on the bank's own page; Lens only reads the statements you download.",
+            steps: ["Type your bank's website below and tap **Log in and get transactions**.",
                     "Log in like normal (including the text-message code).",
                     "Find Statements or Download transactions, pick **CSV**, and download. Lens adds it to Money and skips anything already there.",
-                    "Do it again whenever she wants fresh numbers. The bank may ask her to log in again each time."]),
+                    "Do it again whenever you want fresh numbers. The bank may ask you to log in again each time."]),
         .paypal: Info(
             name: "PayPal", icon: "p.circle.fill",
             covers: "Client payments and fees",
             gets: ["Payment received emails (already in Gmail)", "Activity downloads, straight into Money"],
-            never: "Lens never sees or saves her password. She logs in on PayPal's own page.",
+            never: "Lens never sees or saves your password. You log in on PayPal's own page.",
             steps: ["Tap **Log in and get transactions** and log in like normal.",
                     "Tap **Go to statements**, pick CSV and the dates, and download. Lens adds it to Money.",
                     "Keep payment notification emails on."]),
@@ -424,29 +424,29 @@ struct LoginsView: View {
             name: "Venmo", icon: "v.circle.fill",
             covers: "Deposits paid by Venmo, like Hartley's",
             gets: ["Payment emails (already in Gmail)", "Statements, straight into Money"],
-            never: "Lens never sees or saves her password. She logs in on Venmo's own page.",
+            never: "Lens never sees or saves your password. You log in on Venmo's own page.",
             steps: ["Tap **Log in and get transactions** and log in like normal.",
                     "Tap **Go to statements** and download the CSV. Lens adds it to Money.",
                     "Keep payment email notifications on."]),
         .claude: Info(
             name: "Claude (Ask Lens)", icon: "sparkles",
-            covers: "The assistant built into Lens: questions, drafts, changes she approves",
+            covers: "The assistant built into Lens: questions, drafts, changes you approve",
             gets: ["Answers from Lens's own data: deals, projects, rates",
-                   "Proposes changes (new inquiries, discovery answers, follow-ups, rates) that wait for her Approve tap",
-                   "Remembers how she likes to work, in a list she can edit"],
-            never: "Never sends email, never moves money, never changes anything she hasn't approved.",
+                   "Proposes changes (new inquiries, discovery answers, follow-ups, rates) that wait for your Approve tap",
+                   "Remembers how you like to work, in a list you can edit"],
+            never: "Never sends email, never moves money, never changes anything you haven't approved.",
             steps: ["Sign up at [console.anthropic.com](https://console.anthropic.com) (use the business email).",
                     "Under **Billing**, add a card and set a **monthly spend limit** (around $100 is plenty to start).",
                     "Under **API Keys**, click **Create Key**, name it Lens, and copy it.",
                     "Paste it below and click **Save**, then **Test**."]),
         .github: Info(
-            name: "GitHub (ideas for Sean)", icon: "lightbulb.fill",
-            covers: "When she asks Lens for a new feature, it lands straight in Sean's to-do list",
+            name: "GitHub (feature ideas)", icon: "lightbulb.fill",
+            covers: "When you ask Lens for a new feature, it lands straight in the developer's to-do list",
             gets: ["Can open new Issues on Lens's private repo, and nothing else"],
             never: "Can't see or change any code, and can't touch any other repo.",
-            steps: ["Sean: on GitHub, go to [Settings → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new).",
+            steps: ["Developer: on GitHub, go to [Settings → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new).",
                     "Repository access: **Only select repositories → 1047ventures/lens**. Permissions: **Issues → Read and write**. Nothing else.",
-                    "Generate it, paste it below on Emma's Mac, and Save. Until then, requests open an email to Sean instead."]),
+                    "Generate it, paste it below on this Mac, and Save. Until then, requests open an email to the developer instead."]),
         .homeServer: Info(
             name: "Home server", icon: "server.rack",
             covers: "Local AI, storage, and the phone sidekick",
@@ -547,7 +547,7 @@ private struct ZoomControls: View {
     }
 }
 
-/// One button. The Google client arrives on its own (Claude puts it on this Mac), so Emma never sees setup.
+/// One button. The Google client arrives on its own (Claude puts it on this Mac), so the user never sees setup.
 private struct GoogleControls: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator

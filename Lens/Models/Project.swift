@@ -58,7 +58,7 @@ struct ProjectPerson: Codable, Hashable, Identifiable {
 }
 
 /// A contract, treatment, call sheet or other file for a project: a link to Google Drive or
-/// the web, or a file on Emma's Mac. Lens only remembers where it is; the file stays put.
+/// the web, or a file on the user's Mac. Lens only remembers where it is; the file stays put.
 struct ProjectFile: Codable, Hashable, Identifiable {
     var id = UUID()
     var name: String
@@ -72,7 +72,7 @@ struct ProjectFile: Codable, Hashable, Identifiable {
     static let kinds = ["Contract", "Treatment", "Call sheet", "Script", "Release form", "Other"]
 }
 
-/// Something Lens put on a project by itself (a Zoom note, an email, a person), so Emma can see it
+/// Something Lens put on a project by itself (a Zoom note, an email, a person), so the user can see it
 /// on the project and undo it with Move or Not this project.
 struct AutoFiled: Codable, Hashable, Identifiable {
     enum Kind: String, Codable { case note, email, person }
@@ -82,7 +82,7 @@ struct AutoFiled: Codable, Hashable, Identifiable {
     /// The meeting note's id, the email conversation's id, or the person's email address.
     var itemID: String
     var title: String
-    /// Where it came from, as Emma sees it: "Zoom call", "Email", "Emails and calls".
+    /// Where it came from, as the user sees it: "Zoom call", "Email", "Emails and calls".
     var source: String
     var date = Date()
 }
@@ -120,13 +120,13 @@ struct Project: Codable, Identifiable, Hashable {
     var timerStartedAt: Date?
     /// What the running timer is counting (Shoot, Edit…).
     var timerKind: TimeKind?
-    /// Zoom calls and calendar events Emma said not to count as time.
+    /// Zoom calls and calendar events the user said not to count as time.
     var skippedTimeSources: [String]?
-    /// What Emma is charging, when it isn't already on a won deal in Pipeline.
+    /// What the user is charging, when it isn't already on a won deal in Pipeline.
     var price: Double?
     /// What Lens filed on this project by itself lately, newest first. Optional so older saved projects still load.
     var autoFiled: [AutoFiled]?
-    /// Email addresses Emma said aren't on this project, so Lens doesn't add them again.
+    /// Email addresses the user said aren't on this project, so Lens doesn't add them again.
     var notPeople: [String]?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",

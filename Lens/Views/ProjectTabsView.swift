@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The tabs on a project page, with their names as Emma sees them.
+/// The tabs on a project page, with their names as the user sees them.
 enum ProjectTab: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case people = "People"
@@ -366,7 +366,7 @@ struct ProjectProposalTab: View {
         }
     }
 
-    /// The last time Emma marked the proposal as sent.
+    /// The last time the user marked the proposal as sent.
     private func sentDate(_ deal: Deal) -> Date? {
         deal.events.last { $0.text.localizedCaseInsensitiveContains("proposal sent") }?.date
     }

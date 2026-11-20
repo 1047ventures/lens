@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import WebKit
 
-/// Builds the client-facing proposal as one HTML document in Emma's proposal style.
+/// Builds the client-facing proposal as one HTML document in the user's proposal style.
 /// Every number comes from the Estimator, so the deck, budgets and comparison table can
 /// never disagree. "Short" is the 3–5 page version; "Full" adds her story pages and the
 /// workload table.
@@ -86,6 +86,7 @@ enum ProposalRenderer {
 
         var r: RateCard { store.rates }
         var owner: String { r.ownerName.isEmpty ? "Your name" : r.ownerName }
+        var leadName: String { r.ownerName.isEmpty ? "Lead filmmaker" : r.ownerName }
         var est: Estimate { store.estimate(lead) }
 
         init(deal: Deal, lead: ScopeOption, store: DealStore, projects: ProjectStore) {
@@ -263,7 +264,7 @@ enum ProposalRenderer {
                     row("Filming days", { o in "\(o.shootDays)" + (o.travelDays > 0 ? " (\(o.travelDays) out of state)" : "") }),
                     row("Interviewees", { "Up to \($0.interviewees)" }),
                     row("Main film", { "Up to \($0.filmMinutes) min" }),
-                    row("Crew", { "Emma + \($0.localCrew)" }),
+                    row("Crew", { "\(e(leadName)) + \($0.localCrew)" }),
                     row("Revisions", { "\($0.revisionRounds) round\($0.revisionRounds == 1 ? "" : "s")" }),
                 ]
                 for x in allExtras {
@@ -308,7 +309,7 @@ enum ProposalRenderer {
             }
             var rows = [
                 row("What it is", options.map { e($0.pitch.isEmpty ? $0.tagline : $0.pitch) }, cls: "pitch"),
-                row("Filming", options.map { o in "\(o.shootDays) day\(o.shootDays == 1 ? "" : "s"), Emma + \(o.localCrew)" }),
+                row("Filming", options.map { o in "\(o.shootDays) day\(o.shootDays == 1 ? "" : "s"), \(e(leadName)) + \(o.localCrew)" }),
                 row("Film", options.map { "Up to \($0.filmMinutes) min, \($0.revisionRounds) revision round\($0.revisionRounds == 1 ? "" : "s")" }),
                 row("Extras", options.map { o in o.extras.isEmpty ? "<span class=no>Main film only</span>" : e(o.extras.map { $0.deliverable(o.quantity($0)) }.joined(separator: ", ")) }),
             ]
@@ -460,7 +461,7 @@ enum ProposalRenderer {
         let post = est.workload.first { $0.label.hasPrefix("Main film") }?.hoursText ?? ""
         var items = [
             "Up to \(o.filmMinutes) minute film with up to \(o.interviewees) principal voices",
-            "\(o.localDays) local filming day\(o.localDays == 1 ? "" : "s"), Emma plus \(o.localCrew) collaborator\(o.localCrew == 1 ? "" : "s")",
+            "\(o.localDays) local filming day\(o.localDays == 1 ? "" : "s"), \(e(store.rates.ownerName.isEmpty ? "Lead filmmaker" : store.rates.ownerName)) plus \(o.localCrew) collaborator\(o.localCrew == 1 ? "" : "s")",
         ]
         if o.travelDays > 0 {
             items.append("\(o.travelDays) out-of-state day\(o.travelDays == 1 ? "" : "s")\(o.travelPlaces.isEmpty ? "" : " (\(o.travelPlaces))") plus travel and preparation")

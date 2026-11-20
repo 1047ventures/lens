@@ -106,7 +106,7 @@ final class ProjectStore: ObservableObject {
         update(p)
     }
 
-    /// Emma moved it or took it off: it's no longer something Lens filed here.
+    /// the user moved it or took it off: it's no longer something Lens filed here.
     func dropAutoFiled(_ kind: AutoFiled.Kind, itemID: String, from projectID: UUID? = nil) {
         for p in projects where projectID == nil || p.id == projectID {
             guard let list = p.autoFiled, list.contains(where: { $0.kind == kind && $0.itemID == itemID }) else { continue }
@@ -123,7 +123,7 @@ final class ProjectStore: ObservableObject {
 
     /// Adds people who clearly belong to a project: someone in at least three of its emails and calls,
     /// who doesn't show up like that on any other open project. Lens files them by itself (no role yet)
-    /// and lists them under "Filed automatically". People Emma took off aren't added again.
+    /// and lists them under "Filed automatically". People the user took off aren't added again.
     func addRegulars() {
         func seen(in p: Project) -> [String: (name: String, count: Int)] {
             var found: [String: (name: String, count: Int)] = [:]

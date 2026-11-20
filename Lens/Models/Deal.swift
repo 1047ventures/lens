@@ -73,7 +73,7 @@ enum Extra: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Kinds of work Emma can hand to someone cheaper and net the difference.
+/// Kinds of work the user can hand to someone cheaper and net the difference.
 enum WorkType: String, Codable, CaseIterable, Identifiable {
     case planning, editing, extras, media
     var id: String { rawValue }
@@ -107,15 +107,15 @@ struct ScopeOption: Codable, Identifiable, Hashable {
     var localDays: Int
     var travelDays: Int         // out-of-state shoot days
     var travelPlaces: String    // "Nevada, Cincinnati"
-    var localCrew: Int          // collaborators beside Emma on local days
-    var travelCrew: Int         // collaborators beside Emma on travel days
+    var localCrew: Int          // collaborators beside the owner on local days
+    var travelCrew: Int         // collaborators beside the owner on travel days
     var interviewees: Int       // upper bound shown as "up to N"
     var filmMinutes: Int        // upper bound of the main film
     var revisionRounds: Int
     var extras: [Extra]
     var clientTakesOn: [String] // work shifted to the client to bring the price down
     var travelAllowance: Double // passed through on top of the fee
-    var quote: Double?          // what Emma actually charges; nil = use the calculated price
+    var quote: Double?          // what the owner actually charges; nil = use the calculated price
     var note: String            // fine print about trade-offs
     /// Work handed to someone cheaper on this option. Optional so older saved deals still load.
     var handOff: [WorkType]? = nil
@@ -157,7 +157,7 @@ struct EmailThread: Codable, Hashable, Identifiable {
     var lastDate: Date
     var messageCount: Int
     var link: String        // opens the conversation in Gmail
-    /// Everyone on the conversation except Emma, as "Name <email>". Optional so older saved links still load.
+    /// Everyone on the conversation except the user, as "Name <email>". Optional so older saved links still load.
     var people: [String]? = nil
 }
 
@@ -230,7 +230,7 @@ struct Point: Codable, Hashable, Identifiable {
     var text: String
 }
 
-/// The words of the proposal. Today Emma writes or pastes them; once the home server is
+/// The words of the proposal. Today the user writes or pastes them; once the home server is
 /// running, the local AI drafts them from the inquiry and call notes for her to approve.
 struct ProposalStory: Codable, Hashable {
     var headline = ""
@@ -358,7 +358,7 @@ extension ScopeOption {
         "Supply background materials and archives, with permission information",
     ]
 
-    /// Emma's usual trio, spun out of one scope: the full vision with every extra,
+    /// the user's usual trio, spun out of one scope: the full vision with every extra,
     /// a leaner version of the main film, and a bare-bones version where the client
     /// takes on some of the planning.
     func threeWays() -> [ScopeOption] {

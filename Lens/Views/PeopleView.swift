@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Everyone Emma works with: clients, directors, interviewees, crew, vendors and leads.
+/// Everyone the user works with: clients, directors, interviewees, crew, vendors and leads.
 struct PeopleView: View {
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var deals: DealStore
@@ -477,7 +477,7 @@ struct PersonDetailView: View {
         .accentBar(Palette.sand)
     }
 
-    /// The business card photos Emma scanned for this person.
+    /// The business card photos the user scanned for this person.
     @ViewBuilder private var cardPanel: some View {
         let photos = (person.cardPhotos ?? []).filter { FileManager.default.fileExists(atPath: CardReader.photoURL($0).path) }
         if !photos.isEmpty {
@@ -881,7 +881,7 @@ struct PersonPicker: View {
     }
 }
 
-/// Puts a person on one of Emma's projects.
+/// Puts a person on one of the user's projects.
 struct ProjectPickerSheet: View {
     let person: Person
     @EnvironmentObject private var people: PeopleStore

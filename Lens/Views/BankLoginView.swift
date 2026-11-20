@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-/// Emma logs in to her bank, Venmo or PayPal on their own website, inside Lens. Lens never sees
+/// the user logs in to her bank, Venmo or PayPal on their own website, inside Lens. Lens never sees
 /// or stores her password: the site keeps her signed in the way a browser would. When she
 /// downloads a statement, Lens catches the file and adds it to the books.
 struct BankSite {

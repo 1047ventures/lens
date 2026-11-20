@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// The kinds of people Emma works with. Stored as their label, so a person's tags read plainly in the file.
+/// The kinds of people the user works with. Stored as their label, so a person's tags read plainly in the file.
 enum PersonTag: String, CaseIterable, Identifiable {
     case client = "Client"
     case director = "Director"
@@ -28,7 +28,7 @@ enum PersonTag: String, CaseIterable, Identifiable {
     }
 }
 
-/// Someone Emma works with: a client, a director, an interviewee, crew, a vendor or a lead.
+/// Someone the user works with: a client, a director, an interviewee, crew, a vendor or a lead.
 /// Deals, projects, emails and Zoom notes are linked to them, so their page shows the whole story.
 /// Every field decodes with a default, so a file written by a newer or older Lens always loads.
 struct Person: Codable, Identifiable, Hashable {
@@ -40,24 +40,24 @@ struct Person: Codable, Identifiable, Hashable {
     var role = ""
     /// Instagram handle or website.
     var link = ""
-    /// How Emma met them: Referral, Website, Instagram, Email, Event…
+    /// How the user met them: Referral, Website, Instagram, Email, Event…
     var met = ""
     var tags: [String] = []
     var notes = ""
     /// "Follow up on" date, and what it's about.
     var followUp: Date?
     var followUpNote = ""
-    /// Calls, chats and coffees Emma logged by hand.
+    /// Calls, chats and coffees the user logged by hand.
     var touches: [ProjectEvent] = []
     var dealIDs: [UUID] = []
     var projectIDs: [UUID] = []
-    /// Deals or projects Emma took this person off, so Lens doesn't link them again.
+    /// Deals or projects the user took this person off, so Lens doesn't link them again.
     var unlinked: [UUID] = []
     /// Gmail conversations with this person that aren't on a deal or project.
     var threads: [EmailThread] = []
-    /// People Emma split from this one, so Lens never merges them back together.
+    /// People the user split from this one, so Lens never merges them back together.
     var notSame: [UUID] = []
-    /// True when Lens made this person from a deal, project or email rather than Emma adding them.
+    /// True when Lens made this person from a deal, project or email rather than the user adding them.
     var automatic = false
     var createdAt = Date()
     // Added for "Added recently", imports and business cards. Optional so older files still load.
@@ -65,11 +65,11 @@ struct Person: Codable, Identifiable, Hashable {
     var addedFrom: String?
     /// When Lens added them by itself. Only these show in "Added recently".
     var addedOn: Date?
-    /// Emma tapped Keep, so they leave "Added recently".
+    /// the user tapped Keep, so they leave "Added recently".
     var reviewed: Bool?
     /// Photos of their business card, kept in Application Support/Lens/CardPhotos.
     var cardPhotos: [String]?
-    /// The day Emma met them (from a business card).
+    /// The day the user met them (from a business card).
     var metOn: Date?
     /// The day they connected on LinkedIn.
     var connectedOn: Date?
@@ -120,7 +120,7 @@ struct Person: Codable, Identifiable, Hashable {
     /// "From Gmail", "From your website"…
     var fromText: String? { addedFrom.map { "From \($0)" } }
 
-    /// Lens added them by itself in the last two weeks and Emma hasn't looked yet.
+    /// Lens added them by itself in the last two weeks and the user hasn't looked yet.
     func isRecentlyAdded(now: Date = Date()) -> Bool {
         guard let addedOn, reviewed != true else { return false }
         return now.timeIntervalSince(addedOn) < 14 * 86_400
@@ -163,7 +163,7 @@ struct Person: Codable, Identifiable, Hashable {
     }
 }
 
-/// Someone Lens found in Gmail who wasn't in People yet. Older versions asked Emma to tap Add or Ignore;
+/// Someone Lens found in Gmail who wasn't in People yet. Older versions asked the user to tap Add or Ignore;
 /// Lens now adds them by itself, and any left in an older file are added when it loads.
 struct PersonSuggestion: Codable, Identifiable, Hashable {
     var id: String { email }

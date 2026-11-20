@@ -3,7 +3,7 @@ import AppKit
 
 /// The books: transactions, balances, money owed, gear. Works out the three statements
 /// for any period, imports bank/card/Venmo/PayPal CSV statements, and learns how to sort
-/// transactions from Emma's corrections.
+/// transactions from the user's corrections.
 @MainActor
 final class MoneyStore: ObservableObject {
     @Published private(set) var data = MoneyData()
@@ -148,13 +148,13 @@ final class MoneyStore: ObservableObject {
 
     // MARK: - Projects
 
-    /// Money out that belongs to a project (not card payments, transfers or money paid to Emma).
+    /// Money out that belongs to a project (not card payments, transfers or money paid to the user).
     static func expenses(in list: [Txn]) -> [Txn] {
         list.filter { $0.amount < 0 && ![.transfer, .owner, .taxes].contains($0.category.group) }
             .sorted { $0.date > $1.date }
     }
 
-    /// Adds an expense Emma typed in, with an optional receipt kept alongside the books.
+    /// Adds an expense the user typed in, with an optional receipt kept alongside the books.
     func addExpense(amount: Double, date: Date, description: String, category: MoneyCategory,
                     account: MoneyAccount, projectID: UUID?, receipt: URL?) {
         var t = Txn(date: date, amount: -abs(amount), description: description, account: account,

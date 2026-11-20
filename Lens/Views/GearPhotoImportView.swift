@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// "Add from photo": Emma picks photos, Claude guesses what each one is, she fixes anything and
+/// "Add from photo": the user picks photos, Claude guesses what each one is, she fixes anything and
 /// ticks what to add. Nothing reaches Gear until she taps Add.
 struct GearPhotoImportView: View {
     @EnvironmentObject private var money: MoneyStore

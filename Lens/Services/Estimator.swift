@@ -1,6 +1,6 @@
 import Foundation
 
-/// Emma's prices and rules of thumb. Set once; every proposal is calculated from them.
+/// the user's prices and rules of thumb. Set once; every proposal is calculated from them.
 /// Defaults are worked back from her CEJ options packet (Option B and C budgets).
 struct RateCard: Codable, Hashable {
     // Who the proposals come from
@@ -12,7 +12,7 @@ struct RateCard: Codable, Hashable {
     // Day rates charged to the client
     var emmaDayRate: Double = 1500
     var collaboratorDayRate: Double = 1000
-    /// What Emma actually pays a collaborator per day. Equal to the rate until she says otherwise.
+    /// What the user actually pays a collaborator per day. Equal to the rate until she says otherwise.
     var collaboratorDayCost: Double = 1000
     var travelPrepDayFactor: Double = 0.5
 
@@ -54,11 +54,11 @@ struct RateCard: Codable, Hashable {
     var localDriveHoursHigh: Double = 3
     var travelPrepHours: Double = 8
 
-    // What Emma pays per hour when she hands work off (she charges the client her rates above)
+    // What the user pays per hour when she hands work off (she charges the client her rates above)
     var planningCostHourly: Double = 40
     var editCostHourly: Double = 50
     var mediaCostHourly: Double = 30
-    /// Time Emma still spends briefing and reviewing handed-off work, as a share of its hours.
+    /// Time the user still spends briefing and reviewing handed-off work, as a share of its hours.
     var handOffOversight: Double = 0.1
 
     var stillEditHours: Double = 0.25
@@ -92,7 +92,7 @@ struct RateCard: Codable, Hashable {
         AddOn(name: "Teleprompter", price: 150, note: "Per shoot day"),
     ]
 
-    /// What Emma wants to clear per hour after paying crew and costs.
+    /// What the user wants to clear per hour after paying crew and costs.
     var targetHourly: Double = 100
     /// Quotes are rounded to this.
     var roundTo: Double = 500
@@ -118,7 +118,7 @@ struct WorkloadRow: Identifiable, Hashable {
 }
 
 struct Estimate {
-    let lines: [BudgetLine]          // at Emma's rates
+    let lines: [BudgetLine]          // at the owner's rates
     let clientLines: [BudgetLine]    // scaled so they add up to the quote, like her packet
     let calculated: Double
     let quote: Double
@@ -132,7 +132,7 @@ struct Estimate {
     let handOffCharged: Double
     let checks: [String]
 
-    /// What Emma nets on work someone else does.
+    /// What the user nets on work someone else does.
     var handOffMargin: Double { handOffCharged - handOffCost }
 
     var total: Double { quote + travelAllowance }
@@ -164,10 +164,11 @@ enum Money {
     }
 }
 
-/// Turns one option's dials into hours, a budget, a price, and what Emma actually keeps.
+/// Turns one option's dials into hours, a budget, a price, and what the user actually keeps.
 /// Pure arithmetic: no AI, so every number can be traced back to a rate on the rate card.
 enum Estimator {
     static func estimate(_ o: ScopeOption, rates r: RateCard) -> Estimate {
+        let owner = r.ownerName.isEmpty ? "Lead filmmaker" : r.ownerName
         let localPeople = Double(1 + o.localCrew)
         let travelPeople = Double(1 + o.travelCrew)
         let local = Double(o.localDays), travel = Double(o.travelDays)
@@ -194,16 +195,16 @@ enum Estimator {
         let media = r.mediaBaseHours + r.mediaPerShootDay * Double(o.shootDays)
                   + (o.extras.contains(.rawFootage) ? r.rawFootageHandoffHours : 0)
 
-        // Money at Emma's rates
+        // Money at the user's rates
         let localDayCost = r.emmaDayRate + Double(o.localCrew) * r.collaboratorDayRate
         let travelDayCost = r.emmaDayRate + Double(o.travelCrew) * r.collaboratorDayRate
         let production = local * localDayCost + travel * travelDayCost * (1 + r.travelPrepDayFactor)
         let equipment = r.equipmentBase + r.equipmentPerShootDay * Double(o.shootDays)
                       + r.equipmentPerInterviewee * Double(o.interviewees)
 
-        var productionDetail = "\(o.localDays) local day\(o.localDays == 1 ? "" : "s"), Emma + \(o.localCrew)"
+        var productionDetail = "\(o.localDays) local day\(o.localDays == 1 ? "" : "s"), \(owner) + \(o.localCrew)"
         if o.travelDays > 0 {
-            productionDetail += "; \(o.travelDays) out-of-state day\(o.travelDays == 1 ? "" : "s") + travel/prep, Emma + \(o.travelCrew)"
+            productionDetail += "; \(o.travelDays) out-of-state day\(o.travelDays == 1 ? "" : "s") + travel/prep, \(owner) + \(o.travelCrew)"
         }
         let editDetail = "\(Estimate.range(mainEdit * 0.95, mainEdit * 1.05)) hours, \(o.revisionRounds) revision round\(o.revisionRounds == 1 ? "" : "s")"
             + (extrasEdit > 0 ? " + \(Int(extrasEdit.rounded())) hours of extras" : "")
@@ -249,10 +250,10 @@ enum Estimator {
                                         low: round5(extrasEdit * 0.85), high: round5(extrasEdit * 1.05)))
         }
 
-        // What Emma keeps
+        // What the user keeps
         let emmaShoot = local * (r.onSetHoursLow + r.onSetHoursHigh + r.localDriveHoursLow + r.localDriveHoursHigh) / 2
                       + travel * ((r.onSetHoursLow + r.onSetHoursHigh) / 2 + r.travelPrepHours)
-        // Handed-off work: someone cheaper does the hours, Emma pays their rate and keeps the difference
+        // Handed-off work: someone cheaper does the hours, the user pays their rate and keeps the difference
         let hours: [WorkType: Double] = [.planning: planning, .editing: mainEdit, .extras: extrasEdit, .media: media]
         let charge: [WorkType: Double] = [.planning: r.planningHourly, .editing: r.editHourly, .extras: r.editHourly, .media: r.mediaHourly]
         let cost: [WorkType: Double] = [.planning: r.planningCostHourly, .editing: r.editCostHourly, .extras: r.editCostHourly, .media: r.mediaCostHourly]
@@ -267,7 +268,7 @@ enum Estimator {
         let collaboratorCost = (local * Double(o.localCrew) + travel * Double(o.travelCrew) * (1 + r.travelPrepDayFactor)) * r.collaboratorDayCost
         let hardCosts = equipment * r.equipmentCostShare
 
-        // Client-facing budget: Emma's lines scaled to the quote, rounded to $100, adding up exactly
+        // Client-facing budget: the user's lines scaled to the quote, rounded to $100, adding up exactly
         let factor = sum > 0 ? quote / sum : 1
         var clientLines = lines.map { line -> BudgetLine in
             var l = line
@@ -297,7 +298,7 @@ enum Estimator {
 
     private static func round5(_ v: Double) -> Double { (v / 5).rounded() * 5 }
 
-    /// "Protect the price, scale the scope": when an option is quoted under Emma's rates,
+    /// "Protect the price, scale the scope": when an option is quoted under the user's rates,
     /// find scope to take out until her rates match the quote, instead of discounting.
     static func suggestCuts(_ option: ScopeOption, rates: RateCard) -> (cuts: [String], option: ScopeOption)? {
         guard let target = option.quote else { return nil }
@@ -379,7 +380,7 @@ enum Estimator {
     }
 }
 
-/// Dated milestones from a shoot date and Emma's turnaround rules: dates, not "4 to 6 weeks".
+/// Dated milestones from a shoot date and the user's turnaround rules: dates, not "4 to 6 weeks".
 enum TimelinePlanner {
     struct Plan {
         let milestones: [Milestone]

@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Reads business cards from a photo with Claude. A photo can hold one card or several. Small,
-/// self-contained service used by "Scan a card" in People and Today. Nothing here changes Emma's data.
+/// self-contained service used by "Scan a card" in People and Today. Nothing here changes the user's data.
 enum CardReader {
 
     struct Card {

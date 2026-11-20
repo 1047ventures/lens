@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Gmail (read-only)
 
-/// Reads Emma's Gmail through Google's Gmail API, using the read-only permission from Google sign-in.
+/// Reads the user's Gmail through Google's Gmail API, using the read-only permission from Google sign-in.
 enum GmailAPI {
     struct Message {
         let from: String
@@ -118,7 +118,7 @@ enum GmailAPI {
 
 // MARK: - Suggestions
 
-/// Something Lens found in Gmail that Emma decides on: a new inquiry, new booked work (Add project),
+/// Something Lens found in Gmail that the user decides on: a new inquiry, new booked work (Add project),
 /// or a conversation Lens wasn't sure about ("Which project is this for?").
 struct EmailSuggestion: Codable, Identifiable, Hashable {
     enum Kind: String, Codable { case inquiry, project, attach }
@@ -149,9 +149,9 @@ struct EmailSuggestion: Codable, Identifiable, Hashable {
 }
 
 /// Looks through recent Gmail when Lens opens and every hour after, and turns new inquiries and booked
-/// work into suggestions. Conversations that clearly belong to a project (people on it, Emma's earlier
+/// work into suggestions. Conversations that clearly belong to a project (people on it, the user's earlier
 /// choices, or Claude is sure) are filed there by themselves and listed under "Filed automatically".
-/// When Lens isn't sure it asks "Which project is this for?". No new deal or project is made until Emma says so.
+/// When Lens isn't sure it asks "Which project is this for?". No new deal or project is made until the user says so.
 @MainActor
 final class GmailSync: ObservableObject {
     @Published private(set) var suggestions: [EmailSuggestion] = []
@@ -168,9 +168,9 @@ final class GmailSync: ObservableObject {
     private var ignored: Set<String> = []
     /// Gmail's change counter for each conversation already looked at, so it's only read again when something new arrives.
     private var seen: [String: String] = [:]
-    /// Emma's own choices: "person:<email>" → project, so their next emails go to the same place.
+    /// the user's own choices: "person:<email>" → project, so their next emails go to the same place.
     private var remembered: [String: UUID] = [:]
-    /// Conversations Emma said aren't for a project: thread id → those projects, so Lens doesn't put them back.
+    /// Conversations the user said aren't for a project: thread id → those projects, so Lens doesn't put them back.
     private var notFor: [String: [UUID]] = [:]
     private var loop: Task<Void, Never>?
 
@@ -236,7 +236,7 @@ final class GmailSync: ObservableObject {
                 max: 20, token: token) where !found.contains(where: { $0.id == extra.id }) {
                 found.append(extra)
             }
-            // Instagram and Facebook email Emma when someone messages her. Those land in Social, so look for them too.
+            // Instagram and Facebook email the user when someone messages her. Those land in Social, so look for them too.
             for extra in try await GmailAPI.threadIDs(
                 matching: "newer_than:21d \(skip) {from:facebookmail.com from:instagram.com from:mail.instagram.com} {subject:message subject:messaged subject:messages}",
                 max: 15, token: token) where !found.contains(where: { $0.id == extra.id }) {
@@ -248,7 +248,7 @@ final class GmailSync: ObservableObject {
                 guard fresh.count < 30 else { break }   // the rest wait for the next check
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard !thread.messages.isEmpty else { seen[item.id] = item.history; continue }
-                // Someone messaged Emma on Instagram or Facebook: they go in People.
+                // Someone messaged the user on Instagram or Facebook: they go in People.
                 if Self.isSocial(thread) {
                     people?.noteSocial(thread)
                     seen[item.id] = item.history
@@ -363,7 +363,7 @@ final class GmailSync: ObservableObject {
         return linked
     }
 
-    /// Emma put an earlier email with the same people on a project: this one goes there too.
+    /// the user put an earlier email with the same people on a project: this one goes there too.
     private func linkByMemory(_ link: EmailThread, deals: DealStore, projects: ProjectStore) -> Bool {
         let declined = notFor[link.id] ?? []
         let picks = Set(Self.emails(in: link).compactMap { remembered["person:" + $0] }
@@ -374,7 +374,7 @@ final class GmailSync: ObservableObject {
     }
 
     /// Files the conversation on the project (and the deal it came from) by itself, and lists it under
-    /// "Filed automatically" so Emma can see it and undo it.
+    /// "Filed automatically" so the user can see it and undo it.
     private func fileOnProject(_ link: EmailThread, _ projectID: UUID, deals: DealStore, projects: ProjectStore) {
         let already = (projects.project(id: projectID)?.emails ?? []).contains { $0.id == link.id }
         projects.attachEmail(link, to: projectID)
@@ -386,7 +386,7 @@ final class GmailSync: ObservableObject {
         }
     }
 
-    /// The email addresses in a conversation (not Emma's).
+    /// The email addresses in a conversation (not the user's).
     static func emails(in link: EmailThread) -> [String] {
         (link.people ?? []).map { GmailAPI.parseAddress($0).email }.filter { $0.contains("@") }
     }
@@ -476,7 +476,7 @@ final class GmailSync: ObservableObject {
         }
     }
 
-    // MARK: Emma's choices
+    // MARK: the user's choices
 
     /// Adds the suggestion where it belongs. Returns the new deal or project, so the screen can open it.
     @discardableResult
@@ -509,7 +509,7 @@ final class GmailSync: ObservableObject {
         }
     }
 
-    /// Emma answered "Which project is this for?". The email goes there (and on its deal), and Lens
+    /// the user answered "Which project is this for?". The email goes there (and on its deal), and Lens
     /// remembers the people in it for next time.
     func file(_ s: EmailSuggestion, into projectID: UUID) {
         guard let deals, let projects else { return }
@@ -590,7 +590,7 @@ final class GmailSync: ObservableObject {
         save()
     }
 
-    // MARK: Saving (gmail.json; only thread ids and what Emma will see, never passwords)
+    // MARK: Saving (gmail.json; only thread ids and what the user will see, never passwords)
 
     private struct Saved: Codable {
         var suggestions: [EmailSuggestion]?

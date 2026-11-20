@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// The Ask Lens panel (⌘K): a conversation with Claude that can look things up across Lens,
-/// propose changes Emma approves with one tap, and learn how she likes to work.
+/// propose changes the user approves with one tap, and learn how she likes to work.
 struct AskLensView: View {
     @EnvironmentObject private var ai: LensAI
     @EnvironmentObject private var navigator: Navigator
@@ -230,7 +230,7 @@ struct AskLensView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 if !ai.requests.isEmpty {
-                    ColorLabel("Change requests sent to Sean", Palette.gold).padding(.top, 10)
+                    ColorLabel("Change requests sent", Palette.gold).padding(.top, 10)
                     ForEach(ai.requests.reversed()) { r in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(r.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)

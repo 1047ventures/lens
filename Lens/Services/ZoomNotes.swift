@@ -1,14 +1,14 @@
 import Foundation
 
-/// Finds Emma's Zoom AI Companion summaries and attaches each one to the deal or project it's about.
+/// Finds the user's Zoom AI Companion summaries and attaches each one to the deal or project it's about.
 /// When Zoom is connected, Lens reads every full summary straight from Zoom: on the first connect it
 /// goes back as far as Zoom keeps them, then checks hourly. Otherwise it falls back to the summary
 /// emails Zoom sends to Gmail. Lens looks at who was on the call, the meeting title, the client, the
 /// people on each project and the project's name and keywords; when that isn't clear, Claude picks from
 /// her open projects. When Lens is sure, it files the note by itself and lists it under "Filed automatically"
-/// on the project, where Emma can move it or take it off. Recent ones it isn't sure about wait in
+/// on the project, where the user can move it or take it off. Recent ones it isn't sure about wait in
 /// "Unmatched notes" with the question "Which project is this for?" (Lens's best guess listed first);
-/// older ones are kept quietly so Ask Lens can still search them. When Emma picks or moves a note, Lens
+/// older ones are kept quietly so Ask Lens can still search them. When the user picks or moves a note, Lens
 /// remembers that choice for the people on the call and the meeting series.
 @MainActor
 final class ZoomNotes: ObservableObject {
@@ -34,13 +34,13 @@ final class ZoomNotes: ObservableObject {
     private weak var projects: ProjectStore?
     private weak var logins: ConnectionStore?
     private weak var ai: LensAI?
-    /// Emma's own choices, so the next call goes to the same place: "person:<email>" or
+    /// the user's own choices, so the next call goes to the same place: "person:<email>" or
     /// "series:<meeting title>" → project id.
     private var remembered: [String: UUID] = [:]
     /// Summaries already placed (on a deal, a project, or set aside), so they aren't placed again.
     private var handled: Set<String> = []
     private var loop: Task<Void, Never>?
-    /// Older summaries that didn't match a client, or that Emma set aside. Not shown as a to-do,
+    /// Older summaries that didn't match a client, or that the user set aside. Not shown as a to-do,
     /// but Ask Lens can still read them.
     private(set) var kept: [MeetingNote] = []
     /// Zoom meeting ids already read from Zoom.
@@ -50,7 +50,7 @@ final class ZoomNotes: ObservableObject {
     private var lastZoomSync: Date?
     /// The Zoom app can only see her own meetings (not the whole account's summary list).
     private var userLevel = false
-    /// Notes Emma said aren't for a client, so the same meeting read again from Zoom stays out of the way.
+    /// Notes the user said aren't for a client, so the same meeting read again from Zoom stays out of the way.
     private var dismissedStubs: [Stub] = []
     private var again = false
 
@@ -319,7 +319,7 @@ final class ZoomNotes: ObservableObject {
                 await askClaude(unsure, projects: projects)
             }
             if foundCount > 0 {
-                // Emma doesn't need to tick "done" in Log-ins once summaries are actually arriving.
+                // the user doesn't need to tick "done" in Log-ins once summaries are actually arriving.
                 if !logins.isConfirmed("zoom") { logins.setConfirmed("zoom", true) }
             }
             let dates = (deals.deals.flatMap { $0.meetingNotes ?? [] } + projects.projects.flatMap { $0.meetingNotes ?? [] } + unmatched).map(\.date)
@@ -363,7 +363,7 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// Who was on the call: addresses the summary email went to, or that appear in the summary.
-    /// Leaves out Emma and Zoom's own addresses.
+    /// Leaves out the user and Zoom's own addresses.
     static func attendees(_ message: GmailAPI.Message, summary: String, me: String) -> [String]? {
         var found = GmailAPI.addresses(message.to)
         if let regex = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}") {
@@ -396,7 +396,7 @@ final class ZoomNotes: ObservableObject {
         var keys: [(text: String, weight: Int)]
     }
 
-    /// Where the summary goes. Emma's earlier choices for the same people or meeting series come first.
+    /// Where the summary goes. the user's earlier choices for the same people or meeting series come first.
     /// Then every deal and project is scored on what the call mentions: an email address counts most,
     /// then a person's full name, the project's name or keywords, then a last name. Anything named in the
     /// meeting title counts a little extra. Lens only files it by itself when one clearly leads.
@@ -449,7 +449,7 @@ final class ZoomNotes: ObservableObject {
         return .maybe(projectID: top.0.projectID)
     }
 
-    /// What points to a project: its client, its people, its name and Emma's keywords.
+    /// What points to a project: its client, its people, its name and the user's keywords.
     private static func projectKeys(_ p: Project) -> [(text: String, weight: Int)] {
         var keys = names(p.client, weight: 2)
         for person in p.people ?? [] {
@@ -466,7 +466,7 @@ final class ZoomNotes: ObservableObject {
         return keys
     }
 
-    /// The people on the call and the meeting series, for remembering where Emma put a note.
+    /// The people on the call and the meeting series, for remembering where the user put a note.
     static func memoryKeys(_ note: MeetingNote) -> [String] {
         var keys: [String] = []
         if let series = series(note.title) { keys.append("series:" + series) }
@@ -476,7 +476,7 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// "CU documentary check-in 3" and "CU documentary check-in 4" are the same series. Zoom's
-    /// default names ("Emma's Zoom Meeting") are too general to count.
+    /// default names ("the user's Zoom Meeting") are too general to count.
     static func series(_ title: String) -> String? {
         let t = title.lowercased()
             .replacingOccurrences(of: "[0-9#]+", with: " ", options: .regularExpression)
@@ -487,8 +487,8 @@ final class ZoomNotes: ObservableObject {
         return t
     }
 
-    /// Asks Claude to pick the project for notes Lens wasn't sure about, from Emma's open projects.
-    /// Sure answers are filed by themselves; the rest become Lens's best guess when it asks Emma.
+    /// Asks Claude to pick the project for notes Lens wasn't sure about, from the user's open projects.
+    /// Sure answers are filed by themselves; the rest become Lens's best guess when it asks the user.
     private func askClaude(_ notes: [MeetingNote], projects: ProjectStore) async {
         guard let ai else { return }
         let open = projects.active
@@ -534,7 +534,7 @@ final class ZoomNotes: ObservableObject {
         return haystack.range(of: pattern, options: .regularExpression) != nil
     }
 
-    // MARK: Emma's choices
+    // MARK: the user's choices
 
     /// Puts the note on its deal and project. `auto`: Lens did it by itself, so it shows under
     /// "Filed automatically" on the project.
@@ -552,7 +552,7 @@ final class ZoomNotes: ObservableObject {
         handled.insert(note.id)
     }
 
-    /// Remembers where Emma put a note, for the people on the call and the meeting series.
+    /// Remembers where the user put a note, for the people on the call and the meeting series.
     private func remember(_ note: MeetingNote, projectID: UUID) {
         for key in Self.memoryKeys(note) { remembered[key] = projectID }
     }
@@ -593,7 +593,7 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// A project was just made: file every waiting note that now clearly belongs to it (same people
-    /// or meeting series). They show under "Filed automatically" so Emma can undo any of them.
+    /// or meeting series). They show under "Filed automatically" so the user can undo any of them.
     func refile(into projectID: UUID) {
         guard let deals, let projects else { return }
         for note in unmatched {
@@ -610,13 +610,13 @@ final class ZoomNotes: ObservableObject {
         unassign(note)
     }
 
-    /// Emma picked the deal for an unmatched summary (it goes on the deal's project too, once booked).
+    /// the user picked the deal for an unmatched summary (it goes on the deal's project too, once booked).
     func assign(_ note: MeetingNote, toDeal id: UUID) {
         place(note, dealID: id, projectID: deals?.deal(id: id)?.projectID)
         save()
     }
 
-    /// Emma picked the project (it goes on the deal it came from too). Lens remembers the choice.
+    /// the user picked the project (it goes on the deal it came from too). Lens remembers the choice.
     func assign(_ note: MeetingNote, toProject id: UUID) {
         place(note, dealID: deals?.deals.first(where: { $0.projectID == id })?.id, projectID: id)
         remember(note, projectID: id)
@@ -650,7 +650,7 @@ final class ZoomNotes: ObservableObject {
         save()
     }
 
-    /// It landed on the wrong deal or project: take it off and let Emma pick again.
+    /// It landed on the wrong deal or project: take it off and let the user pick again.
     func unassign(_ note: MeetingNote) {
         removeEverywhere(note)
         // Whatever Lens remembered for this call was wrong: forget it.
@@ -661,7 +661,7 @@ final class ZoomNotes: ObservableObject {
 
     // MARK: Saving (zoom_notes.json)
 
-    /// Enough to recognise a meeting Emma set aside.
+    /// Enough to recognise a meeting the user set aside.
     private struct Stub: Codable {
         var title: String
         var date: Date

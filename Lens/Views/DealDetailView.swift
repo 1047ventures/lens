@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One potential gig: the options and their live prices, the budget and workload the
-/// proposal will show, what Emma actually keeps, and the words of the pitch.
+/// proposal will show, what the user actually keeps, and the words of the pitch.
 struct DealDetailView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore

@@ -4,7 +4,7 @@ import CryptoKit
 
 // MARK: - Zoom sign-in
 
-/// Zoom's own sign-in, the same way as Google: Lens opens Zoom's page in the browser, Emma signs in
+/// Zoom's own sign-in, the same way as Google: Lens opens Zoom's page in the browser, the user signs in
 /// there and presses Allow, and Zoom hands back a code on a one-time local address. Lens never sees
 /// her password. The Zoom app Lens uses only has read permissions (see ZOOM-SETUP.md).
 enum ZoomAuth {
@@ -171,7 +171,7 @@ enum ZoomClientFile {
 
 // MARK: - Zoom API (read only)
 
-/// Reads Emma's Zoom AI Companion meeting summaries. Nothing here changes anything in Zoom.
+/// Reads the user's Zoom AI Companion meeting summaries. Nothing here changes anything in Zoom.
 enum ZoomAPI {
     /// One meeting that has a summary (or might have one).
     struct Ref {
@@ -296,7 +296,7 @@ enum ZoomAPI {
     /// The full AI Companion summary of one meeting, or nil if it doesn't have one.
     static func summary(_ ref: Ref, token: String) async throws -> Summary? {
         guard let json = try await get("meetings/\(encodeUUID(ref.uuid))/meeting_summary", token: token) else { return nil }
-        // Emma's own edits win over what the AI wrote.
+        // the user's own edits win over what the AI wrote.
         let edited = json["edited_summary"] as? [String: Any] ?? [:]
         func text(_ key: String) -> String {
             let e = (edited[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

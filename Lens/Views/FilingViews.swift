@@ -68,7 +68,7 @@ struct ProjectDraft: Identifiable {
 
 @MainActor
 enum Filing {
-    /// Emma saved a project Lens filled in: add it, file the call or email it came from, then file any
+    /// the user saved a project Lens filled in: add it, file the call or email it came from, then file any
     /// other waiting calls and emails from the same people or meeting series. Opens the new project.
     static func created(_ project: Project, from draft: ProjectDraft, projects: ProjectStore, zoom: ZoomNotes,
                         gmail: GmailSync, navigator: Navigator) {

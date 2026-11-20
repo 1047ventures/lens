@@ -1,6 +1,6 @@
 import Foundation
 
-/// Every potential gig plus Emma's rate card, persisted to Application Support as JSON.
+/// Every potential gig plus the user's rate card, persisted to Application Support as JSON.
 @MainActor
 final class DealStore: ObservableObject {
     @Published private(set) var deals: [Deal] = []

@@ -3,7 +3,7 @@ import AppKit
 import Security
 
 /// Keeps Lens up to date from its GitHub releases. A new version is only installed if it is
-/// signed with Sean's Developer ID (team J55RP92WN6) and passes Apple's notarization check,
+/// signed with the developer's Developer ID (team J55RP92WN6) and passes Apple's notarization check,
 /// so a tampered download can never replace the app.
 @MainActor
 final class Updater: ObservableObject {
@@ -133,7 +133,7 @@ final class Updater: ObservableObject {
 
     // MARK: - Checks
 
-    /// Signed by Sean's team, intact, and accepted by Gatekeeper (i.e. notarized).
+    /// Signed by the developer's team, intact, and accepted by Gatekeeper (i.e. notarized).
     private func verify(_ app: URL) throws {
         var staticCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode else {

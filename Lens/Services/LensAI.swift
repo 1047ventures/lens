@@ -2,8 +2,8 @@ import Foundation
 import AppKit
 
 /// Ask Lens: Claude inside the app. It reads Lens's own data through tools, proposes changes
-/// that Emma approves one tap at a time, learns from what she tells it, and turns bigger wishes
-/// into change requests for Sean. Talks to the Claude API directly over HTTPS (there is no
+/// that the user approves one tap at a time, learns from what she tells it, and turns bigger wishes
+/// into change requests for the developer. Talks to the Claude API directly over HTTPS (there is no
 /// official Swift SDK); the API key lives in the Keychain.
 @MainActor
 final class LensAI: ObservableObject {
@@ -108,7 +108,7 @@ final class LensAI: ObservableObject {
     /// Sorts recent Gmail conversations for the email suggestions (Pipeline and Projects).
     /// One request, separate from the Ask Lens chat; the answer comes back as JSON matching `emailSchema`.
     /// Nothing is changed here. GmailSync files a conversation by itself only when Claude is sure it belongs
-    /// to a project already in Lens; everything else waits for Emma.
+    /// to a project already in Lens; everything else waits for the user.
     func sortEmails(_ payload: String) async throws -> [[String: Any]] {
         guard let answer = try await structured(system: Self.emailPrompt, schema: Self.emailSchema, payload: payload) else {
             throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
@@ -116,9 +116,9 @@ final class LensAI: ObservableObject {
         return answer["threads"] as? [[String: Any]] ?? []
     }
 
-    /// Picks the project each Zoom summary belongs to, from Emma's open projects (or none).
+    /// Picks the project each Zoom summary belongs to, from the user's open projects (or none).
     /// One request, separate from the Ask Lens chat. Nothing is changed here: ZoomNotes only
-    /// places a note when Claude is sure, and otherwise lists it first when it asks Emma which project it's for.
+    /// places a note when Claude is sure, and otherwise lists it first when it asks the user which project it's for.
     func placeNotes(_ payload: String) async throws -> [[String: Any]] {
         guard let answer = try await structured(system: Self.notesPrompt, schema: Self.notesSchema, payload: payload) else {
             throw AIError("Claude's answer about your Zoom notes didn't come through. Lens will try again later.")
@@ -157,7 +157,7 @@ final class LensAI: ObservableObject {
     }
 
     private static let notesPrompt = """
-    You help Emma, a freelance filmmaker and videographer, file the Zoom AI summaries of her calls in her business app (Lens).
+    You help a freelance filmmaker and videographer file the Zoom AI summaries of their calls in their business app (Lens).
     You get new call summaries and her open projects. Each project has a name, client, keywords, the people on it
     (with roles like Director, Interviewee, Producer) and the titles of calls already filed there.
     For every summary, pick the one project it is about, or "" when it is about none of them (personal calls,
@@ -189,10 +189,10 @@ final class LensAI: ObservableObject {
     ]
 
     private static let emailPrompt = """
-    You help Emma, a freelance filmmaker and videographer, keep her business app (Lens) in step with her Gmail.
+    You help a freelance filmmaker and videographer keep their business app (Lens) in step with their Gmail.
     You get recent email conversations plus the deals (possible gigs) and projects (booked gigs) already in Lens.
     Sort every conversation into exactly one kind:
-    - "inquiry": someone new asking about hiring Emma (a shoot, a film, a video, availability, a quote). Website
+    - "inquiry": someone new asking about hiring the owner (a shoot, a film, a video, availability, a quote). Website
       contact-form emails and lead emails from directories (The Knot, WeddingWire, Thumbtack, Zola, Yelp, Google
       Business Profile) count, even when they come from a no-reply address: take the real person's name and email
       from the message body or Reply-To.
@@ -338,7 +338,7 @@ final class LensAI: ObservableObject {
 
         var system: [[String: Any]] = [["type": "text", "text": Self.systemPrompt, "cache_control": ["type": "ephemeral"]]]
         if !notes.isEmpty {
-            system.append(["type": "text", "text": "What Emma has taught you (follow these):\n" +
+            system.append(["type": "text", "text": "What the user has taught you (follow these):\n" +
                 notes.map { "- [\($0.id.uuidString.prefix(8))] \($0.text)" }.joined(separator: "\n")])
         }
         var body: [String: Any] = [
@@ -348,7 +348,7 @@ final class LensAI: ObservableObject {
             "tools": Self.tools,
             "messages": messages,
             "output_config": ["effort": "high"],
-            // Earlier reasoning that no longer matches the chat is dropped, not turned into an error for Emma.
+            // Earlier reasoning that no longer matches the chat is dropped, not turned into an error for the user.
             "thinking": ["type": "adaptive", "block_binding": ["prefix_mismatch_behavior": "drop_block"]],
             "cache_control": ["type": "ephemeral"],
             // If Claude declines on a safety classifier, the API retries on a suitable model.
@@ -372,7 +372,7 @@ final class LensAI: ObservableObject {
     }
 
     /// Streams one turn. If Claude rejects reasoning from earlier in this chat, Lens forgets that
-    /// reasoning (removing all of it is always allowed) and asks once more, so Emma just gets her answer.
+    /// reasoning (removing all of it is always allowed) and asks once more, so the user just gets her answer.
     private func streamRecovering(key: String) async throws -> (content: [[String: Any]], stop: String?) {
         do {
             return try await stream(key: key)
@@ -705,12 +705,12 @@ final class LensAI: ObservableObject {
             return ("Opened.", false)
         case "draft_email":
             items.append(Item(kind: .draft, text: "", draft: Draft(to: str("to"), subject: str("subject"), body: str("body"))))
-            return ("The draft is shown to Emma with Copy and Open in Mail buttons. Nothing was sent.", false)
+            return ("The draft is shown to the user with Copy and Open in Mail buttons. Nothing was sent.", false)
 
-        // ---- Changes (each one waits for Emma's tap)
+        // ---- Changes (each one waits for the user's tap)
         case "create_inquiry":
             let summary = "Add a new inquiry: \(str("title")) for \(str("client"))"
-            guard await ask(id: id, tool: name, summary: summary) else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: summary) else { return ("The user skipped this.", false) }
             var deal = Deal(client: str("client"), title: str("title").isEmpty ? str("client") : str("title"),
                             source: str("source").isEmpty ? "Email" : str("source"), stage: .inquiry,
                             location: str("location"), eventDate: date(str("event_date")), budgetHint: str("budget_hint"),
@@ -727,21 +727,21 @@ final class LensAI: ObservableObject {
             let goLive = date(str("go_live"))
             guard !changes.isEmpty || goLive != nil else { return ("Nothing to update.", true) }
             let summary = "Fill in discovery for \(deal.title): " + (changes.map { $0.0.replacingOccurrences(of: "_", with: " ") } + (goLive == nil ? [] : ["go-live date"])).joined(separator: ", ")
-            guard await ask(id: id, tool: name, summary: summary) else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: summary) else { return ("The user skipped this.", false) }
             for (key, path) in changes { deal.disc[keyPath: path] = str(key) }
             if let goLive { deal.disc.goLive = goLive }
             deals.update(deal)
             return ("Updated.", false)
         case "log_follow_up":
             guard let deal = findDeal(str("deal_id")) else { return ("No deal with that id.", true) }
-            guard await ask(id: id, tool: name, summary: "Log on \(deal.title): \(str("note"))") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Log on \(deal.title): \(str("note"))") else { return ("The user skipped this.", false) }
             deals.logTouch(str("note"), for: deal)
             return ("Logged.", false)
         case "set_deal_stage":
             guard let deal = findDeal(str("deal_id")) else { return ("No deal with that id.", true) }
             let map: [String: DealStage] = ["inquiry": .inquiry, "proposal_out": .proposalOut, "talking": .talking, "lost": .lost]
             guard let stage = map[str("stage")] else { return ("Use inquiry, proposal_out, talking or lost. Winning a deal is done with the Mark won button so she picks the option.", true) }
-            guard await ask(id: id, tool: name, summary: "Move \(deal.title) to \(stage.label)") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Move \(deal.title) to \(stage.label)") else { return ("The user skipped this.", false) }
             if stage == .lost { deals.markLost(deal, reason: str("reason")) } else { deals.setStage(stage, for: deal) }
             return ("Done.", false)
         case "update_rate":
@@ -749,7 +749,7 @@ final class LensAI: ObservableObject {
             guard let value = input["value"] as? Double ?? (input["value"] as? Int).map(Double.init),
                   let path = Self.rateFields[field] else { return ("Unknown rate field. Use get_rates to see them.", true) }
             let old = deals.rates[keyPath: path]
-            guard await ask(id: id, tool: name, summary: "Change \(field.replacingOccurrences(of: "_", with: " ")) from \(format(old)) to \(format(value))") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Change \(field.replacingOccurrences(of: "_", with: " ")) from \(format(old)) to \(format(value))") else { return ("The user skipped this.", false) }
             deals.rates[keyPath: path] = value
             return ("Saved.", false)
         case "add_person":
@@ -761,7 +761,7 @@ final class LensAI: ObservableObject {
             p.met = str("met"); p.notes = str("notes")
             p.tags = (input["tags"] as? [String] ?? []).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             let extra = [p.subtitle, p.tags.joined(separator: ", ")].filter { !$0.isEmpty }.joined(separator: " · ")
-            guard await ask(id: id, tool: name, summary: "Add \(personName) to People" + (extra.isEmpty ? "" : " (\(extra))")) else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Add \(personName) to People" + (extra.isEmpty ? "" : " (\(extra))")) else { return ("The user skipped this.", false) }
             people.add(p)
             return ("Added. person_id \(p.id.uuidString)", false)
         case "update_person":
@@ -775,7 +775,7 @@ final class LensAI: ObservableObject {
             for t in input["remove_tags"] as? [String] ?? [] { p.tags.removeAll { $0.caseInsensitiveCompare(t) == .orderedSame }; changes.append("remove tag \(t)") }
             if !str("add_note").isEmpty { p.notes = p.notes.isEmpty ? str("add_note") : p.notes + "\n\n" + str("add_note"); changes.append("note") }
             guard !changes.isEmpty else { return ("Nothing to update.", true) }
-            guard await ask(id: id, tool: name, summary: "Update \(p.name): \(changes.joined(separator: ", "))") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Update \(p.name): \(changes.joined(separator: ", "))") else { return ("The user skipped this.", false) }
             people.update(p)
             return ("Updated.", false)
         case "set_follow_up":
@@ -785,49 +785,49 @@ final class LensAI: ObservableObject {
             let when = date(str("date"))
             let summary = clear ? "Clear the follow-up for \(p.name)"
                 : "Follow up with \(p.name) on \(when!.formatted(date: .abbreviated, time: .omitted))" + (str("note").isEmpty ? "" : ": \(str("note"))")
-            guard await ask(id: id, tool: name, summary: summary) else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: summary) else { return ("The user skipped this.", false) }
             people.setFollowUp(clear ? nil : when, note: str("note"), for: p)
             return ("Done.", false)
         case "log_person_touch":
             guard let people, let p = findPerson(str("person_id")) else { return ("No person with that id.", true) }
-            guard await ask(id: id, tool: name, summary: "Log with \(p.name): \(str("note"))") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Log with \(p.name): \(str("note"))") else { return ("The user skipped this.", false) }
             people.logTouch(str("note"), for: p)
             return ("Logged.", false)
         case "remember":
             let note = str("note")
             guard !note.isEmpty else { return ("Empty note.", true) }
-            guard await ask(id: id, tool: name, summary: "Remember: \(note)") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Remember: \(note)") else { return ("The user skipped this.", false) }
             notes.append(Note(text: note))
             save()
             return ("Saved to what Lens has learned.", false)
         case "forget":
             guard let note = notes.first(where: { $0.id.uuidString.hasPrefix(str("note_id")) && !str("note_id").isEmpty }) else { return ("No note with that id.", true) }
-            guard await ask(id: id, tool: name, summary: "Forget: \(note.text)") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Forget: \(note.text)") else { return ("The user skipped this.", false) }
             forget(note)
             return ("Forgotten.", false)
         case "request_app_change":
             let title = str("title"), details = str("details")
-            guard await ask(id: id, tool: name, summary: "Send Sean a change request: \(title)") else { return ("Emma skipped this.", false) }
+            guard await ask(id: id, tool: name, summary: "Send the developer a change request: \(title)") else { return ("The user skipped this.", false) }
             var request = ChangeRequest(title: title, details: details)
             request.link = await fileRequest(request)
             requests.append(request)
             save()
-            return (request.link.map { "Sent: \($0)" } ?? "Saved, and an email to Sean was opened for Emma to send.", false)
+            return (request.link.map { "Sent: \($0)" } ?? "Saved, and an email to the developer was opened for the user to send.", false)
         default:
             return ("Unknown tool \(name).", true)
         }
     }
 
-    /// Shows an approval card and waits for Emma's tap.
+    /// Shows an approval card and waits for the user's tap.
     private func ask(id: String, tool: String, summary: String) async -> Bool {
         items.append(Item(kind: .action, text: summary, action: Action(id: id, tool: tool, summary: summary)))
         return await withCheckedContinuation { decisions[id] = $0 }
     }
 
     /// Change requests become GitHub issues on Lens's private repo when a token is set up,
-    /// otherwise an email to Sean that Emma sends herself.
+    /// otherwise an email to the developer that the user sends herself.
     private func fileRequest(_ request: ChangeRequest) async -> String? {
-        let body = "\(request.details)\n\n_From Emma via Ask Lens, \(request.created.formatted(date: .abbreviated, time: .shortened)). Lens \(Updater.shared.currentVersion)._"
+        let body = "\(request.details)\n\n_From the user via Ask Lens, \(request.created.formatted(date: .abbreviated, time: .shortened)). Lens \(Updater.shared.currentVersion)._"
         if let token = Keychain.get("github.issuesToken"), !token.isEmpty {
             var http = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.issuesRepo)/issues")!)
             http.httpMethod = "POST"
@@ -1070,24 +1070,24 @@ final class LensAI: ObservableObject {
     // MARK: Prompt and tools (kept byte-for-byte stable so they cache)
 
     static let systemPrompt = """
-    You are Lens, the assistant built into Emma's business app. Emma Pion-Berlin is a videographer and \
-    photographer in Colorado (Visual Storytelling). Lens runs her pipeline (inquiries to booked gigs), \
-    proposals, projects, people (her clients, directors, interviewees, crew, vendors and leads), footage, money \
-    and log-ins. Sean built Lens for her.
+    You are Lens, the assistant built into the owner's business app. The owner is a videographer and \
+    photographer. Lens runs their pipeline (inquiries to booked gigs), \
+    proposals, projects, people (their clients, directors, interviewees, crew, vendors and leads), footage, money \
+    and log-ins.
 
     How to work:
     - Look things up with the tools instead of guessing. Never invent clients, numbers or dates.
-    - You can change things only through tools. Each change shows Emma an Approve button; say what you're \
+    - You can change things only through tools. Each change shows the user an Approve button; say what you're \
     proposing in one line and let the card do the rest. Don't say something is done until the tool result says so.
     - Keep replies short and plain: a sentence or two, or a short list. No jargon. Money in dollars.
-    - When Emma corrects you, states a preference, or explains how she likes to work, offer to remember it with \
+    - When the user corrects you, states a preference, or explains how they like to work, offer to remember it with \
     the remember tool, phrased as a short rule.
     - Prices: protect the price, scale the scope. If she wants to go cheaper, suggest what to cut before discounting.
     - Drafting emails: write in her warm, direct voice, short paragraphs, and use draft_email. You never send email.
     - If she asks for something Lens can't do (a new screen, a new button, a different layout, a connection that \
     doesn't exist), offer request_app_change with a clear title and a full write-up to build from: \
     what she wants, why, and an example. Once she approves, it is built and published automatically: Lens \
-    offers the update (bottom left) usually within an hour. Tell her that. If it can't be built, Sean follows up.
+    offers the update (bottom left) usually within an hour. Tell her that. If it can't be built, the Lens developer follows up.
     - She can attach photos, PDFs and files, or paste a link. Read them directly (use web_fetch for links). \
     Photos of gear, receipts, contracts, shot lists, client briefs: work from what's actually in them.
     - Hours and spending on a project ("how many hours on the CU documentary?", "what have I spent on it?"): \
@@ -1102,22 +1102,22 @@ final class LensAI: ObservableObject {
     static let tools: [[String: Any]] = [
         ["type": "web_search_20260209", "name": "web_search", "max_uses": 5],
         ["type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5],
-        tool("get_gear", "Emma's gear: every item with type, when bought, what she paid, serial, last service and how many shoots.", [:], []),
+        tool("get_gear", "the owner's gear: every item with type, when bought, what they paid, serial, last service and how many shoots.", [:], []),
         tool("get_library", "Every drive, the Mac and the Photos app Lens knows: size, free space, how many videos, photos and edit projects, when last seen and scanned.", [:], []),
-        tool("search_library", "Find folders on Emma's drives whose names or files match some words (a client, a place, a date like 2024-06). Works on unplugged drives too.",
+        tool("search_library", "Find folders on the owner's drives whose names or files match some words (a client, a place, a date like 2024-06). Works on unplugged drives too.",
              ["query": ["type": "string"]], ["query"]),
         tool("search_meeting_notes", "Search every Zoom meeting summary Lens has (on deals, on projects, and not placed): overview, each topic, next steps and who was there. Give a few key words (a name, a topic like \"shoot schedule\"). The best matches come back in full; open others with get_meeting_note. With no query, lists the newest.",
              ["query": ["type": "string"], "limit": ["type": "integer", "description": "How many matches to return in full (default 6)"]], []),
         tool("get_meeting_note", "One meeting summary in full, by its note_id.", ["note_id": ["type": "string"]], ["note_id"]),
         tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
-        tool("get_deal", "Everything about one deal: discovery answers, options with prices and what Emma keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
+        tool("get_deal", "Everything about one deal: discovery answers, options with prices and what the owner keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
-        tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what Emma keeps.", [:], []),
+        tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what the owner keeps.", [:], []),
         tool("get_project", "Everything in one project: details, history, the people on it with their roles (director, interviewee…), every Zoom call summary (meeting_notes), emails, the proposal from its deal (proposal_deal), attached files, time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour). Use it for questions across a whole project.", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
-        tool("get_rates", "Emma's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
+        tool("get_rates", "the owner's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
         tool("open_screen", "Show something in Lens: a person, a deal, a project, or a section (Today, Pipeline, People, Projects, Library, Gear, Money, Log-ins).",
              ["person_id": ["type": "string"], "deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
         tool("list_people", "Everyone in People with tags, company, last time in touch, follow-up date, open deals and projects. All filters optional: query matches names, companies, notes, and also email subjects and Zoom notes (\"the festival\"); tag (Client, Director, Interviewee, Crew, Vendor, Lead); on = a deal or project name; quiet_days = not in touch for at least that many days; follow_up_due.",
@@ -1125,43 +1125,43 @@ final class LensAI: ObservableObject {
               "quiet_days": ["type": "integer"], "follow_up_due": ["type": "boolean"]], []),
         tool("get_person", "Everything about one person: details, notes, deals, projects, what they've paid, Zoom notes and their whole timeline.",
              ["person_id": ["type": "string"]], ["person_id"]),
-        tool("add_person", "Add someone to People. Emma approves first.",
+        tool("add_person", "Add someone to People. The user approves first.",
              ["name": ["type": "string"], "email": ["type": "string"], "phone": ["type": "string"], "company": ["type": "string"],
               "role": ["type": "string"], "link": ["type": "string", "description": "Instagram or website"],
               "met": ["type": "string", "description": "How she met them: Referral, Website, Instagram, Email, Event…"],
               "tags": ["type": "array", "items": ["type": "string"]], "notes": ["type": "string"]], ["name"]),
-        tool("update_person", "Change a person's details, add an email, add or remove tags, or add a note. Only the fields given change. Emma approves first.",
+        tool("update_person", "Change a person's details, add an email, add or remove tags, or add a note. Only the fields given change. The user approves first.",
              ["person_id": ["type": "string"], "name": ["type": "string"], "phone": ["type": "string"], "company": ["type": "string"],
               "role": ["type": "string"], "link": ["type": "string"], "met": ["type": "string"], "add_email": ["type": "string"],
               "add_tags": ["type": "array", "items": ["type": "string"]], "remove_tags": ["type": "array", "items": ["type": "string"]],
               "add_note": ["type": "string"]], ["person_id"]),
-        tool("set_follow_up", "Set (or clear) the date to follow up with someone; it shows on Today when due. Emma approves first.",
+        tool("set_follow_up", "Set (or clear) the date to follow up with someone; it shows on Today when due. The user approves first.",
              ["person_id": ["type": "string"], "date": ["type": "string", "description": "YYYY-MM-DD"], "note": ["type": "string"],
               "clear": ["type": "boolean"]], ["person_id"]),
-        tool("log_person_touch", "Record that Emma was in touch with someone (a call, coffee, a chat at an event). Emma approves first.",
+        tool("log_person_touch", "Record that the user was in touch with someone (a call, coffee, a chat at an event). The user approves first.",
              ["person_id": ["type": "string"], "note": ["type": "string"]], ["person_id", "note"]),
-        tool("draft_email", "Show Emma an email draft she can copy or open in Mail. Never sends anything.",
+        tool("draft_email", "Show the user an email draft they can copy or open in Mail. Never sends anything.",
              ["to": ["type": "string"], "subject": ["type": "string"], "body": ["type": "string"]], ["subject", "body"]),
-        tool("create_inquiry", "Add a new inquiry to the pipeline (for example from a pasted DM or email). Emma approves first.",
+        tool("create_inquiry", "Add a new inquiry to the pipeline (for example from a pasted DM or email). The user approves first.",
              ["client": ["type": "string"], "title": ["type": "string", "description": "What the job is"],
               "source": ["type": "string", "description": "Email, Website form, Instagram, Referral, Phone, The Knot…"],
               "location": ["type": "string"], "budget_hint": ["type": "string"], "event_date": ["type": "string", "description": "YYYY-MM-DD"],
               "notes": ["type": "string"]], ["client"]),
-        tool("update_discovery", "Fill in a deal's discovery answers (only the fields given change). Emma approves first.",
+        tool("update_discovery", "Fill in a deal's discovery answers (only the fields given change). The user approves first.",
              ["deal_id": ["type": "string"], "goal": ["type": "string"], "audience": ["type": "string"],
               "where_watched": ["type": "string"], "on_camera": ["type": "string"], "locations": ["type": "string"],
               "formats": ["type": "string"], "go_live": ["type": "string", "description": "YYYY-MM-DD"]], ["deal_id"]),
-        tool("log_follow_up", "Record a touchpoint on a deal (a call, an email sent, a reply received). Emma approves first.",
+        tool("log_follow_up", "Record a touchpoint on a deal (a call, an email sent, a reply received). The user approves first.",
              ["deal_id": ["type": "string"], "note": ["type": "string"]], ["deal_id", "note"]),
-        tool("set_deal_stage", "Move a deal to inquiry, proposal_out, talking or lost (with a reason). Emma approves first.",
+        tool("set_deal_stage", "Move a deal to inquiry, proposal_out, talking or lost (with a reason). The user approves first.",
              ["deal_id": ["type": "string"], "stage": ["type": "string"], "reason": ["type": "string"]], ["deal_id", "stage"]),
-        tool("update_rate", "Change one number on Emma's rate card. Field names come from get_rates. Emma approves first.",
+        tool("update_rate", "Change one number on the owner's rate card. Field names come from get_rates. The user approves first.",
              ["field": ["type": "string"], "value": ["type": "number"]], ["field", "value"]),
-        tool("remember", "Save a short rule about how Emma works or what she prefers. Used in every future conversation. Emma approves first.",
+        tool("remember", "Save a short rule about how the user works or what they prefer. Used in every future conversation. The user approves first.",
              ["note": ["type": "string"]], ["note"]),
-        tool("forget", "Remove something Lens learned, by the id shown in brackets. Emma approves first.",
+        tool("forget", "Remove something Lens learned, by the id shown in brackets. The user approves first.",
              ["note_id": ["type": "string"]], ["note_id"]),
-        tool("request_app_change", "Send Sean a request to change Lens itself (new feature, screen or fix). Emma approves first.",
+        tool("request_app_change", "Send the Lens developer a request to change Lens itself (new feature, screen or fix). The user approves first.",
              ["title": ["type": "string"], "details": ["type": "string", "description": "What she wants, why, and an example"]],
              ["title", "details"]),
     ]

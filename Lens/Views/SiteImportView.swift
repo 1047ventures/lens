@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import WebKit
 
-/// "Add a website": Emma types her old site's address, picks where the photos go, and Lens
+/// "Add a website": the user types her old site's address, picks where the photos go, and Lens
 /// brings them in. If some pages are behind a password, she can log in first.
 struct SiteImportView: View {
     @Environment(\.dismiss) private var dismiss
@@ -113,7 +113,7 @@ struct SiteImportView: View {
     }
 }
 
-/// The site, opened inside Lens, so Emma can enter a page password or log in. Lens never sees
+/// The site, opened inside Lens, so the user can enter a page password or log in. Lens never sees
 /// what she types; it only reuses the logged-in session to read the pages.
 private struct SiteLoginView: View {
     let site: URL

@@ -64,8 +64,8 @@ enum MoneyCategory: String, Codable, CaseIterable, Identifiable {
         case .fees: return "Payment fees"
         case .office: return "Office + supplies"
         case .gear: return "Gear bought"
-        case .ownerDraw: return "Paid to Emma"
-        case .ownerIn: return "Put in by Emma"
+        case .ownerDraw: return "Paid to you"
+        case .ownerIn: return "Put in by you"
         case .transfer: return "Transfer between accounts"
         case .taxes: return "Taxes"
         case .uncategorized: return "Not sorted yet"
@@ -87,7 +87,7 @@ struct Txn: Codable, Identifiable, Hashable {
     var note: String?
     /// File name of a receipt photo or PDF (in Application Support/Lens/Receipts). Optional so older books still load.
     var receiptFile: String? = nil
-    /// True when Emma typed it in rather than it coming from a statement.
+    /// True when the user typed it in rather than it coming from a statement.
     var addedByHand: Bool? = nil
 }
 
@@ -102,7 +102,7 @@ struct Receivable: Codable, Identifiable, Hashable {
     var paidOn: Date?
 }
 
-/// Learned from Emma's corrections: anything whose description contains `match` gets `category`.
+/// Learned from the user's corrections: anything whose description contains `match` gets `category`.
 struct CategoryRule: Codable, Hashable {
     var match: String
     var category: MoneyCategory

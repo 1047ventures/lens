@@ -2,7 +2,7 @@ import Foundation
 import WebKit
 
 /// Pulls every photo (and any video file) off a website, like an old Squarespace site, into a
-/// folder Emma picks, one folder per page. The site then shows up in Library like a drive.
+/// folder the user picks, one folder per page. The site then shows up in Library like a drive.
 /// It reads the site's page list, visits each page and saves the full-size pictures it finds.
 /// Videos hosted on Vimeo or YouTube are listed in a note so she can fetch them later.
 @MainActor

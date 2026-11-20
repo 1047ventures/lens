@@ -60,7 +60,7 @@ enum Keychain {
 
 // MARK: - Google sign-in
 
-/// Google's sign-in for desktop apps: Lens opens Google's own page in the browser, Emma signs in
+/// Google's sign-in for desktop apps: Lens opens Google's own page in the browser, the user signs in
 /// there, and Google hands back a code on a one-time local address. Lens never sees her password.
 enum GoogleAuth {
     /// Only what Lens uses: read mail (inquiries, Zoom summaries, payment notices), write drafts for
@@ -76,7 +76,7 @@ enum GoogleAuth {
 
     static let calendarScope = "https://www.googleapis.com/auth/calendar.readonly"
 
-    /// `message` is already plain English for Emma; `code` keeps Google's own wording for Get help.
+    /// `message` is already plain English for the user; `code` keeps Google's own wording for Get help.
     struct Failure: LocalizedError {
         let message: String
         var code: String? = nil
@@ -225,7 +225,7 @@ private extension Data {
     }
 }
 
-/// Reads Emma's Google Calendar (read-only) through Google's Calendar API.
+/// Reads the user's Google Calendar (read-only) through Google's Calendar API.
 enum GoogleCalendarAPI {
     struct Calendar { let id: String; let name: String }
 
@@ -436,7 +436,7 @@ enum LoginStatus {
     var isLater: Bool { if case .later = self { return true } else { return false } }
 }
 
-/// What Emma has connected, and the non-secret answers she gave along the way.
+/// What the user has connected, and the non-secret answers she gave along the way.
 struct LoginState: Codable {
     var confirmed: [String: Bool] = [:]
     var fields: [String: String] = [:]
@@ -476,7 +476,7 @@ final class ConnectionStore: ObservableObject {
 
     // MARK: Whose accounts
 
-    /// Lens only ever connects to Emma's accounts. Anything signed in as someone else on this Mac is ignored.
+    /// Lens only ever connects to the user's accounts. Anything signed in as someone else on this Mac is ignored.
     static let defaultOwnerEmail = "emmapionberlin@gmail.com"
 
     var ownerEmail: String {
@@ -750,7 +750,7 @@ final class ConnectionStore: ObservableObject {
         allDriveAccounts.filter { isOwner($0.email) }
     }
 
-    /// Accounts Drive for desktop is signed into on this Mac that aren't Emma's (ignored by Lens).
+    /// Accounts Drive for desktop is signed into on this Mac that aren't the user's (ignored by Lens).
     var otherDriveAccounts: [String] {
         allDriveAccounts.map(\.email).filter { !isOwner($0) }
     }
@@ -804,7 +804,7 @@ final class ConnectionStore: ObservableObject {
         case .drive:
             if let account = driveAccounts.first { return .connected(account.email) }
             return otherDriveAccounts.isEmpty ? .todo("Google Drive for desktop isn't installed")
-                                              : .todo("Not signed in as Emma on this Mac")
+                                              : .todo("Not signed in with your account on this Mac")
         case .zoom:
             if zoomConnected { return .connected(zoomReport ?? "Reading your summaries") }
             if isConfirmed("zoom") { return gmail != nil ? .partial("Emailed summaries only. Connect Zoom for all of them") : .partial("Waiting on Google") }

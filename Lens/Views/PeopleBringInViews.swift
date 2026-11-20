@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Added recently
 
-/// Who Lens added by itself in the last two weeks, and from where. Each one stays unless Emma removes them.
+/// Who Lens added by itself in the last two weeks, and from where. Each one stays unless the user removes them.
 struct RecentlyAddedPanel: View {
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
@@ -79,7 +79,7 @@ struct RecentlyAddedPanel: View {
 
 /// "Scan a card": take a photo with the iPhone, pick photos, or drop them in. Claude reads each card and
 /// Lens adds the person, tagged "Met at networking", with the photo on their page. When Lens isn't sure
-/// about something, it shows the card so Emma can check it before adding.
+/// about something, it shows the card so the user can check it before adding.
 struct CardScanView: View {
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator

@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The top of Library: every drive Emma owns (plugged in or in a drawer) and one search box
+/// The top of Library: every drive the user owns (plugged in or in a drawer) and one search box
 /// across all of them.
 struct LibraryDrivesView: View {
     @EnvironmentObject private var viewModel: ScanViewModel

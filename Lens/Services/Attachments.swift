@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import UniformTypeIdentifiers
 
-/// Turns files Emma attaches in Ask Lens into what Claude can read: photos (shrunk to a sensible
+/// Turns files the user attaches in Ask Lens into what Claude can read: photos (shrunk to a sensible
 /// size), PDFs, and plain text such as CSV or notes.
 enum Attachments {
     static let maxPDFBytes = 30 * 1024 * 1024

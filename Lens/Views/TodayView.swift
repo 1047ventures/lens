@@ -155,7 +155,7 @@ struct TodayView: View {
         var result: [Item] = []
 
         if viewModel.roots.isEmpty && DriveCatalog.shared.outside.isEmpty {
-            result.append(Item(tone: .neutral, kicker: "Getting started", title: "Add Emma's drive",
+            result.append(Item(tone: .neutral, kicker: "Getting started", title: "Add your drive",
                                detail: "Point Lens at the SSD so it can see the footage",
                                actionTitle: "Go to Library") { navigator.open(.footage) })
         } else if !viewModel.pluggedRoots.isEmpty && !viewModel.hasScanned {
@@ -227,7 +227,7 @@ struct TodayView: View {
         let p = logins.progress
         if p.done < p.total {
             result.append(Item(tone: .neutral, kicker: "Log-ins · \(p.done) of \(p.total) connected",
-                               title: "Finish connecting Emma's accounts",
+                               title: "Finish connecting your accounts",
                                detail: logins.googleConnected ? "Google is in. A few small ones left." : "Start with Google: it unlocks email, Zoom summaries and payments",
                                actionTitle: "Open Log-ins") { navigator.open(.logins) })
         }
@@ -264,7 +264,7 @@ struct TodayView: View {
         }
         if parts.isEmpty {
             return projects.projects.isEmpty
-                ? "Start by adding Emma's drive in Library, then turn its folders into projects."
+                ? "Start by adding your drive in Library, then turn its folders into projects."
                 : "Nothing urgent today."
         }
         return parts.joined(separator: " ")

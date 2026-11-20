@@ -1,13 +1,13 @@
 import Foundation
 import AppKit
 
-/// Lens's memory of every drive Emma owns, including her Mac, so she can see and search all of
+/// Lens's memory of every drive the user owns, including her Mac, so she can see and search all of
 /// them even when they're unplugged in a drawer. It keeps only a light list per drive (each
 /// photo and video file's folder, name, size and date): no footage, no thumbnails.
 struct CatalogDrive: Codable, Identifiable, Hashable {
     /// The volume's own ID, so a drive is recognised whatever port or name it has.
     var id: String
-    /// What Emma calls it.
+    /// What the user calls it.
     var name: String
     var isMac: Bool
     var total: Int64
@@ -239,7 +239,7 @@ final class DriveCatalog: ObservableObject {
         save()
     }
 
-    /// Takes in the summaries a scan produced. A drive's name is kept if Emma already set one.
+    /// Takes in the summaries a scan produced. A drive's name is kept if the user already set one.
     func merge(_ updated: [CatalogDrive]) {
         for var drive in updated {
             if let i = drives.firstIndex(where: { $0.id == drive.id }) {

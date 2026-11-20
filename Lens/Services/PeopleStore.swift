@@ -1,11 +1,11 @@
 import Foundation
 
-/// Everyone Emma works with, kept in people.json. Lens fills it in by itself from deal contacts,
+/// Everyone the user works with, kept in people.json. Lens fills it in by itself from deal contacts,
 /// project clients and people, two-way Gmail conversations, website form emails, Instagram and Facebook
 /// message emails and Zoom calls, and merges obvious duplicates (same email, or same name and company).
-/// People Lens adds by itself show in "Added recently" for two weeks, where Emma can Keep, Edit or Remove
+/// People Lens adds by itself show in "Added recently" for two weeks, where the user can Keep, Edit or Remove
 /// them. She can also bring in LinkedIn and Facebook or Instagram downloads, and scan business cards.
-/// Emma can add, edit, merge, split and remove people by hand; anything she removes stays gone.
+/// the user can add, edit, merge, split and remove people by hand; anything she removes stays gone.
 @MainActor
 final class PeopleStore: ObservableObject {
     @Published private(set) var people: [Person] = []
@@ -13,14 +13,14 @@ final class PeopleStore: ObservableObject {
     /// anything in an older file is added on load.
     private var suggestions: [PersonSuggestion] = []
 
-    /// Emails and names Emma removed or ignored, so Lens doesn't bring them back.
+    /// Emails and names the user removed or ignored, so Lens doesn't bring them back.
     private var hidden: Set<String> = []
 
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
     private weak var money: MoneyStore?
     private weak var logins: ConnectionStore?
-    /// Emma's own addresses, seen while reading Gmail, so she never becomes a person.
+    /// the user's own addresses, seen while reading Gmail, so she never becomes a person.
     private var myEmails: Set<String> = []
 
     /// Quiet for this many days while on an open deal: worth a check-in.
@@ -144,7 +144,7 @@ final class PeopleStore: ObservableObject {
 
     // MARK: - Added recently
 
-    /// People Lens added by itself in the last two weeks that Emma hasn't kept yet, newest first.
+    /// People Lens added by itself in the last two weeks that the user hasn't kept yet, newest first.
     var recentlyAdded: [Person] {
         let now = Date()
         return people.filter { $0.isRecentlyAdded(now: now) }.sorted { ($0.addedOn ?? .distantPast) > ($1.addedOn ?? .distantPast) }
@@ -162,7 +162,7 @@ final class PeopleStore: ObservableObject {
         save()
     }
 
-    /// Emma's own email addresses: never a person.
+    /// the user's own email addresses: never a person.
     func isMine(_ email: String) -> Bool {
         let e = email.lowercased()
         return myEmails.contains(e) || e == ConnectionStore.defaultOwnerEmail || e == logins?.ownerEmail
@@ -191,12 +191,12 @@ final class PeopleStore: ObservableObject {
         var added = 0
         /// Already in People (any missing details were filled in).
         var alreadyHere = 0
-        /// People Emma removed before, left out.
+        /// People the user removed before, left out.
         var leftOut = 0
     }
 
     /// People from a LinkedIn or Meta download, or from business cards. New people are added, people
-    /// already here get any missing details filled in. With `respectRemoved`, people Emma removed stay out.
+    /// already here get any missing details filled in. With `respectRemoved`, people the user removed stay out.
     @discardableResult
     func bringIn(_ incoming: [Person], respectRemoved: Bool = true) -> BringInResult {
         var result = BringInResult()
@@ -230,7 +230,7 @@ final class PeopleStore: ObservableObject {
     // MARK: - People from Gmail, Instagram, Facebook and Zoom
 
     /// Called for each Gmail conversation Lens reads. People already in Lens get the conversation on their page.
-    /// Real people who wrote to Emma about work (a two-way conversation, one on a deal or project, or a website
+    /// Real people who wrote to the user about work (a two-way conversation, one on a deal or project, or a website
     /// form) are added by themselves.
     func noteThread(_ thread: GmailAPI.Thread, link: EmailThread, me: String, onFile: Bool) {
         if !me.isEmpty { myEmails.insert(me.lowercased()) }
@@ -278,7 +278,7 @@ final class PeopleStore: ObservableObject {
         if changed { save() }
     }
 
-    /// Instagram and Facebook email Emma when someone messages her ("Jordan Reyes sent you a message").
+    /// Instagram and Facebook email the user when someone messages her ("Jordan Reyes sent you a message").
     /// Those people are added with where they wrote from. Names only: these emails don't share addresses.
     func noteSocial(_ thread: GmailAPI.Thread) {
         var changed = false
@@ -375,7 +375,7 @@ final class PeopleStore: ObservableObject {
     // MARK: - Building people from deals and projects
 
     /// Makes sure everyone on a deal or project is in People and linked to it. Runs whenever deals or
-    /// projects change. Only adds and links; never removes anything Emma set.
+    /// projects change. Only adds and links; never removes anything the user set.
     func sync(deals: [Deal], projects: [Project]) {
         var list = people
 
@@ -426,7 +426,7 @@ final class PeopleStore: ObservableObject {
             }
         }
 
-        // The people Emma (or Lens) put on each project.
+        // The people the user (or Lens) put on each project.
         for project in projects {
             for person in project.people ?? [] {
                 let rawEmail = person.email.trimmingCharacters(in: .whitespaces).lowercased()
@@ -471,7 +471,7 @@ final class PeopleStore: ObservableObject {
                 continue
             }
             if !sameCompany.isEmpty || hidden.contains("name:" + key) { continue }
-            // Skip anyone Emma took off this project on purpose.
+            // Skip anyone the user took off this project on purpose.
             if list.contains(where: { $0.unlinked.contains(project.id) }) { continue }
             var p = Person(name: client, automatic: true)
             p.projectIDs = [project.id]
@@ -633,7 +633,7 @@ final class PeopleStore: ObservableObject {
 
     func totalPaid(by p: Person) -> Double { payments(for: p).reduce(0) { $0 + $1.amount } }
 
-    /// The last time Emma was in touch: an email, a call note, or a chat she logged.
+    /// The last time the user was in touch: an email, a call note, or a chat she logged.
     func lastInTouch(_ p: Person) -> Date? {
         // Only notes on their own deals and projects here: reading every summary for every row would be slow.
         let dates = p.touches.map(\.date) + emails(for: p).map(\.lastDate) + meetingNotes(for: p, mentions: false).map(\.date)
@@ -650,7 +650,7 @@ final class PeopleStore: ObservableObject {
         people.filter { $0.isFollowUpDue() }.sorted { ($0.followUp ?? .distantPast) < ($1.followUp ?? .distantPast) }
     }
 
-    /// People on open deals Emma hasn't been in touch with for a while (and has no follow-up set for).
+    /// People on open deals the user hasn't been in touch with for a while (and has no follow-up set for).
     var goneQuiet: [(person: Person, deal: Deal, days: Int)] {
         people.compactMap { p -> (Person, Deal, Int)? in
             guard p.followUp == nil, let deal = deals(for: p).first(where: { $0.stage.isOpen }) else { return nil }

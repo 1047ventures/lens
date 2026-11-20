@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Everything Emma owns, what it's worth today (feeds "What's it all worth?" in Money),
+/// Everything the user owns, what it's worth today (feeds "What's it all worth?" in Money),
 /// and when it was last looked after.
 struct GearView: View {
     @EnvironmentObject private var money: MoneyStore

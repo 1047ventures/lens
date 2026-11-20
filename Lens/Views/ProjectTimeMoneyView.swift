@@ -303,7 +303,7 @@ struct TimeEntrySheet: View {
 
 // MARK: - Money
 
-/// What one project costs and what Emma keeps from it.
+/// What one project costs and what the user keeps from it.
 struct ProjectMoneyPanel: View {
     let project: Project
     let books: ProjectBooks

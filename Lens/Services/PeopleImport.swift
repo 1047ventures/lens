@@ -1,7 +1,7 @@
 import Foundation
 
-/// Reads the data downloads LinkedIn and Meta (Facebook, Instagram) give Emma, and turns them into
-/// people. Nothing here changes Emma's data: PeopleStore.bringIn does that once she picks a file.
+/// Reads the data downloads LinkedIn and Meta (Facebook, Instagram) give the user, and turns them into
+/// people. Nothing here changes the user's data: PeopleStore.bringIn does that once she picks a file.
 enum PeopleImport {
 
     struct Failure: LocalizedError {
@@ -179,7 +179,7 @@ enum PeopleImport {
 
     // MARK: Facebook and Instagram ("Download your information", JSON)
 
-    /// Everyone Emma messaged with, from the inbox folders of a Facebook or Instagram download.
+    /// Everyone the user messaged with, from the inbox folders of a Facebook or Instagram download.
     static func meta(_ url: URL) throws -> [Person] {
         var folder = url
         var cleanup: URL?
@@ -204,7 +204,7 @@ enum PeopleImport {
             let site = (url.path + file.path).lowercased().contains("instagram") ? "Instagram" : "Facebook"
             threads.append(Thread(names: names, site: site))
         }
-        // Emma is in every conversation: the name that shows up most is her.
+        // the user is in every conversation: the name that shows up most is her.
         var counts: [String: Int] = [:]
         for t in threads { for n in Set(t.names) { counts[n, default: 0] += 1 } }
         let me = threads.count > 1 ? counts.max { $0.value < $1.value }?.key : nil
