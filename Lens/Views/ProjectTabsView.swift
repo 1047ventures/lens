@@ -347,9 +347,18 @@ struct ProjectProposalTab: View {
                     Button("Open your proposal") { NSWorkspace.shared.open(URL(fileURLWithPath: q.location)) }
                         .buttonStyle(PrimaryButtonStyle())
                 } else {
-                    Text("This project doesn't have a proposal in Lens yet. Upload yours below, or projects booked from Pipeline show theirs here.")
+                    Text("This project doesn't have a proposal yet. Upload yours below, or build one here and Lens works out the price from your rates.")
                         .font(.system(size: 14)).foregroundStyle(Theme.text3)
                         .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("Build a quote") { buildQuote() }
+                            .buttonStyle(PrimaryButtonStyle())
+                        Button("Ask Lens to price it") {
+                            navigator.askDraft = "Help me price the \(project.name) project. Ask me what's involved (full days, half days or hours, and whether it's a finished film or just edited images and B-roll), compare it with my past quotes, then suggest the options."
+                            navigator.askOpen = true
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
                 }
                 let free = deals.deals.filter { $0.projectID == nil && $0.stage != .lost }
                 if !free.isEmpty {
@@ -370,6 +379,20 @@ struct ProjectProposalTab: View {
             }
         }
         .panel(padding: 22)
+    }
+
+    /// A new quote for this project: a deal tied to it, with one starter option, opened in the proposal builder.
+    private func buildQuote() {
+        var deal = Deal(client: project.client.isEmpty ? project.name : project.client, title: project.name, source: "Project",
+                        stage: .talking, lastTouch: Date(), createdAt: Date())
+        var option = ScopeOption.starter()
+        option.interviewees = 0
+        deal.options = [option]
+        deal.projectID = project.id
+        deal.eventDate = project.shootDate
+        deal.contacts = (project.people ?? []).filter { !$0.email.isEmpty }.map { Contact(name: $0.name, role: $0.role, email: $0.email) }
+        deals.add(deal)
+        navigator.openBuilder(deal.id)
     }
 
     private func fact(_ label: String, _ value: String) -> some View {
