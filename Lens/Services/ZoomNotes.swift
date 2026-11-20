@@ -455,6 +455,8 @@ final class ZoomNotes: ObservableObject {
         for person in p.people ?? [] {
             if person.email.contains("@") { keys.append((person.email.lowercased(), 3)) }
             keys += names(person.name, weight: 2)
+            // Calls often only say "Jason" or "Chloe": the first name of someone on the project counts too.
+            if let first = firstName(person.name) { keys.append((first, 2)) }
         }
         let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if name.count >= 4 { keys.append((name, 2)) }
@@ -464,6 +466,64 @@ final class ZoomNotes: ObservableObject {
             if k.count >= 2 { keys.append((k, 1)) }
         }
         return keys
+    }
+
+    /// "Jason Lee" → "jason". Nil for very short names, which match too much.
+    static func firstName(_ raw: String) -> String? {
+        let words = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "-" }).map(String.init)
+        guard let first = words.first, first.count >= 3 else { return nil }
+        return first
+    }
+
+    /// Every Zoom summary email that names someone on this project, however old, filed on the project.
+    /// Runs when people are added to a project, so its whole history shows up, not just new calls.
+    func backfill(_ project: Project) async {
+        guard let logins, let deals, let projects else { return }
+        // Summaries Lens already has but couldn't place (waiting, or kept quietly): try again now that
+        // the project has its people.
+        for note in unmatched + kept {
+            if case .sure(let dealID, let projectID) = match(note, deals: deals, projects: projects), projectID == project.id {
+                place(note, dealID: dealID, projectID: projectID, auto: true)
+                kept.removeAll { $0.id == note.id }
+            }
+        }
+        save()
+        guard logins.gmailReady else { return }
+        var words = Set((project.people ?? []).compactMap { Self.firstName($0.name) })
+        for person in project.people ?? [] where person.name.contains(" ") { words.insert(person.name.lowercased()) }
+        for k in project.keywords ?? [] where k.count >= 3 { words.insert(k.lowercased()) }
+        if project.name.count >= 4 { words.insert(project.name.lowercased()) }
+        guard !words.isEmpty else { return }
+        do {
+            let token = try await logins.googleAccessToken()
+            let me = logins.ownerEmail
+            let account = me.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? me
+            let names = words.sorted().map { "\"\($0)\"" }.joined(separator: " ")
+            let q = "from:zoom.us {subject:\"meeting summary\" subject:\"meeting assets\" subject:\"call summary\" subject:recap} {\(names)} -in:spam -in:trash"
+            for item in try await GmailAPI.threadIDs(matching: q, max: 100, token: token) {
+                if alreadyOnFile(item.id, deals: deals, projects: projects) { continue }
+                let thread = try await GmailAPI.thread(item.id, token: token)
+                guard let message = thread.messages.last(where: { GmailAPI.parseAddress($0.from).email.hasSuffix("zoom.us") }) else { continue }
+                let summary = Self.clean(message.text)
+                let note = MeetingNote(id: item.id, title: Self.title(from: message.subject), date: message.date,
+                                       summary: summary,
+                                       link: "https://mail.google.com/mail/?authuser=\(account)#all/\(item.id)",
+                                       attendees: Self.attendees(message, summary: summary, me: me))
+                if allNotes(deals: deals, projects: projects).contains(where: { $0.fromZoom && Self.sameMeeting($0, note) }) { continue }
+                // Found by searching for this project's people, so it goes here unless it clearly belongs elsewhere.
+                switch match(note, deals: deals, projects: projects) {
+                case .sure(let dealID, let projectID) where projectID != nil && projectID != project.id:
+                    place(note, dealID: dealID, projectID: projectID)
+                default:
+                    place(note, dealID: deals.deals.first(where: { $0.projectID == project.id })?.id, projectID: project.id)
+                }
+                foundCount += 1
+            }
+            save()
+        } catch {
+            // The next regular check tries again; nothing to tell Emma here.
+        }
     }
 
     /// The people on the call and the meeting series, for remembering where the user put a note.

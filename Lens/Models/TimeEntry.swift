@@ -121,6 +121,9 @@ extension Project {
                                    "event", "photo", "photos", "session", "portrait", "portraits", "interview"]
         var out = [name, client].map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
         out += (name + " " + client).lowercased().split { !$0.isLetter }.map(String.init)
+        // The crew and people on the project ("Venmo to Chloe Park") and Emma's keywords for it.
+        out += (people ?? []).map { $0.name.lowercased().trimmingCharacters(in: .whitespaces) }.filter { $0.contains(" ") }
+        out += (keywords ?? []).map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
         return Array(Set(out.filter { $0.count >= 5 && !common.contains($0) }))
     }
 

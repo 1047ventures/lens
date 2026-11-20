@@ -140,6 +140,30 @@ final class MoneyStore: ObservableObject {
         return others
     }
 
+    /// Puts spending that clearly belongs to one project (its name, client, people or keywords are in the
+    /// description) on that project by itself. Each line is only ever tagged once, so if Emma takes one off
+    /// a project it stays off.
+    func autoTagProjects(_ projects: [Project]) {
+        let open = projects.filter { $0.stage != .archived }
+        guard !open.isEmpty else { return }
+        let key = "money.autoTagged"
+        var done = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        var changed = false
+        for i in data.txns.indices where data.txns[i].projectID == nil && !done.contains(data.txns[i].id.uuidString) {
+            let t = data.txns[i]
+            guard t.category != .gear, [.income, .direct, .overhead, .unsorted].contains(t.category.group) else { continue }
+            let byName = open.filter { $0.matches(t.description) }
+            guard byName.count == 1 else { continue }
+            data.txns[i].projectID = byName[0].id
+            done.insert(t.id.uuidString)
+            changed = true
+        }
+        if changed {
+            UserDefaults.standard.set(Array(done), forKey: key)
+            save()
+        }
+    }
+
     func setProject(_ txn: Txn, _ projectID: UUID?) {
         guard let i = data.txns.firstIndex(where: { $0.id == txn.id }) else { return }
         data.txns[i].projectID = projectID
