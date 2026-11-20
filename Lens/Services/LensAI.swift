@@ -863,13 +863,19 @@ final class LensAI: ObservableObject {
             let words = str("query").lowercased().split(separator: " ").map(String.init).filter { $0.count >= 3 }
             // Subjects and people come from the conversations already on deals, projects and people.
             var links: [String: EmailThread] = [:]
-            for t in deals.deals.flatMap({ $0.emails ?? [] }) + projects.projects.flatMap({ $0.emails ?? [] })
-                + (people?.people.flatMap(\.threads) ?? []) { links[t.id] = t }
+            let dealThreads: [EmailThread] = deals.deals.flatMap { $0.emails ?? [] }
+            let projectThreads: [EmailThread] = projects.projects.flatMap { $0.emails ?? [] }
+            let personThreads: [EmailThread] = people?.people.flatMap { $0.threads } ?? []
+            for t in dealThreads { links[t.id] = t }
+            for t in projectThreads { links[t.id] = t }
+            for t in personThreads { links[t.id] = t }
             var hits: [[String: Any]] = []
             for (id, s) in history.summaries where !s.summary.isEmpty {
                 let link = links[id]
-                let text = ([s.summary, link?.subject ?? "", (link?.people ?? []).joined(separator: " ")] + s.decisions)
-                    .joined(separator: " ").lowercased()
+                let subject: String = link?.subject ?? ""
+                let names: String = (link?.people ?? []).joined(separator: " ")
+                let parts: [String] = [s.summary, subject, names] + s.decisions
+                let text = parts.joined(separator: " ").lowercased()
                 guard words.isEmpty || words.contains(where: text.contains) else { continue }
                 var d: [String: Any] = ["summary": s.summary, "decisions": s.decisions]
                 if let link {
@@ -879,7 +885,11 @@ final class LensAI: ObservableObject {
                 }
                 hits.append(d)
             }
-            hits.sort { ($0["last_message"] as? String ?? "") > ($1["last_message"] as? String ?? "") }
+            hits.sort { a, b in
+                let x: String = (a["last_message"] as? String) ?? ""
+                let y: String = (b["last_message"] as? String) ?? ""
+                return x > y
+            }
             return (json(["read": history.workCount, "matches": hits.count, "conversations": Array(hits.prefix(25))]), false)
         case "get_project":
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }

@@ -128,30 +128,42 @@ final class EmailHistory: ObservableObject {
         guard let ai, ai.hasKey, let deals, let projects else { return }
         if !force, let lastFind, Date().timeIntervalSince(lastFind) < 6 * 3600 { return }
         let since = Date().addingTimeInterval(-270 * 86400)
-        let mail: [[String: Any]] = summaries.values
-            .filter { !$0.summary.isEmpty && ($0.lastDate ?? .distantPast) > since && $0.status != "other" }
-            .sorted { ($0.lastDate ?? .distantPast) > ($1.lastDate ?? .distantPast) }
-            .prefix(250)
-            .map { s in
-                ["date": (s.lastDate ?? Date()).formatted(.iso8601.year().month().day()), "subject": s.subject ?? "",
-                 "project": s.projectName ?? "", "client": s.client ?? "", "kind": s.kind ?? "", "status": s.status ?? "",
-                 "people": s.people ?? [], "summary": s.summary, "decisions": s.decisions]
-            }
+        var recent: [Summary] = []
+        for s in summaries.values where !s.summary.isEmpty && s.status != "other" {
+            if let last = s.lastDate, last > since { recent.append(s) }
+        }
+        recent.sort { ($0.lastDate ?? .distantPast) > ($1.lastDate ?? .distantPast) }
+        var mail: [[String: Any]] = []
+        for s in recent.prefix(250) {
+            var d: [String: Any] = ["summary": s.summary, "decisions": s.decisions]
+            d["date"] = (s.lastDate ?? Date()).formatted(.iso8601.year().month().day())
+            d["subject"] = s.subject ?? ""
+            d["project"] = s.projectName ?? ""
+            d["client"] = s.client ?? ""
+            d["kind"] = s.kind ?? ""
+            d["status"] = s.status ?? ""
+            d["people"] = s.people ?? []
+            mail.append(d)
+        }
         let calls: [[String: Any]] = (zoom?.allNotes(deals: deals, projects: projects) ?? [])
             .filter { $0.date > since }
             .sorted { $0.date > $1.date }
             .prefix(120)
-            .map { n in
-                ["date": n.date.formatted(.iso8601.year().month().day()), "title": n.title,
-                 "people": (n.people ?? []).map(\.name) + (n.attendees ?? []), "summary": String(n.fullText.prefix(1200))]
+            .map { n -> [String: Any] in
+                let names: [String] = (n.people ?? []).map(\.name) + (n.attendees ?? [])
+                return ["date": n.date.formatted(.iso8601.year().month().day()), "title": n.title,
+                 "people": names, "summary": String(n.fullText.prefix(1200))]
             }
         guard !mail.isEmpty || !calls.isEmpty else { return }
-        let existing: [[String: Any]] = projects.projects.filter { $0.stage != .archived }.map {
-            ["id": $0.id.uuidString, "type": "project", "name": $0.name, "client": $0.client,
-             "people": ($0.people ?? []).map { "\($0.name) \($0.email)" }, "keywords": $0.keywords ?? []]
-        } + deals.deals.filter { $0.stage != .lost && $0.projectID == nil }.map {
-            ["id": $0.id.uuidString, "type": "deal", "name": $0.title, "client": $0.client,
-             "people": $0.contacts.map { "\($0.name) \($0.email)" }]
+        var existing: [[String: Any]] = []
+        for p in projects.projects where p.stage != .archived {
+            let people: [String] = (p.people ?? []).map { "\($0.name) \($0.email)" }
+            existing.append(["id": p.id.uuidString, "type": "project", "name": p.name, "client": p.client,
+                             "people": people, "keywords": p.keywords ?? []])
+        }
+        for d in deals.deals where d.stage != .lost && d.projectID == nil {
+            let people: [String] = d.contacts.map { "\($0.name) \($0.email)" }
+            existing.append(["id": d.id.uuidString, "type": "deal", "name": d.title, "client": d.client, "people": people])
         }
         let removed = known.filter { $0.hasPrefix("removed:") }.map { String($0.dropFirst(8)) }
         let payload: [String: Any] = ["today": Date().formatted(.iso8601.year().month().day()), "already_in_lens": existing,
@@ -311,11 +323,13 @@ final class EmailHistory: ObservableObject {
 
             // Prices she quoted in the conversation go into her quote history.
             for q in a["quotes"] as? [[String: Any]] ?? [] {
-                let amount = (q["amount"] as? Double) ?? (q["amount"] as? Int).map(Double.init) ?? 0
+                var amount: Double = 0
+                if let d = q["amount"] as? Double { amount = d } else if let i = q["amount"] as? Int { amount = Double(i) }
                 guard amount > 0, let quotes else { continue }
                 if quotes.quotes.contains(where: { $0.location == link.link && $0.amount == amount }) { continue }
-                var quote = Quote(date: day.date(from: (q["date"] as? String) ?? "") ?? link.lastDate,
-                                  client: s("client"), title: ((q["what"] as? String) ?? "").isEmpty ? link.subject : (q["what"] as? String ?? ""))
+                let what: String = (q["what"] as? String) ?? ""
+                let when: Date = day.date(from: (q["date"] as? String) ?? "") ?? link.lastDate
+                var quote = Quote(date: when, client: s("client"), title: what.isEmpty ? link.subject : what)
                 quote.amount = amount
                 quote.source = "Email"
                 quote.location = link.link
