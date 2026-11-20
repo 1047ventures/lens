@@ -207,8 +207,8 @@ struct LoginsView: View {
                     .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
                 confirm("website", "Done: contact-form emails go to the Gmail above")
             }
-        case .social: confirm("social", "Done: switched to a professional account")
-        case .directories: directoryControls
+        case .social: SocialControls()
+        case .directories: DirectoryControls()
         case .bank, .paypal, .venmo: statementControls(id)
         case .claude: ClaudeControls()
         case .github: GitHubControls()
@@ -278,32 +278,6 @@ struct LoginsView: View {
                 Text("Project folders are created here and shared from Drive.")
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
             }
-        }
-    }
-
-    private static let directoryOptions = ["The Knot", "WeddingWire", "Google Business Profile", "Thumbtack", "Yelp", "Zola"]
-
-    private var directoryControls: some View {
-        let picked = Set(logins.field("directories").split(separator: ",").map(String.init))
-        return VStack(alignment: .leading, spacing: 10) {
-            FlowLayout(spacing: 8) {
-                ForEach(Self.directoryOptions, id: \.self) { name in
-                    let on = picked.contains(name)
-                    Button {
-                        var next = picked
-                        if on { next.remove(name) } else { next.insert(name) }
-                        logins.setField("directories", Self.directoryOptions.filter(next.contains).joined(separator: ","))
-                    } label: {
-                        Text(name).font(.system(size: 12, weight: .semibold))
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(on ? Palette.orchid.opacity(0.22) : Theme.raised)
-                            .foregroundStyle(on ? Theme.text : Theme.text3)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            confirm("directories", "Done: lead emails from each go to the Gmail above")
         }
     }
 
@@ -387,21 +361,22 @@ struct LoginsView: View {
                     "Send yourself a test inquiry once Google is connected."]),
         .social: Info(
             name: "Instagram + Facebook", icon: "camera.aperture",
-            covers: "DMs and comments from people who find you on social",
-            gets: ["Now: \"Paste a DM\" turns a message into an inquiry with a ready-to-copy reply",
-                   "Later: a direct link once your account is professional (Meta only allows this for business and creator accounts)"],
-            never: "No app can read personal-account DMs, so nothing is read until you connect.",
-            steps: ["In Instagram: Settings → Account type and tools → **Switch to professional account** (Creator or Business).",
-                    "Link it to your Facebook Page (create a simple one if needed).",
-                    "Tick below. Lens adds the direct Meta sign-in in a later phase."]),
+            covers: "Your DMs and Page messages, with real inquiries sent to Pipeline",
+            gets: ["Every Instagram DM and Facebook Page message, checked every hour",
+                   "Real inquiries show up on Pipeline, ready to add, tagged Instagram or Facebook",
+                   "Everyone who messages you goes in People"],
+            never: "Read only: Lens never sends, deletes or marks a message as read. Your passwords stay with Meta.",
+            steps: ["Meta makes this a one-time setup: a small private app on your own account. Click **Get help** below and Claude walks you through it, one click at a time.",
+                    "At the end you paste two codes below, one for Instagram and one for Facebook. That's it."]),
         .directories: Info(
             name: "Directories + reviews", icon: "list.star",
-            covers: "Leads from wedding sites and Google searches",
-            gets: ["Lead emails from each directory, turned into inquiries tagged with where they came from",
+            covers: "Leads from The Knot, WeddingWire, Thumbtack, Google and more, plus your Google reviews",
+            gets: ["Every lead email from these sites becomes an inquiry, tagged with where it came from",
+                   "Your Google reviews, listed below as they come in",
                    "Win rate and revenue by source in Money"],
-            never: "No directory logins needed.",
-            steps: ["Tap each place you're listed.",
-                    "In each one's settings, send lead notifications to the Gmail connected above."]),
+            never: "No logins needed. Lens only reads the emails these sites already send you.",
+            steps: ["Nothing to set up. Once Google is connected, Lens finds these emails by itself.",
+                    "For Google reviews: in your Google Business Profile, open **Settings**, then **Notifications**, and make sure **Customer reviews** emails are on."]),
         .bank: Info(
             name: "Bank + credit card", icon: "building.columns.fill",
             covers: "Income, expenses and balances for the Money tab",
@@ -655,6 +630,123 @@ private struct GitHubControls: View {
                 .textFieldStyle(.roundedBorder).frame(width: 320)
             Button("Save") { ai.saveGitHubToken(token); token = "" }
                 .buttonStyle(SecondaryButtonStyle()).disabled(token.isEmpty)
+        }
+    }
+}
+
+/// Instagram and Facebook: paste the two codes from Emma's Meta app once, then Lens reads her messages hourly.
+private struct SocialControls: View {
+    @EnvironmentObject private var gmail: GmailSync
+    @EnvironmentObject private var navigator: Navigator
+    @State private var drafts: [String: String] = [:]
+    @State private var errors: [String: String] = [:]
+    @State private var busy: String?
+    @State private var refresh = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(MetaMessages.Site.allCases, id: \.rawValue) { site in
+                row(site)
+            }
+            HStack(spacing: 10) {
+                if MetaMessages.Site.allCases.contains(where: MetaMessages.isConnected) {
+                    Button("Check messages now") { Task { await gmail.checkSocial() } }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+                Button("Get help") {
+                    navigator.askDraft = "Walk me through connecting Instagram and Facebook messages to Lens, one click at a time. Both are professional accounts."
+                    navigator.askOpen = true
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+            if let problem = gmail.socialProblem {
+                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            } else if let checked = gmail.socialChecked {
+                Text("Last checked \(checked.formatted(date: .omitted, time: .shortened))").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+        }
+        .id(refresh)
+    }
+
+    @ViewBuilder
+    private func row(_ site: MetaMessages.Site) -> some View {
+        if MetaMessages.isConnected(site) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
+                Text("\(site.rawValue) connected" + (MetaMessages.accountName(site).map { " · \($0)" } ?? ""))
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Button("Disconnect") { MetaMessages.disconnect(site); refresh += 1 }
+                    .buttonStyle(.link).font(.system(size: 12))
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    SecureField(site == .instagram ? "Paste your Instagram code" : "Paste your Facebook Page code",
+                                text: Binding(get: { drafts[site.rawValue] ?? "" }, set: { drafts[site.rawValue] = $0 }))
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
+                    Button(busy == site.rawValue ? "Checking…" : "Connect \(site.rawValue)") {
+                        Task { await connect(site) }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(busy != nil || (drafts[site.rawValue] ?? "").isEmpty)
+                }
+                if let error = errors[site.rawValue] {
+                    Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func connect(_ site: MetaMessages.Site) async {
+        busy = site.rawValue
+        defer { busy = nil }
+        do {
+            _ = try await MetaMessages.connect(site, token: drafts[site.rawValue] ?? "")
+            drafts[site.rawValue] = nil
+            errors[site.rawValue] = nil
+            refresh += 1
+            await gmail.checkSocial()
+        } catch {
+            errors[site.rawValue] = (error as? LocalizedError)?.errorDescription ?? "That code didn't work. Make a new one and try again."
+        }
+    }
+}
+
+/// Directories and Google reviews: nothing to set up, Lens reads the emails these sites send.
+private struct DirectoryControls: View {
+    @EnvironmentObject private var gmail: GmailSync
+    @EnvironmentObject private var deals: DealStore
+
+    private static let sources = ["The Knot", "WeddingWire", "Thumbtack", "Zola", "Yelp", "Google"]
+
+    var body: some View {
+        let seen = Set(deals.deals.map(\.source) + gmail.suggestions.map(\.source))
+        let found = Self.sources.filter(seen.contains)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(found.isEmpty ? "No leads from these sites yet. They'll show up on Pipeline as soon as one emails you."
+                               : "Leads found from: " + found.joined(separator: ", "))
+                .font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+            if gmail.reviews.isEmpty {
+                Text("No Google review emails yet. Turn on review emails in your Google Business Profile (steps on the left).")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Your Google reviews").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                ForEach(gmail.reviews.prefix(5)) { r in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(r.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                            Spacer()
+                            Text(r.date.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                        if !r.snippet.isEmpty {
+                            Text(r.snippet).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
+                        }
+                        if let url = URL(string: r.link) {
+                            Link("Open ↗", destination: url).font(.system(size: 12))
+                        }
+                    }
+                }
+            }
         }
     }
 }
