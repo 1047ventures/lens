@@ -18,6 +18,9 @@ struct TodayNumbers {
     let overdueCount: Int
     let openDealsValue: Double
     let openDealsCount: Int
+    let won: Int
+    let lost: Int
+    var winRate: Double? { won + lost == 0 ? nil : Double(won) / Double(won + lost) }
     let weeksHours: [Double]     // last 8 weeks, this week last
     let funnel: [Step]
     let hoursThisMonth: [Slice]
@@ -50,6 +53,8 @@ struct TodayNumbers {
         let open = deals.open.filter { $0.stage != .won }
         openDealsCount = open.count
         openDealsValue = open.compactMap { deals.value(of: $0) }.reduce(0, +)
+        won = deals.deals.filter { $0.stage == .won }.count
+        lost = deals.deals.filter { $0.stage == .lost }.count
 
         let all = projects.projects
         let weekStart = cal.dateInterval(of: .weekOfYear, for: now)?.start ?? now

@@ -64,7 +64,6 @@ struct TodayView: View {
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 34)
-            .frame(maxWidth: 1240, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .task { await loadEvents() }
@@ -97,7 +96,7 @@ struct TodayView: View {
         let profit = n.thisMonth?.net ?? 0
         let last = n.months.dropLast().last?.net
         let hoursNow = n.weeksHours.last ?? 0
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) {
+        let cards = Group {
             StatTile(label: "Owed to you", value: Money.short(n.owed),
                      note: n.owedCount == 0 ? "Nobody owes you" : n.overdueCount > 0 ? "\(n.overdueCount) overdue of \(n.owedCount)" : "\(n.owedCount) on the way",
                      color: Palette.gold, noteColor: n.overdueCount > 0 ? Theme.coral : Theme.text3) { navigator.open(.money) }
@@ -111,6 +110,14 @@ struct TodayView: View {
             StatTile(label: "Hours this week", value: Hours.short(hoursNow),
                      note: n.weeksHours.dropLast().isEmpty ? "" : "8 week trend", color: Palette.orchid,
                      trend: n.weeksHours) { navigator.open(.projects) }
+            StatTile(label: "Win rate", value: n.winRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "None yet",
+                     note: n.winRate == nil ? "Shows once a deal is won or lost" : "\(n.won) won, \(n.lost) lost",
+                     color: Palette.mint) { navigator.open(.pipeline) }
+        }
+        // One row of five when there's room, otherwise they wrap.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { cards.frame(minWidth: 170, maxWidth: .infinity) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) { cards }
         }
     }
 
