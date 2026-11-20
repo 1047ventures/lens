@@ -514,6 +514,34 @@ final class GmailSync: ObservableObject {
 
     /// Every conversation with the people on a project, however old, filed on that project. Runs when
     /// people are added to a project, so its whole email history shows up, not just the last few weeks.
+    /// Every conversation with the people on a deal, however old, filed on that deal (and its project).
+    func backfill(deal: Deal) async {
+        guard let logins, let deals, let projects, logins.googleConnected else { return }
+        let me = logins.ownerEmail.lowercased()
+        var emails = Set(deal.contacts.map { $0.email.lowercased().trimmingCharacters(in: .whitespaces) }.filter { $0.contains("@") && $0 != me })
+        // The people on emails already on the deal count too (the one email it came from, say).
+        for t in deal.emails ?? [] { for e in Self.emails(in: t) where e != me { emails.insert(e.lowercased()) } }
+        guard !emails.isEmpty else { return }
+        do {
+            let token = try await logins.googleAccessToken()
+            let terms = emails.sorted().prefix(20).flatMap { ["from:\($0)", "to:\($0)", "cc:\($0)"] }.joined(separator: " ")
+            let found = try await GmailAPI.threadIDs(matching: "{\(terms)} -in:spam -in:trash -in:chats", max: 150, token: token)
+            for item in found {
+                if (deals.deal(id: deal.id)?.emails ?? []).contains(where: { $0.id == item.id }) { continue }
+                let thread = try await GmailAPI.thread(item.id, token: token)
+                guard !thread.messages.isEmpty else { continue }
+                let link = threadLink(thread, me: logins.ownerEmail)
+                deals.attachEmail(link, to: deal.id)
+                if let projectID = deals.deal(id: deal.id)?.projectID { projects.attachEmail(link, to: projectID) }
+                suggestions.removeAll { $0.id == link.id }
+                seen[item.id] = item.history
+            }
+            save()
+        } catch {
+            // The next check tries again.
+        }
+    }
+
     func backfill(_ project: Project) async {
         guard let logins, let deals, let projects, logins.googleConnected else { return }
         let me = logins.ownerEmail.lowercased()

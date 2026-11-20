@@ -143,6 +143,11 @@ struct Estimate {
     let handOffHours: Double
     let handOffCharged: Double
     let checks: [String]
+    // The hours and gear behind the budget, so they can be shown and changed.
+    var planningHours: Double = 0
+    var editHours: Double = 0
+    var mediaHours: Double = 0
+    var gearCost: Double = 0
 
     /// What the user nets on work someone else does.
     var handOffMargin: Double { handOffCharged - handOffCost }
@@ -188,14 +193,14 @@ enum Estimator {
         let crewDays = local * localPeople + travel * travelPeople + (half * 0.5 + hourly / 8) * localPeople
         let filmDays = o.filmDayEquivalent
 
-        // Hours
-        let planning = max(o.footageOnly ? 2 : 4, r.planningPerShootDay * filmDays
+        // Hours (Emma's own numbers for this job win over the rules of thumb)
+        let planning = o.planningHoursSet ?? max(o.footageOnly ? 2 : 4, r.planningPerShootDay * filmDays
                               + r.planningPerInterviewee * Double(o.interviewees)
                               - r.planningSavedPerClientTask * Double(o.clientTakesOn.count))
         // Images and B-roll only: pick, color and export the best footage; no story edit or revisions.
-        let mainEdit = o.footageOnly
+        let mainEdit = o.editHoursSet ?? (o.footageOnly
             ? r.editPerCrewDay * crewDays * 2
-            : r.editPerFilmMinute * Double(o.filmMinutes) + r.editPerCrewDay * crewDays + r.editPerRevisionRound * Double(o.revisionRounds)
+            : r.editPerFilmMinute * Double(o.filmMinutes) + r.editPerCrewDay * crewDays + r.editPerRevisionRound * Double(o.revisionRounds))
         var extrasEdit = 0.0
         for extra in o.extras {
             switch extra {
@@ -207,7 +212,7 @@ enum Estimator {
             case .rawFootage: break
             }
         }
-        let media = (o.footageOnly ? r.mediaBaseHours / 2 : r.mediaBaseHours) + r.mediaPerShootDay * filmDays
+        let media = o.mediaHoursSet ?? ((o.footageOnly ? r.mediaBaseHours / 2 : r.mediaBaseHours) + r.mediaPerShootDay * filmDays)
                   + (o.extras.contains(.rawFootage) ? r.rawFootageHandoffHours : 0)
 
         // Money at the user's rates
@@ -217,7 +222,7 @@ enum Estimator {
         let hourCost = r.shootHourly + Double(o.localCrew) * r.collaboratorDayRate / 8 * 1.25
         let production = local * localDayCost + travel * travelDayCost * (1 + r.travelPrepDayFactor)
             + half * halfDayCost + hourly * hourCost
-        let equipment = r.equipmentBase + r.equipmentPerShootDay * filmDays
+        let equipment = o.gearCostSet ?? (r.equipmentBase + r.equipmentPerShootDay * filmDays)
                       + r.equipmentPerInterviewee * Double(o.interviewees)
 
         var shootParts: [String] = []
@@ -332,10 +337,15 @@ enum Estimator {
         if o.travelDays > 0 && o.travelAllowance == 0 { checks.append("Out-of-state days but no travel allowance.") }
         if o.revisionRounds > 3 { checks.append("More than 3 revision rounds: each one adds about \(Int(r.editPerRevisionRound)) edit hours.") }
 
-        return Estimate(lines: lines, clientLines: clientLines, calculated: calculated, quote: quote,
-                        travelAllowance: o.travelAllowance, workload: workload, emmaHours: emmaHours,
-                        collaboratorCost: collaboratorCost, hardCosts: hardCosts,
-                        handOffCost: handOffCost, handOffHours: handOffHours, handOffCharged: handOffCharged, checks: checks)
+        var result = Estimate(lines: lines, clientLines: clientLines, calculated: calculated, quote: quote,
+                              travelAllowance: o.travelAllowance, workload: workload, emmaHours: emmaHours,
+                              collaboratorCost: collaboratorCost, hardCosts: hardCosts,
+                              handOffCost: handOffCost, handOffHours: handOffHours, handOffCharged: handOffCharged, checks: checks)
+        result.planningHours = planning
+        result.editHours = mainEdit
+        result.mediaHours = media
+        result.gearCost = equipment
+        return result
     }
 
     private static func round5(_ v: Double) -> Double { (v / 5).rounded() * 5 }

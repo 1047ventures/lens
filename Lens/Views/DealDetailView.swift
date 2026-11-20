@@ -126,13 +126,19 @@ struct DealDetailView: View {
             case .lost:
                 Button("Reopen") { deals.setStage(.talking, for: deal, note: "Reopened") }.buttonStyle(SecondaryButtonStyle())
             }
-            Button("Build proposal · \(BuilderStep.progress(deal))/\(BuilderStep.allCases.count)") { navigator.builderDealID = deal.id }
-                .buttonStyle(deal.stage == .inquiry ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))
-            Button(quotes.uploadedProposal(dealID: deal.id, projectID: deal.projectID) != nil ? "Open your proposal" : "Preview proposal") {
-                quotes.openProposal(for: deal, deals: deals, projects: projects)
+            if quotes.uploadedProposal(dealID: deal.id, projectID: deal.projectID) != nil {
+                // She has her own proposal: that's the one to open; building one in Lens is optional.
+                Button("Open your proposal") { quotes.openProposal(for: deal, deals: deals, projects: projects) }
+                    .buttonStyle(PrimaryButtonStyle())
+                Button("Build one in Lens instead") { navigator.builderDealID = deal.id }
+                    .buttonStyle(SecondaryButtonStyle())
+            } else {
+                Button("Build proposal · \(BuilderStep.progress(deal))/\(BuilderStep.allCases.count)") { navigator.builderDealID = deal.id }
+                    .buttonStyle(deal.stage == .inquiry ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))
+                Button("Preview proposal") { quotes.openProposal(for: deal, deals: deals, projects: projects) }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(deal.options.isEmpty)
             }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(deal.options.isEmpty && quotes.uploadedProposal(dealID: deal.id, projectID: deal.projectID) == nil)
             if deal.stage.isOpen {
                 Button("Log a follow-up") { showFollowUp = true }.buttonStyle(SecondaryButtonStyle())
                 Button("Mark lost…") { showLost = true }.buttonStyle(SecondaryButtonStyle())
@@ -580,6 +586,17 @@ struct OptionColumn: View {
                     }
                 }
 
+                // Emma's own hours and costs for this job. Empty = worked out from her rates.
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Your hours for this job").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                    ownNumber("Planning hours", \.planningHoursSet, auto: est.planningHours)
+                    ownNumber(option.footageOnly ? "Editing images + B-roll hours" : "Editing hours", \.editHoursSet, auto: est.editHours)
+                    ownNumber("Media + backup hours", \.mediaHoursSet, auto: est.mediaHours)
+                    ownNumber("Gear and costs ($)", \.gearCostSet, auto: est.gearCost)
+                    Text("Leave a box empty and Lens works it out from your rates.")
+                        .font(.system(size: 10)).foregroundStyle(Theme.muted)
+                }
+
                 Divider().overlay(Theme.line)
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -633,6 +650,21 @@ struct OptionColumn: View {
         // so reads fall back to a placeholder instead of force-unwrapping.
         Binding(get: { (option ?? ScopeOption.starter())[keyPath: path] },
                 set: { value in update { $0[keyPath: path] = value } })
+    }
+
+    /// One of Emma's own numbers: shows what Lens would use as the placeholder, and her number once typed.
+    private func ownNumber(_ label: String, _ path: WritableKeyPath<ScopeOption, Double?>, auto: Double) -> some View {
+        HStack {
+            Text(label).font(.system(size: 12)).foregroundStyle(Theme.text3)
+            Spacer()
+            TextField(String(Int(auto.rounded())), text: Binding(
+                get: { option?[keyPath: path].map { String(Int($0.rounded())) } ?? "" },
+                set: { text in
+                    let digits = text.filter { $0.isNumber || $0 == "." }
+                    update { $0[keyPath: path] = digits.isEmpty ? nil : Double(digits) }
+                }))
+                .textFieldStyle(.roundedBorder).frame(width: 64).multilineTextAlignment(.trailing)
+        }
     }
 
     private var quoteText: Binding<String> {

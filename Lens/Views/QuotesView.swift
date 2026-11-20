@@ -49,6 +49,8 @@ struct QuoteRow: View {
     let quote: Quote
     var showClient = false
     @EnvironmentObject private var quotes: QuoteStore
+    @EnvironmentObject private var ai: LensAI
+    @State private var confirmRemove = false
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
 
@@ -100,9 +102,39 @@ struct QuoteRow: View {
                 Text(details).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(2)
             }
             Spacer()
-            Text(quote.amount.map { Money.string($0) } ?? "No price found")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(quote.amount == nil ? Theme.muted : Theme.text)
+            if quote.source == "Lens proposal" {
+                Text(quote.amount.map { Money.string($0) } ?? "")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+            } else {
+                // Emma can type the price herself, or correct what Lens read.
+                TextField("Price", text: Binding(
+                    get: { quote.amount.map { String(Int($0.rounded())) } ?? "" },
+                    set: { text in
+                        let digits = text.filter(\.isNumber)
+                        var q = quote
+                        q.amount = digits.isEmpty ? nil : Double(digits)
+                        quotes.update(q)
+                    }))
+                    .textFieldStyle(.roundedBorder).frame(width: 84).multilineTextAlignment(.trailing)
+                    .help("The price. Type it in if Lens couldn't read it.")
+            }
             if quote.source != "Lens proposal" {
+                if quote.isFile {
+                    Button("Open") { open() }.buttonStyle(SecondaryButtonStyle())
+                    Button("Read again") {
+                        Task { await quotes.reread(quote, ai: ai, projects: projects, deals: deals) }
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(quotes.reading != nil)
+                }
+                Button {
+                    if confirmRemove { quotes.remove(quote) } else { confirmRemove = true }
+                } label: {
+                    if confirmRemove { Text("Remove?").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.coral) }
+                    else { Image(systemName: "trash").foregroundStyle(Theme.muted) }
+                }
+                .buttonStyle(.plain)
+                .help("Remove this quote from Lens. Your file isn't touched.")
                 Menu {
                     ForEach(["Sent", "Accepted", "Declined"], id: \.self) { s in
                         Button(s) { var q = quote; q.status = s; quotes.update(q) }
