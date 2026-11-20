@@ -339,6 +339,7 @@ final class ProjectStore: ObservableObject {
 
 /// Decides whether an email conversation is really about a project, so a project doesn't fill up with
 /// every email that happens to include one of its people.
+@MainActor
 enum ProjectRelevance {
     /// Words that point to this job: the project's name, the client, the people marked Client, and
     /// Emma's keywords. Generic words ("project", "shoot", "video"…) are left out.
