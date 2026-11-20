@@ -160,7 +160,7 @@ final class QuoteStore: ObservableObject {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
         panel.prompt = "Upload"
-        panel.message = "Pick your proposal or quote (PDF, Word, Pages export, photo or text)."
+        panel.message = "Pick your proposal or quote: PDF, Word, Pages, Keynote, a photo or text."
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         if let projectID {
@@ -205,10 +205,18 @@ final class QuoteStore: ObservableObject {
                 deal.chosenOptionID = deal.options.count == 1 ? deal.options.first?.id : nil
                 deals.update(deal)
             }
-            // A project without a price takes it from its proposal.
-            if let projectID, let amount = quote.amount, projects.project(id: projectID)?.price == nil,
-               deals.deals.first(where: { $0.projectID == projectID }) == nil {
-                projects.edit(projectID) { $0.price = amount }
+            // A project without a deal takes its price from the proposal she uploaded: one option, or the one
+            // she already said the client chose. With several options, Lens asks which one they chose.
+            if let projectID, deals.deals.first(where: { $0.projectID == projectID }) == nil {
+                let single = quote.packages.count <= 1 ? quote.amount : nil
+                if let amount = single { projects.edit(projectID) { $0.price = amount } }
+                if quote.shootDays != nil || !quote.deliverables.isEmpty {
+                    projects.edit(projectID) { p in
+                        var words = p.keywords ?? []
+                        if !quote.kind.isEmpty, !words.contains(where: { $0.lowercased() == quote.kind.lowercased() }) { words.append(quote.kind) }
+                        p.keywords = words.isEmpty ? nil : words
+                    }
+                }
             }
         }
         reading = nil

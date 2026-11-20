@@ -18,6 +18,14 @@ enum Attachments {
             } else if type?.conforms(to: .pdf) == true, let data = try? Data(contentsOf: url), data.count <= maxPDFBytes {
                 blocks.append(["type": "document", "title": url.lastPathComponent,
                                "source": ["type": "base64", "media_type": "application/pdf", "data": data.base64EncodedString()]])
+            } else if ["pages", "key", "numbers"].contains(url.pathExtension.lowercased()), let preview = iWorkPreview(url) {
+                // Pages, Keynote and Numbers files keep a preview of the document inside them.
+                if preview.isPDF {
+                    blocks.append(["type": "document", "title": url.lastPathComponent,
+                                   "source": ["type": "base64", "media_type": "application/pdf", "data": preview.data.base64EncodedString()]])
+                } else {
+                    blocks.append(["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": preview.data.base64EncodedString()]])
+                }
             } else if ["docx", "doc", "rtf", "odt"].contains(url.pathExtension.lowercased()),
                       let doc = try? NSAttributedString(url: url, options: [:], documentAttributes: nil), !doc.string.isEmpty {
                 // Word and similar documents: their text.
@@ -30,6 +38,29 @@ enum Attachments {
             }
         }
         return (blocks, skipped)
+    }
+
+    /// The preview Pages, Keynote and Numbers save inside a document: a PDF when there is one, else an image.
+    private static func iWorkPreview(_ url: URL) -> (data: Data, isPDF: Bool)? {
+        // A document saved as a folder package keeps its preview as a plain file.
+        for name in ["QuickLook/Preview.pdf", "preview.pdf"] {
+            let file = url.appendingPathComponent(name)
+            if let data = try? Data(contentsOf: file), !data.isEmpty { return (data, true) }
+        }
+        // Otherwise the document is a zip file.
+        for (name, isPDF) in [("QuickLook/Preview.pdf", true), ("preview.jpg", false), ("QuickLook/Thumbnail.jpg", false)] {
+            let unzip = Process()
+            unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            unzip.arguments = ["-p", url.path, name]
+            let pipe = Pipe()
+            unzip.standardOutput = pipe
+            unzip.standardError = FileHandle.nullDevice
+            do { try unzip.run() } catch { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            unzip.waitUntilExit()
+            if unzip.terminationStatus == 0, !data.isEmpty { return (data, isPDF) }
+        }
+        return nil
     }
 
     /// A JPEG no bigger than 2000 px on the long side (works for HEIC, RAW previews, PNG…).
