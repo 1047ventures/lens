@@ -746,6 +746,10 @@ private struct SocialControls: View {
                 row(.facebook)
                 Text("Instagram DMs come in through your Facebook Page, as long as your Instagram is linked to it.")
                     .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                if let why = UserDefaults.standard.string(forKey: "meta.instagramProblem") {
+                    Text(why).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
             } else {
                 ForEach(MetaMessages.Site.allCases, id: \.rawValue) { site in
                     row(site)
