@@ -199,6 +199,7 @@ struct ContentView: View {
             // Zoom AI summaries, straight from Zoom (or from Gmail until Zoom is connected): attach each to its deal or project.
             zoom.attach(deals: deals, projects: projects, logins: logins, ai: ai)
             ai.attachZoom(zoom)
+            ai.attachLogins(logins)
             logins.importZoomClient()
             zoom.start()
             // First time Lens opens, show the tour.

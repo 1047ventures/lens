@@ -181,6 +181,7 @@ final class GmailSync: ObservableObject {
         ("squarespace.com", "Website form"), ("squarespace-mail.com", "Website form"), ("wix.com", "Website form"),
         ("wixforms.com", "Website form"), ("showit.co", "Website form"), ("honeybook.com", "Website form"),
         ("jotform.com", "Website form"), ("typeform.com", "Website form"), ("formspree.io", "Website form"),
+        ("acuityscheduling.com", "Website form"),
     ]
 
     init() { load() }
@@ -232,7 +233,7 @@ final class GmailSync: ObservableObject {
                 matching: "newer_than:21d \(skip) -category:promotions -category:social", max: 40, token: token)
             let leadQuery = Self.leadSenders.map { "from:\($0.domain)" }.joined(separator: " ")
             for extra in try await GmailAPI.threadIDs(
-                matching: "newer_than:21d \(skip) {\(leadQuery) subject:inquiry subject:enquiry subject:\"form submission\" subject:\"new lead\"}",
+                matching: "newer_than:21d \(skip) {\(leadQuery) subject:inquiry subject:enquiry subject:\"form submission\" subject:\"new lead\" subject:\"new appointment\"}",
                 max: 20, token: token) where !found.contains(where: { $0.id == extra.id }) {
                 found.append(extra)
             }
@@ -399,12 +400,42 @@ final class GmailSync: ObservableObject {
         let domain = sender.email.split(separator: "@").last.map(String.init) ?? ""
         let directory = Self.leadSenders.first { domain == $0.domain || domain.hasSuffix("." + $0.domain) }
         let subject = first.subject.lowercased()
-        let asks = ["inquiry", "enquiry", "form submission", "new lead", "videographer", "availability", "quote"]
+        let asks = ["inquiry", "enquiry", "form submission", "new lead", "new appointment", "videographer", "availability", "quote"]
         guard directory != nil || asks.contains(where: subject.contains) else { return nil }
-        let person = first.replyTo.isEmpty ? sender : GmailAPI.parseAddress(first.replyTo)
+        var person = first.replyTo.isEmpty ? sender : GmailAPI.parseAddress(first.replyTo)
+        // Booking forms like Acuity send from their own no-reply address: the client's email is in the message.
+        if directory != nil, person.email == sender.email, let client = Self.clientEmail(in: first.text, me: me, sender: sender.email) {
+            person = (name: Self.clientName(in: first.text) ?? client, email: client)
+        }
         return EmailSuggestion(kind: .inquiry, person: person.name, email: person.email, client: person.name,
                                title: "", wants: String(first.text.prefix(300)), eventDate: nil, location: "",
                                budget: "", source: directory?.source ?? "Email", thread: link)
+    }
+
+    /// The first email address in a form or booking email that isn't Emma's or the form service's.
+    static func clientEmail(in text: String, me: String, sender: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}") else { return nil }
+        let senderDomain = sender.split(separator: "@").last.map(String.init) ?? ""
+        for m in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let r = Range(m.range, in: text) else { continue }
+            let email = text[r].lowercased()
+            if email == me.lowercased() || email.hasSuffix("@" + senderDomain) || email.contains("no-reply") || email.contains("noreply") { continue }
+            if leadSenders.contains(where: { email.hasSuffix("@" + $0.domain) || email.hasSuffix("." + $0.domain) }) { continue }
+            return email
+        }
+        return nil
+    }
+
+    /// "Name: Jane Smith" (or "Client: …") in a form or booking email.
+    static func clientName(in text: String) -> String? {
+        for line in text.split(whereSeparator: \.isNewline) {
+            let l = line.trimmingCharacters(in: .whitespaces)
+            for label in ["Name:", "Client:", "Full name:", "Client name:"] where l.lowercased().hasPrefix(label.lowercased()) {
+                let v = l.dropFirst(label.count).trimmingCharacters(in: .whitespaces)
+                if !v.isEmpty && v.count < 60 { return v }
+            }
+        }
+        return nil
     }
 
     private func sortWithClaude(_ fresh: [(GmailAPI.Thread, EmailThread)], deals: DealStore, projects: ProjectStore,
