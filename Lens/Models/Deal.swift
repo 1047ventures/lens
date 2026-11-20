@@ -166,6 +166,12 @@ struct ScopeOption: Codable, Identifiable, Hashable {
     var editHoursSet: Double? = nil
     var mediaHoursSet: Double? = nil
     var gearCostSet: Double? = nil
+    /// Emma's rates for this job when they differ from her rate card.
+    var dayRateSet: Double? = nil
+    var halfDayRateSet: Double? = nil
+    var hourRateSet: Double? = nil
+    /// Budget lines she typed in herself (category → amount). When set, the total follows her lines.
+    var lineSet: [String: Double]? = nil
 
     /// Shoot time in full-day equivalents, for planning, gear and media.
     var filmDayEquivalent: Double { Double(shootDays) + Double(halfDayCount) * 0.5 + Double(hourCount) / 8 }

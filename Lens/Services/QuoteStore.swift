@@ -117,6 +117,27 @@ final class QuoteStore: ObservableObject {
         }
     }
 
+    /// Emma typed the price on a quote: it's the real number, so the deal and project use it too.
+    func setPrice(_ quote: Quote, _ amount: Double?, deals: DealStore, projects: ProjectStore) {
+        var q = quote
+        q.amount = amount
+        update(q)
+        guard let amount, amount > 0 else { return }
+        if let dealID = q.dealID, var deal = deals.deal(id: dealID) {
+            if let chosen = q.chosen, let i = deal.options.firstIndex(where: { $0.name == chosen }) {
+                deal.options[i].quote = amount
+            } else {
+                var price = q
+                price.packages = []
+                deal.options = Self.options(from: price)
+                deal.chosenOptionID = deal.options.first?.id
+            }
+            deals.update(deal)
+        }
+        let projectID = q.projectID ?? q.dealID.flatMap { deals.deal(id: $0)?.projectID }
+        if let projectID { projects.edit(projectID) { $0.price = amount } }
+    }
+
     /// Emma says which option the client went for. The quote takes that price, and the deal's options
     /// become the ones she actually offered (so Pipeline, Money and the project show her real numbers).
     func choose(_ name: String, in quote: Quote, deals: DealStore, projects: ProjectStore) {

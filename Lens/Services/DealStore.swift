@@ -109,6 +109,34 @@ final class DealStore: ObservableObject {
         return project.id
     }
 
+    /// Books a deal into a project that already exists (Emma made it herself): the deal is marked won
+    /// with that option, and its emails, call notes, people and price go onto the project.
+    func link(_ deal: Deal, to projectID: UUID, option: ScopeOption?, projects: ProjectStore) {
+        guard var d = self.deal(id: deal.id) else { return }
+        let chosen = option ?? d.chosenOption ?? d.options.first
+        d.projectID = projectID
+        d.stage = .won
+        if let chosen { d.chosenOptionID = chosen.id }
+        d.lastTouch = Date()
+        let price = chosen.map { estimate($0).total }
+        d.events.append(ProjectEvent(text: "Booked into its project" + (price.map { " · \(Money.string($0))" } ?? "")))
+        update(d)
+        for t in d.emails ?? [] { projects.attachEmail(t, to: projectID) }
+        for n in d.meetingNotes ?? [] { projects.attachNote(n, to: projectID) }
+        projects.edit(projectID) { p in
+            var people = p.people ?? []
+            for c in d.contacts where !people.contains(where: {
+                (!c.email.isEmpty && $0.email.lowercased() == c.email.lowercased()) || $0.name.lowercased() == c.name.lowercased()
+            }) {
+                people.append(ProjectPerson(name: c.name, email: c.email, role: c.role.isEmpty ? "Client" : c.role))
+            }
+            p.people = people.isEmpty ? nil : people
+            if let price { p.price = price }
+            if p.client.isEmpty { p.client = d.client }
+            if p.shootDate == nil { p.shootDate = d.eventDate }
+        }
+    }
+
     /// Adds a Zoom meeting summary, or refreshes it if it's already there.
     func attachNote(_ note: MeetingNote, to dealID: UUID) {
         guard var d = deal(id: dealID) else { return }
