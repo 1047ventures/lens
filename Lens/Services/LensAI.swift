@@ -337,6 +337,7 @@ final class LensAI: ObservableObject {
         request.setValue("server-side-fallback-2026-07-01,thinking-binding-controls-2026-08-01", forHTTPHeaderField: "anthropic-beta")
 
         var system: [[String: Any]] = [["type": "text", "text": Self.systemPrompt, "cache_control": ["type": "ephemeral"]]]
+        if let about = aboutOwner() { system.append(["type": "text", "text": about]) }
         if !notes.isEmpty {
             system.append(["type": "text", "text": "What the user has taught you (follow these):\n" +
                 notes.map { "- [\($0.id.uuidString.prefix(8))] \($0.text)" }.joined(separator: "\n")])
@@ -1169,5 +1170,19 @@ final class LensAI: ObservableObject {
     private static func tool(_ name: String, _ description: String, _ props: [String: Any], _ required: [String]) -> [String: Any] {
         ["name": name, "description": description, "eager_input_streaming": true,
          "input_schema": ["type": "object", "properties": props, "required": required]]
+    }
+}
+
+
+extension LensAI {
+    /// Who you're talking to, from their own rate card (name, business, website), so Ask Lens
+    /// uses their name instead of "the user". Sent after the cached instructions so caching still works.
+    func aboutOwner() -> String? {
+        guard let r = deals?.rates else { return nil }
+        var parts: [String] = []
+        if !r.ownerName.isEmpty { parts.append("The person using Lens is \(r.ownerName). Call them by their first name.") }
+        if !r.businessName.isEmpty { parts.append("Their business is \(r.businessName).") }
+        if !r.website.isEmpty { parts.append("Website: \(r.website).") }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 }

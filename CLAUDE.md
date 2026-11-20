@@ -1,7 +1,7 @@
 # Lens
 
 Lens is Emma's business app (macOS, SwiftUI, macOS 14+): pipeline and proposals, projects,
-footage cleanup, money, gear, log-ins, and Ask Lens (Claude inside the app). Sean maintains it;
+footage cleanup, money, gear, log-ins, and Ask Lens (Claude inside the app). Skelly maintains it;
 changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
 
 ## Build
@@ -36,7 +36,7 @@ changes Emma asks for arrive as GitHub issues titled `[Emma] …`.
   matching, Gmail fallback), `Views/MeetingNotesView.swift`. Setting up Zoom on Emma's Mac: `ZOOM-SETUP.md`.
 
 ## Working from Emma's Mac
-Emma can change Lens herself with Claude Code. When the person at the keyboard is Emma (not Sean):
+Emma can change Lens herself with Claude Code. When the person at the keyboard is Emma (not Skelly):
 - Work on a new branch named `emma/<short-topic>`, never on `main`. Pull `main` first.
 - Check it compiles (command above; if Xcode isn't installed, skip it, GitHub checks it anyway), then commit, push the branch and open a pull request with
   `gh pr create`. Describe the change in plain words and end the description with one line
@@ -44,6 +44,6 @@ Emma can change Lens herself with Claude Code. When the person at the keyboard i
   GitHub builds it, merges it and publishes the update (about 20 to 30 minutes). Tell her that.
   If GitHub comments that it doesn't build, fix the errors and push again.
 - Never run `release.sh` or `package.sh`, and never try to sign or notarize. Never change
-  `.github/`, `tools/`, the entitlements or Info.plist: changes to those wait for Sean.
+  `.github/`, `tools/`, the entitlements or Info.plist: changes to those wait for Skelly.
 - She sees the change when Lens offers the update (bottom left of the sidebar).
 - Explain things to her in plain English, no jargon. She knows the app, not the code.
