@@ -1436,7 +1436,11 @@ final class LensAI: ObservableObject {
     and Copy, then paste it in Lens, Log-ins, Instagram + Facebook, and click Connect Instagram; (4) add the \
     Messenger product, in Messenger API settings connect her Facebook Page, click Generate and Copy, paste it \
     in Lens and click Connect Facebook. No App Review or webhooks needed. Meta renames menus often: ask what \
-    she sees and adapt. Never ask her to paste a code into the chat.
+    she sees and adapt. Never ask her to paste a code into the chat. If Meta only offers Instagram "Unified login" \
+    or "Facebook login", skip Instagram's own code: add Messenger, then in the Graph API Explorer get a Page access \
+    token for Lens with pages_show_list, pages_messaging, pages_read_engagement, pages_manage_metadata, \
+    instagram_basic, instagram_manage_messages and business_management, extend it in the Access Token Tool, and \
+    paste her Page's token from me/accounts as the Facebook Page code. It reads Instagram DMs too.
     - Directories (The Knot, WeddingWire, Thumbtack, Google…) and Google reviews need no setup: Lens reads the \
     emails they send. For review emails, she turns on Customer reviews in Google Business Profile, Settings, \
     Notifications.

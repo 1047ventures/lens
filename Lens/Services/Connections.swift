@@ -836,6 +836,7 @@ final class ConnectionStore: ObservableObject {
         case .social:
             let on = MetaMessages.Site.allCases.filter(MetaMessages.isConnected).map(\.rawValue)
             if on.count == 2 { return .connected("Instagram and Facebook messages") }
+            if on == ["Facebook"] { return .connected("Facebook Page and Instagram DMs") }
             if let one = on.first { return .partial("\(one) connected") }
             return .todo("One-time setup, then messages come in")
         case .directories:
