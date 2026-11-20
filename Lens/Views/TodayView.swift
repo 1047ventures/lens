@@ -21,33 +21,92 @@ struct TodayView: View {
         let action: () -> Void
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
-                header
-                Text(briefing)
-                    .font(.system(size: 19))
-                    .lineSpacing(5)
-                    .foregroundStyle(Theme.text2)
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+    @EnvironmentObject private var money: MoneyStore
+    @State private var events: [LensCalendarEvent] = []
+    @State private var eventsLoaded = false
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 28) {
-                        needsYou.frame(minWidth: 420)
-                        thisWeek.frame(width: 300)
-                    }
-                    VStack(alignment: .leading, spacing: 28) {
-                        needsYou
-                        thisWeek
+    var body: some View {
+        let numbers = TodayNumbers(money: money, deals: deals, projects: projects)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                if logins.googleCalendarReady {
+                    DashCard(title: "Today", color: Palette.blue) {
+                        DayTimeline(events: events, loaded: eventsLoaded)
                     }
                 }
+                tiles(numbers)
+                pair {
+                    DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
+                        MoneyInChart(numbers: numbers)
+                    }
+                } right: {
+                    DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) }) {
+                        HoursDonut(slices: numbers.hoursThisMonth)
+                    }
+                }
+                pair {
+                    DashCard(title: "Lead to paid", color: Palette.violet, action: { navigator.open(.projects) }) {
+                        StageFunnel(steps: numbers.funnel)
+                    }
+                } right: {
+                    DashCard(title: "The week ahead", color: Theme.teal) {
+                        WeekStrip(projects: projects.active) { navigator.openProject($0) }
+                    }
+                }
+                needsYou
                 AutoFiledToday()
                     .frame(maxWidth: 720, alignment: .leading)
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 40)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 34)
+            .frame(maxWidth: 1240, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task { await loadEvents() }
+    }
+
+    private func loadEvents() async {
+        guard logins.googleCalendarReady else { return }
+        let start = Calendar.current.startOfDay(for: Date())
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
+        let found = await logins.calendarEvents(from: start, to: end)
+        var seen = Set<String>()
+        events = found.filter { seen.insert("\($0.title)|\($0.start)").inserted }
+        eventsLoaded = true
+    }
+
+    /// Two cards side by side, stacked when the window is narrow.
+    private func pair<L: View, R: View>(@ViewBuilder _ left: () -> L, @ViewBuilder right: () -> R) -> some View {
+        let l = left(), r = right()
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                l.frame(minWidth: 460).layoutPriority(1)
+                r.frame(minWidth: 340, maxWidth: 440)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 16) { l; r }
+        }
+    }
+
+    private func tiles(_ n: TodayNumbers) -> some View {
+        let profit = n.thisMonth?.net ?? 0
+        let last = n.months.dropLast().last?.net
+        let hoursNow = n.weeksHours.last ?? 0
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) {
+            StatTile(label: "Owed to you", value: Money.short(n.owed),
+                     note: n.owedCount == 0 ? "Nobody owes you" : n.overdueCount > 0 ? "\(n.overdueCount) overdue of \(n.owedCount)" : "\(n.owedCount) on the way",
+                     color: Palette.gold, noteColor: n.overdueCount > 0 ? Theme.coral : Theme.text3) { navigator.open(.money) }
+            StatTile(label: "Kept this month", value: profit < 0 ? "-\(Money.short(-profit))" : Money.short(profit),
+                     note: last.map { profit >= $0 ? "Up from \(Money.short($0)) last month" : "Down from \(Money.short($0)) last month" } ?? "After costs",
+                     color: Palette.lime, trend: n.months.map(\.net),
+                     noteColor: last.map { profit >= $0 ? Palette.lime : Theme.text3 } ?? Theme.text3) { navigator.open(.money) }
+            StatTile(label: "Open deals", value: Money.short(n.openDealsValue),
+                     note: n.openDealsCount == 0 ? "No deals in play" : "\(n.openDealsCount) in play",
+                     color: Palette.blue) { navigator.open(.pipeline) }
+            StatTile(label: "Hours this week", value: Hours.short(hoursNow),
+                     note: n.weeksHours.dropLast().isEmpty ? "" : "8 week trend", color: Palette.orchid,
+                     trend: n.weeksHours) { navigator.open(.projects) }
         }
     }
 
@@ -63,6 +122,12 @@ struct TodayView: View {
                 Text("\(greeting)\(firstName.map { ", \($0)" } ?? "")")
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(Theme.text)
+                Text(briefing)
+                    .font(.system(size: 15))
+                    .lineSpacing(3)
+                    .foregroundStyle(Theme.text3)
+                    .frame(maxWidth: 720, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             // Back from a networking event: cards go straight into People.
@@ -74,75 +139,44 @@ struct TodayView: View {
 
     private var needsYou: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("Needs you · \(items.count)")
+            ColorLabel("Needs you · \(items.count)", items.contains { $0.tone == .overdue } ? Theme.coral : Theme.amber)
             if items.isEmpty {
-                Text("Nothing needs you right now.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.text3)
-                    .panel()
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle").foregroundStyle(Theme.teal)
+                    Text("All clear. Nothing needs you right now.")
+                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                }
+                .panel()
             } else {
-                VStack(spacing: 0) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 12)], spacing: 12) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        if index > 0 { Divider().overlay(Theme.lineSoft) }
-                        HStack(alignment: .center, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 5) {
+                        HStack(alignment: .center, spacing: 14) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(item.kicker)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: 11.5, weight: .bold))
                                     .foregroundStyle(color(for: item.tone))
                                 Text(item.title)
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Theme.text)
+                                    .lineLimit(1)
                                 Text(item.detail)
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 12.5))
                                     .foregroundStyle(Theme.muted)
+                                    .lineLimit(2)
                             }
-                            Spacer(minLength: 12)
-                            Button(item.actionTitle, action: item.action)
-                                .buttonStyle(SecondaryButtonStyle())
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                    }
-                }
-                .background(Theme.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-            }
-        }
-    }
-
-    private var thisWeek: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("Coming up")
-            let upcoming = projects.active.filter { $0.shootDate.map { $0 >= Calendar.current.startOfDay(for: Date()) } ?? false }
-            if upcoming.isEmpty {
-                Text("No shoots on the calendar.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.text3)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(upcoming.prefix(5)) { project in
-                        Button {
-                            navigator.openProject(project.id)
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Text(project.shootDate?.formatted(.dateTime.weekday(.abbreviated).day()) ?? "")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(isSoon(project.shootDate) ? Theme.amber : Theme.muted)
-                                    .frame(width: 54, alignment: .leading)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(project.name)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(Theme.text)
-                                    StageBar(stage: project.stage).frame(maxWidth: 160)
-                                }
-                                Spacer()
+                            Spacer(minLength: 8)
+                            if index == 0 {
+                                Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
+                            } else {
+                                Button(item.actionTitle, action: item.action).buttonStyle(SecondaryButtonStyle())
                             }
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        Divider().overlay(Theme.lineSoft)
+                        .padding(.leading, 18).padding(.trailing, 14).padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+                        .background(color(for: item.tone).opacity(0.06))
+                        .background(Theme.panel)
+                        .accentBar(color(for: item.tone))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
                     }
                 }
             }
@@ -231,7 +265,9 @@ struct TodayView: View {
                                detail: logins.googleConnected ? "Google is in. A few small ones left." : "Start with Google: it unlocks email, Zoom summaries and payments",
                                actionTitle: "Open Log-ins") { navigator.open(.logins) })
         }
-        return result
+        // Most urgent first, otherwise keep the order above.
+        func rank(_ t: Item.Tone) -> Int { t == .overdue ? 0 : t == .soon ? 1 : 2 }
+        return result.enumerated().sorted { (rank($0.element.tone), $0.offset) < (rank($1.element.tone), $1.offset) }.map(\.element)
     }
 
     private var briefing: String {
@@ -300,7 +336,7 @@ struct TodayView: View {
         switch tone {
         case .overdue: return Theme.coral
         case .soon: return Theme.amber
-        case .neutral: return Theme.muted
+        case .neutral: return Palette.slate
         }
     }
 }

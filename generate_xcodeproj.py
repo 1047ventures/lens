@@ -61,6 +61,7 @@ FILES = [
     (f"{APP_NAME}/Views/ProjectTimeMoneyView.swift",     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/Theme.swift",                     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/TodayView.swift",                 f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/TodayDashboard.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectsView.swift",              f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectDetailView.swift",         f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/FootageView.swift",               f"{APP_NAME}/Views"),
