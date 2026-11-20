@@ -245,6 +245,88 @@ enum ZoomAPI {
         return json
     }
 
+    /// POST to a Zoom API path with a JSON body. Same error handling as `get`.
+    private static func post(_ path: String, body: [String: Any], token: String) async throws -> [String: Any]? {
+        guard let url = URL(string: "https://api.zoom.us/v2/" + path) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data: Data, response: URLResponse
+        do { (data, response) = try await URLSession.shared.data(for: request) } catch { throw ZoomAuth.explain(error) }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        let code = json["code"] as? Int
+        if status == 429 { throw ZoomAuth.explain(code: "rate_limited") }
+        if status == 401 { throw ZoomAuth.explain(code: code == 4711 ? "missing_scope" : "invalid_grant") }
+        if code == 4711 || code == 4700 || status == 403 { throw ZoomAuth.explain(code: "missing_scope") }
+        if status == 404 || status == 400 { return nil }
+        guard (200..<300).contains(status) else { throw ZoomAuth.explain(code: "unknown") }
+        return json
+    }
+
+    // MARK: My Notes (calls Emma recorded with Zoom's My Notes, including phone calls)
+
+    struct MyNoteRef {
+        let id: String
+        let name: String
+        let link: String
+    }
+
+    struct MyNote {
+        let name: String
+        let link: String
+        let content: String          // Zoom's AI notes (Markdown), or what Emma typed
+        let transcript: String       // "Jason: …" lines, empty when there's none
+        let speakers: [String]
+    }
+
+    /// Her My Notes notes created between two dates (one page).
+    static func myNotes(from: Date, to: Date, pageToken: String?, token: String) async throws -> (notes: [MyNoteRef], next: String?) {
+        var body: [String: Any] = ["file_types": ["note"], "page_size": 50,
+                                   "created_time_from": utc(from), "created_time_to": utc(to)]
+        if let pageToken, !pageToken.isEmpty { body["next_page_token"] = pageToken }
+        let json = try await post("docs/file_search", body: body, token: token) ?? [:]
+        let notes: [MyNoteRef] = (json["files"] as? [[String: Any]] ?? []).compactMap { f in
+            guard let id = f["file_id"] as? String, !id.isEmpty else { return nil }
+            return MyNoteRef(id: id, name: (f["file_name"] as? String) ?? "", link: (f["file_link"] as? String) ?? "")
+        }
+        let next = json["next_page_token"] as? String
+        return (notes, (next?.isEmpty ?? true) ? nil : next)
+    }
+
+    /// One My Notes note: Zoom's AI notes and the full transcript. Nil if Zoom has nothing for it.
+    static func myNote(_ ref: MyNoteRef, token: String) async throws -> MyNote? {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        let id = ref.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? ref.id
+        guard let json = try await get("my_notes/notes/\(id)/content", query: [URLQueryItem(name: "include", value: "transcript")], token: token)
+        else { return nil }
+        let generated = ((json["generated_note_content"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let manual = ((json["manual_note_content"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let transcript = json["transcript"] as? [String: Any] ?? [:]
+        var names: [String: String] = [:]
+        for s in transcript["speakers"] as? [[String: Any]] ?? [] {
+            if let sid = s["speaker_id"] as? String { names[sid] = (s["display_name"] as? String) ?? "" }
+        }
+        var lines: [String] = []
+        var last = ""
+        for item in transcript["items"] as? [[String: Any]] ?? [] {
+            let text = ((item["text"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let who = names[(item["speaker_id"] as? String) ?? ""] ?? ""
+            if who == last, !lines.isEmpty { lines[lines.count - 1] += " " + text } else { lines.append(who.isEmpty ? text : "\(who): \(text)") }
+            last = who
+        }
+        let content = [generated, manual].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        guard !content.isEmpty || !lines.isEmpty else { return nil }
+        let name = ((json["note_name"] as? String) ?? ref.name).trimmingCharacters(in: .whitespacesAndNewlines)
+        let speakers = Array(Set(names.values.filter { !$0.isEmpty && !$0.lowercased().hasPrefix("speaker ") })).sorted()
+        return MyNote(name: name.isEmpty ? "Call" : name, link: (json["note_url"] as? String) ?? ref.link,
+                      content: content, transcript: lines.joined(separator: "\n"), speakers: speakers)
+    }
+
     /// Who is signed in.
     static func me(token: String) async throws -> (email: String, name: String) {
         let json = try await get("users/me", token: token) ?? [:]

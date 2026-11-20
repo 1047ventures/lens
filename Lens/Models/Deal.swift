@@ -178,8 +178,13 @@ struct MeetingNote: Codable, Hashable, Identifiable {
     var people: [MeetingPerson]?
     /// Email addresses of the people on the call, when the summary email lists them. Optional so older notes still load.
     var attendees: [String]? = nil
+    /// Everything that was said, for calls recorded with Zoom My Notes. Optional so older notes still load.
+    var transcript: String? = nil
 
-    var fromZoom: Bool { source == "zoom" }
+    /// Read straight from Zoom: a meeting's AI summary ("zoom") or a My Notes note ("zoom_notes").
+    var fromZoom: Bool { source == "zoom" || source == "zoom_notes" }
+    /// A call Emma recorded with Zoom My Notes (often a phone call).
+    var fromMyNotes: Bool { source == "zoom_notes" }
 
     /// Everything in the note as plain text, for matching and for Ask Lens.
     var fullText: String {
@@ -190,6 +195,7 @@ struct MeetingNote: Codable, Hashable, Identifiable {
         if let people, !people.isEmpty {
             parts.append("In the meeting: " + people.map { $0.email.isEmpty ? $0.name : "\($0.name) <\($0.email)>" }.joined(separator: ", "))
         }
+        if let transcript, !transcript.isEmpty { parts.append("Transcript\n" + transcript) }
         return parts.joined(separator: "\n\n")
     }
 
