@@ -70,6 +70,7 @@ final class LensAI: ObservableObject {
     private weak var money: MoneyStore?
     private weak var zoom: ZoomNotes?
     private weak var people: PeopleStore?
+    private weak var logins: ConnectionStore?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
@@ -85,6 +86,22 @@ final class LensAI: ObservableObject {
     }
 
     func attachZoom(_ zoom: ZoomNotes) { self.zoom = zoom }
+    func attachLogins(_ logins: ConnectionStore) { self.logins = logins }
+
+    /// Said just before the picture of Lens's window in her message, so older pictures can be found and dropped.
+    private static let screenMarker = "This is the Lens window as she sees it right now:"
+
+    /// Only the newest picture of her screen is sent; older ones are dropped to keep questions quick and cheap.
+    private func dropOldScreens() {
+        for i in messages.indices where messages[i]["role"] as? String == "user" {
+            guard var content = messages[i]["content"] as? [[String: Any]],
+                  let k = content.firstIndex(where: { $0["type"] as? String == "text" && $0["text"] as? String == Self.screenMarker }),
+                  k + 1 < content.count, content[k + 1]["type"] as? String == "image" else { continue }
+            content.remove(at: k + 1)
+            content[k] = ["type": "text", "text": "(A picture of her screen was here.)"]
+            messages[i]["content"] = content
+        }
+    }
 
     func saveKey(_ key: String) {
         Keychain.set(key.trimmingCharacters(in: .whitespacesAndNewlines), for: "anthropic.apiKey")
@@ -283,7 +300,13 @@ final class LensAI: ObservableObject {
         if !skipped.isEmpty {
             items.append(Item(kind: .info, text: "Couldn't read \(skipped.joined(separator: ", ")). Photos, PDFs and text files work."))
         }
-        messages.append(["role": "user", "content": fileBlocks + [["type": "text", "text": "<screen>\(screenContext())</screen>\n\n\(trimmed)"]]])
+        dropOldScreens()
+        var screenBlocks: [[String: Any]] = []
+        if let picture = LensScreen.snapshot() {
+            screenBlocks = [["type": "text", "text": Self.screenMarker],
+                            ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": picture]]]
+        }
+        messages.append(["role": "user", "content": screenBlocks + fileBlocks + [["type": "text", "text": "<screen>\(screenContext())</screen>\n\n\(trimmed)"]]])
         busy = true
         defer { busy = false; status = nil }
 
@@ -874,6 +897,13 @@ final class LensAI: ObservableObject {
         case .logins: parts.append("Log-ins is where she connects email, calendar, bank and Claude")
         default: break
         }
+        if let logins {
+            let list = LoginID.allCases.map { id -> String in
+                let s = logins.status(id)
+                return "\(id.rawValue): \(s.label)\(s.detail.isEmpty ? "" : " (\(s.detail))")"
+            }
+            parts.append("Her log-ins: " + list.joined(separator: "; "))
+        }
         parts.append("Today is \(Date().formatted(date: .complete, time: .shortened))")
         return parts.joined(separator: ". ")
     }
@@ -1093,7 +1123,13 @@ final class LensAI: ObservableObject {
     Photos of gear, receipts, contracts, shot lists, client briefs: work from what's actually in them.
     - Hours and spending on a project ("how many hours on the CU documentary?", "what have I spent on it?"): \
     find it with list_projects, then get_project and answer from its time and money.
-    - The <screen> tag at the start of her message says what she is looking at; "this deal" means that one.
+    - You can see her screen. Each message comes with a picture of the Lens window as she sees it right now \
+    (the screen she's on, its buttons and what's listed), plus a <screen> tag naming what she is looking at and \
+    which log-ins are connected. "This deal" or "this page" means what's on screen. Never ask her for a \
+    screenshot or to tell you what she sees: look at the picture. You can only see Lens, not other apps. \
+    - Website forms and bookings (Squarespace, Acuity Scheduling, Wix, Showit, HoneyBook and others) need no \
+    separate connection: they email her, and Lens reads those emails in Gmail and turns each one into an inquiry \
+    on Pipeline and a person in People. All she needs is the form or booking notifications going to her Gmail.
     - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
     history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
     - People: list_people and get_person know everyone she works with, when she was last in touch, their deals, \

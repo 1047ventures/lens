@@ -252,6 +252,13 @@ final class PeopleStore: ObservableObject {
             let domain = GmailAPI.parseAddress(m.from).email.split(separator: "@").last.map(String.init) ?? ""
             return GmailSync.leadSenders.first { domain == $0.domain || domain.hasSuffix("." + $0.domain) }?.source
         }.first
+        // Booking forms like Acuity send from a no-reply address: the client's email is in the message itself.
+        if formSource != nil, senders.isEmpty, let first = thread.messages.first,
+           let email = GmailSync.clientEmail(in: first.text, me: me, sender: GmailAPI.parseAddress(first.from).email),
+           !isMine(email) {
+            everyone[email] = GmailSync.clientName(in: first.text) ?? email
+            senders.insert(email)
+        }
         var changed = false
         for (email, name) in everyone {
             if let i = people.firstIndex(where: { $0.emails.contains(email) }) {
