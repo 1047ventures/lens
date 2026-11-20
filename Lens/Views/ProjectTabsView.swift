@@ -321,7 +321,17 @@ struct ProjectProposalTab: View {
                     Text(deal.story.headline.isEmpty ? deal.title : deal.story.headline)
                         .font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
                     HStack(spacing: 18) {
-                        fact("Price", deals.valueText(of: deal))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Price").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                            // The real price: typing it here sets the deal's chosen option and the project.
+                            TextField(deals.valueText(of: deal), text: Binding(
+                                get: { (deals.value(of: deal) ?? project.price).map { String(Int($0.rounded())) } ?? "" },
+                                set: { text in
+                                    let digits = text.filter(\.isNumber)
+                                    setPrice(deal, digits.isEmpty ? nil : Double(digits))
+                                }))
+                                .textFieldStyle(.roundedBorder).frame(width: 110)
+                        }
                         fact("Sent", sentDate(deal).map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Not marked as sent")
                         if let option = deal.chosenOption { fact("Chosen", "\(option.name) · \(option.tagline)") }
                     }
@@ -377,6 +387,19 @@ struct ProjectProposalTab: View {
             }
         }
         .panel(padding: 22)
+    }
+
+    /// Emma typed the price on the project: the deal's chosen option (or its first) takes it, and so does the project.
+    private func setPrice(_ deal: Deal, _ amount: Double?) {
+        guard var d = deals.deal(id: deal.id) else { return }
+        let i = d.options.firstIndex(where: { $0.id == d.chosenOptionID }) ?? d.options.indices.first
+        if let i {
+            d.options[i].quote = amount
+            d.options[i].lineSet = nil
+            d.chosenOptionID = d.options[i].id
+            deals.update(d)
+        }
+        projects.edit(project.id) { $0.price = amount }
     }
 
     /// A new quote for this project: a deal tied to it, with one starter option, opened in the proposal builder.
