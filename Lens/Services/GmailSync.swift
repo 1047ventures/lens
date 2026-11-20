@@ -387,6 +387,37 @@ final class GmailSync: ObservableObject {
         }
     }
 
+    /// Every conversation with the people on a project, however old, filed on that project. Runs when
+    /// people are added to a project, so its whole email history shows up, not just the last few weeks.
+    func backfill(_ project: Project) async {
+        guard let logins, let deals, let projects, logins.googleConnected else { return }
+        let me = logins.ownerEmail.lowercased()
+        let emails = Set((project.people ?? []).map { $0.email.lowercased().trimmingCharacters(in: .whitespaces) }
+            .filter { $0.contains("@") && $0 != me })
+        guard !emails.isEmpty else { return }
+        do {
+            let token = try await logins.googleAccessToken()
+            let terms = emails.sorted().flatMap { ["from:\($0)", "to:\($0)", "cc:\($0)"] }.joined(separator: " ")
+            let found = try await GmailAPI.threadIDs(matching: "{\(terms)} -in:spam -in:trash -in:chats", max: 150, token: token)
+            for item in found {
+                if (notFor[item.id] ?? []).contains(project.id) { continue }
+                if (projects.project(id: project.id)?.emails ?? []).contains(where: { $0.id == item.id }) { continue }
+                let thread = try await GmailAPI.thread(item.id, token: token)
+                guard !thread.messages.isEmpty else { continue }
+                let link = threadLink(thread, me: logins.ownerEmail)
+                // Older history: filed quietly, not listed one by one under "Filed automatically".
+                projects.attachEmail(link, to: project.id)
+                if let deal = deals.deals.first(where: { $0.projectID == project.id }) { deals.attachEmail(link, to: deal.id) }
+                suggestions.removeAll { $0.id == link.id }
+                people?.noteThread(thread, link: link, me: logins.ownerEmail, onFile: true)
+                seen[item.id] = item.history
+            }
+            save()
+        } catch {
+            // The next regular check tries again.
+        }
+    }
+
     /// The email addresses in a conversation (not the user's).
     static func emails(in link: EmailThread) -> [String] {
         (link.people ?? []).map { GmailAPI.parseAddress($0).email }.filter { $0.contains("@") }

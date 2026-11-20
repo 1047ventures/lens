@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 enum SidebarSection: String, CaseIterable, Identifiable {
     case today = "Today"
@@ -224,7 +225,15 @@ struct ContentView: View {
         }
         // @Published sends the new list before it's stored, so pass it along rather than reading the store.
         .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }
-        .onReceive(projects.$projects) { list in people.sync(deals: deals.deals, projects: list) }
+        .onReceive(projects.$projects) { list in
+            people.sync(deals: deals.deals, projects: list)
+            money.autoTagProjects(list)
+            ProjectHistory.pull(list, gmail: gmail, zoom: zoom)
+        }
+        // New statement lines: put the ones that clearly belong to a project on it (after they're stored).
+        .onReceive(money.$data.map(\.txns.count).removeDuplicates().debounce(for: .seconds(2), scheduler: RunLoop.main)) { _ in
+            money.autoTagProjects(projects.projects)
+        }
         // Everyone on a Zoom call Lens hasn't filed yet goes in People too.
         .onReceive(zoom.$unmatched) { notes in people.noteMeetings(notes) }
         .onChange(of: viewModel.isScanning) { _, scanning in
@@ -481,6 +490,33 @@ struct UpdateBanner: View {
         case .installing: return "Installing…"
         case .failed(let message): return message
         case .idle: return nil
+        }
+    }
+}
+
+/// When people, keywords or a name are added to a project, Lens goes back through Gmail and every Zoom
+/// summary for everything about it, however old, so the project page has its whole history.
+@MainActor
+enum ProjectHistory {
+    private static var running = Set<UUID>()
+
+    static func pull(_ list: [Project], gmail: GmailSync, zoom: ZoomNotes) {
+        for project in list where project.stage != .archived {
+            let people = (project.people ?? []).map { "\($0.name.lowercased())|\($0.email.lowercased())" }.sorted()
+            let signature = ([project.name.lowercased()] + people + (project.keywords ?? []).map { $0.lowercased() }.sorted())
+                .joined(separator: ";")
+            let key = "history.\(project.id.uuidString)"
+            guard !(project.people ?? []).isEmpty || !(project.keywords ?? []).isEmpty,
+                  UserDefaults.standard.string(forKey: key) != signature, !running.contains(project.id) else { continue }
+            running.insert(project.id)
+            Task {
+                // Give Emma a moment to finish typing before searching.
+                try? await Task.sleep(for: .seconds(5))
+                await gmail.backfill(project)
+                await zoom.backfill(project)
+                UserDefaults.standard.set(signature, forKey: key)
+                running.remove(project.id)
+            }
         }
     }
 }
