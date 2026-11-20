@@ -299,7 +299,8 @@ final class LensAI: ObservableObject {
     You read a proposal or quote that a freelance filmmaker and videographer (Emma) sent to a client. Pull out: \
     the client's name, a short title for the job, the date it was written (YYYY-MM-DD, or "" if not shown), the \
     total price in dollars (the main or recommended package if there are several; 0 if no price), each line item \
-    or package with its price, the kind of work (Wedding, Documentary, Brand film, Event, Music video, Commercial, \
+    with its price, every option or package offered (name, price, and one sentence on what it includes; empty \
+    when there is only one), the kind of work (Wedding, Documentary, Brand film, Event, Music video, Commercial, \
     Other), the number of shoot days (0 if not stated), and the deliverables in one short sentence. Only use \
     what's in the document.
     """
@@ -320,11 +321,20 @@ final class LensAI: ObservableObject {
                     "additionalProperties": false,
                 ],
             ],
+            "packages": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": ["name": ["type": "string"], "price": ["type": "number"], "includes": ["type": "string"]],
+                    "required": ["name", "price", "includes"],
+                    "additionalProperties": false,
+                ],
+            ],
             "kind_of_work": ["type": "string"],
             "shoot_days": ["type": "number"],
             "deliverables": ["type": "string"],
         ],
-        "required": ["client", "title", "date", "total", "items", "kind_of_work", "shoot_days", "deliverables"],
+        "required": ["client", "title", "date", "total", "items", "packages", "kind_of_work", "shoot_days", "deliverables"],
         "additionalProperties": false,
     ]
 
@@ -1225,11 +1235,19 @@ final class LensAI: ObservableObject {
                             "go_live": disc.goLive?.formatted(date: .abbreviated, time: .omitted) ?? ""]
         out["options"] = d.options.map { o -> [String: Any] in
             let e = deals!.estimate(o)
-            return ["name": o.name, "tagline": o.tagline, "local_days": o.localDays, "travel_days": o.travelDays,
-                    "crew": o.localCrew, "interviewees": o.interviewees, "film_minutes": o.filmMinutes,
-                    "revisions": o.revisionRounds, "extras": o.extras.map(\.label),
-                    "price": Money.string(e.total), "at_her_rates": Money.string(e.calculated),
-                    "she_keeps": Money.string(e.takeHome), "per_hour": Money.string(e.takeHomePerHour)]
+            var row: [String: Any] = ["name": o.name, "tagline": o.tagline, "local_days": o.localDays, "travel_days": o.travelDays,
+                                      "crew": o.localCrew, "interviewees": o.interviewees, "film_minutes": o.filmMinutes,
+                                      "revisions": o.revisionRounds, "extras": o.extras.map(\.label)]
+            row["half_days"] = o.halfDayCount
+            row["filming_hours"] = o.hourCount
+            row["deliverable"] = o.footageOnly ? "Edited images and B-roll only, no final film" : "Finished film"
+            row["chosen_by_client"] = d.chosenOptionID == o.id
+            row["price"] = Money.string(e.total)
+            row["at_her_rates"] = Money.string(e.calculated)
+            row["she_keeps"] = Money.string(e.takeHome)
+            row["per_hour"] = Money.string(e.takeHomePerHour)
+            if !o.pitch.isEmpty { row["includes"] = o.pitch }
+            return row
         }
         out["milestones"] = d.milestones.map { "\($0.phase): \($0.when)" }
         out["next_steps"] = d.nextSteps.map { ($0.done ? "[done] " : "") + $0.text }
@@ -1385,6 +1403,9 @@ final class LensAI: ObservableObject {
     into Lens, Log-ins, FreshBooks, and click Save keys; (4) click Connect FreshBooks, press Allow; (5) the next \
     page won't load, which is expected: copy its whole address and paste it in Lens, then click Finish. Menus \
     may be named a little differently: ask what she sees. Never ask her to paste the keys into the chat.
+    - Quotes come in many sizes: full local days, half days, hours of filming, and either a finished film or \
+    edited images and B-roll only (no final film edit). Offer the size that fits the job instead of defaulting to \
+    full documentary days, and when she uploaded her own proposal, use its options and the one the client chose.
     - Pricing a new job or writing a quote: look at list_quotes for similar past work (same kind, similar days \
     and deliverables) and get_rates, then suggest a price with a short reason ("your last two brand films with \
     2 shoot days were $6,500 and $7,200"). Say which past quotes were accepted or declined.

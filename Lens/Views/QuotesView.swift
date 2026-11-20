@@ -49,8 +49,48 @@ struct QuoteRow: View {
     let quote: Quote
     var showClient = false
     @EnvironmentObject private var quotes: QuoteStore
+    @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var projects: ProjectStore
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header
+            if !quote.packages.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(quote.packages, id: \.self) { p in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: quote.chosen == p.name ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(quote.chosen == p.name ? Theme.teal : Theme.muted)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                                if !p.includes.isEmpty {
+                                    Text(p.includes).font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer()
+                            Text(p.amount.map { Money.string($0) } ?? "").font(.system(size: 13)).foregroundStyle(Theme.text2)
+                        }
+                    }
+                    if quote.packages.count > 1 {
+                        Menu {
+                            ForEach(quote.packages, id: \.self) { p in
+                                Button(p.name + (p.amount.map { " · " + Money.string($0) } ?? "")) {
+                                    quotes.choose(p.name, in: quote, deals: deals, projects: projects)
+                                }
+                            }
+                        } label: {
+                            Text(quote.chosen == nil ? "Which one did they choose?" : "They chose \(quote.chosen ?? "")")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
+                .padding(.leading, 30)
+            }
+        }
+    }
+
+    private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: quote.source == "Lens proposal" ? "doc.richtext" : quote.source == "Email" ? "envelope" : "doc.text")
                 .foregroundStyle(Theme.muted).frame(width: 18)

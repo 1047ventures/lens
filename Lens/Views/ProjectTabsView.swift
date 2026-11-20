@@ -291,6 +291,7 @@ struct ProjectEmailsTab: View {
 /// The proposal from the project's deal (open, print, save as PDF), plus contracts, treatments and other files.
 struct ProjectProposalTab: View {
     let project: Project
+    @EnvironmentObject private var quotes: QuoteStore
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var navigator: Navigator
@@ -326,7 +327,9 @@ struct ProjectProposalTab: View {
                     }
                 }
                 HStack(spacing: 10) {
-                    Button("Open proposal") { ProposalRenderer.open(deal, store: deals, projects: projects) }
+                    Button(quotes.uploadedProposal(dealID: deal.id, projectID: project.id) != nil ? "Open your proposal" : "Open proposal") {
+                        quotes.openProposal(for: deal, deals: deals, projects: projects)
+                    }
                         .buttonStyle(PrimaryButtonStyle())
                     Button("Print…") { ProposalPrinter.print(deal, store: deals, projects: projects) }
                         .buttonStyle(SecondaryButtonStyle())
@@ -336,9 +339,18 @@ struct ProjectProposalTab: View {
                         .buttonStyle(SecondaryButtonStyle())
                 }
             } else {
-                Text("This project doesn't have a proposal in Lens yet. Projects booked from Pipeline show their proposal here.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.text3)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let q = quotes.uploadedProposal(dealID: nil, projectID: project.id) {
+                    HStack(spacing: 10) {
+                        Text(q.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+                        if let a = q.amount { Text(Money.string(a)).font(.system(size: 14)).foregroundStyle(Theme.text2) }
+                    }
+                    Button("Open your proposal") { NSWorkspace.shared.open(URL(fileURLWithPath: q.location)) }
+                        .buttonStyle(PrimaryButtonStyle())
+                } else {
+                    Text("This project doesn't have a proposal in Lens yet. Upload yours below, or projects booked from Pipeline show theirs here.")
+                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 let free = deals.deals.filter { $0.projectID == nil && $0.stage != .lost }
                 if !free.isEmpty {
                     Menu {

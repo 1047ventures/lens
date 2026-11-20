@@ -11,6 +11,18 @@ struct RateCard: Codable, Hashable {
 
     // Day rates charged to the client
     var emmaDayRate: Double = 1500
+    /// Half day and hourly filming rates. Optional so older saved rate cards still load; nil uses the
+    /// day rate (60% of it for a half day, an eighth plus 25% per hour).
+    var emmaHalfDayRate: Double? = nil
+    var emmaHourlyRate: Double? = nil
+    var halfDay: Double {
+        get { emmaHalfDayRate ?? (emmaDayRate * 0.6).rounded() }
+        set { emmaHalfDayRate = newValue }
+    }
+    var shootHourly: Double {
+        get { emmaHourlyRate ?? (emmaDayRate / 8 * 1.25).rounded() }
+        set { emmaHourlyRate = newValue }
+    }
     var collaboratorDayRate: Double = 1000
     /// What the user actually pays a collaborator per day. Equal to the rate until she says otherwise.
     var collaboratorDayCost: Double = 1000
@@ -172,15 +184,18 @@ enum Estimator {
         let localPeople = Double(1 + o.localCrew)
         let travelPeople = Double(1 + o.travelCrew)
         let local = Double(o.localDays), travel = Double(o.travelDays)
-        let crewDays = local * localPeople + travel * travelPeople
+        let half = Double(o.halfDayCount), hourly = Double(o.hourCount)
+        let crewDays = local * localPeople + travel * travelPeople + (half * 0.5 + hourly / 8) * localPeople
+        let filmDays = o.filmDayEquivalent
 
         // Hours
-        let planning = max(4, r.planningPerShootDay * Double(o.shootDays)
+        let planning = max(o.footageOnly ? 2 : 4, r.planningPerShootDay * filmDays
                               + r.planningPerInterviewee * Double(o.interviewees)
                               - r.planningSavedPerClientTask * Double(o.clientTakesOn.count))
-        let mainEdit = r.editPerFilmMinute * Double(o.filmMinutes)
-                     + r.editPerCrewDay * crewDays
-                     + r.editPerRevisionRound * Double(o.revisionRounds)
+        // Images and B-roll only: pick, color and export the best footage; no story edit or revisions.
+        let mainEdit = o.footageOnly
+            ? r.editPerCrewDay * crewDays * 2
+            : r.editPerFilmMinute * Double(o.filmMinutes) + r.editPerCrewDay * crewDays + r.editPerRevisionRound * Double(o.revisionRounds)
         var extrasEdit = 0.0
         for extra in o.extras {
             switch extra {
@@ -192,21 +207,31 @@ enum Estimator {
             case .rawFootage: break
             }
         }
-        let media = r.mediaBaseHours + r.mediaPerShootDay * Double(o.shootDays)
+        let media = (o.footageOnly ? r.mediaBaseHours / 2 : r.mediaBaseHours) + r.mediaPerShootDay * filmDays
                   + (o.extras.contains(.rawFootage) ? r.rawFootageHandoffHours : 0)
 
         // Money at the user's rates
         let localDayCost = r.emmaDayRate + Double(o.localCrew) * r.collaboratorDayRate
         let travelDayCost = r.emmaDayRate + Double(o.travelCrew) * r.collaboratorDayRate
+        let halfDayCost = r.halfDay + Double(o.localCrew) * r.collaboratorDayRate * 0.6
+        let hourCost = r.shootHourly + Double(o.localCrew) * r.collaboratorDayRate / 8 * 1.25
         let production = local * localDayCost + travel * travelDayCost * (1 + r.travelPrepDayFactor)
-        let equipment = r.equipmentBase + r.equipmentPerShootDay * Double(o.shootDays)
+            + half * halfDayCost + hourly * hourCost
+        let equipment = r.equipmentBase + r.equipmentPerShootDay * filmDays
                       + r.equipmentPerInterviewee * Double(o.interviewees)
 
-        var productionDetail = "\(o.localDays) local day\(o.localDays == 1 ? "" : "s"), \(owner) + \(o.localCrew)"
+        var shootParts: [String] = []
+        if o.localDays > 0 { shootParts.append("\(o.localDays) local day\(o.localDays == 1 ? "" : "s")") }
+        if o.halfDayCount > 0 { shootParts.append("\(o.halfDayCount) half day\(o.halfDayCount == 1 ? "" : "s")") }
+        if o.hourCount > 0 { shootParts.append("\(o.hourCount) hour\(o.hourCount == 1 ? "" : "s") of filming") }
+        if shootParts.isEmpty { shootParts.append("0 local days") }
+        var productionDetail = shootParts.joined(separator: " + ") + ", \(owner) + \(o.localCrew)"
         if o.travelDays > 0 {
             productionDetail += "; \(o.travelDays) out-of-state day\(o.travelDays == 1 ? "" : "s") + travel/prep, \(owner) + \(o.travelCrew)"
         }
-        let editDetail = "\(Estimate.range(mainEdit * 0.95, mainEdit * 1.05)) hours, \(o.revisionRounds) revision round\(o.revisionRounds == 1 ? "" : "s")"
+        let editDetail = (o.footageOnly
+            ? "\(Estimate.range(mainEdit * 0.95, mainEdit * 1.05)) hours selecting, coloring and exporting images and B-roll"
+            : "\(Estimate.range(mainEdit * 0.95, mainEdit * 1.05)) hours, \(o.revisionRounds) revision round\(o.revisionRounds == 1 ? "" : "s")")
             + (extrasEdit > 0 ? " + \(Int(extrasEdit.rounded())) hours of extras" : "")
 
         let lines = [
@@ -214,7 +239,8 @@ enum Estimator {
                        detail: "\(Estimate.range(round5(planning * 0.9), round5(planning * 1.05))) hours",
                        amount: planning * r.planningHourly),
             BudgetLine(category: "Production", covers: "Filming days", detail: productionDetail, amount: production),
-            BudgetLine(category: "Post-production", covers: o.extras.isEmpty ? "Editing and finishing" : "Editing, finishing and extras",
+            BudgetLine(category: "Post-production",
+                       covers: o.footageOnly ? "Edited images and B-roll, no final film" : o.extras.isEmpty ? "Editing and finishing" : "Editing, finishing and extras",
                        detail: editDetail, amount: (mainEdit + extrasEdit) * r.editHourly),
             BudgetLine(category: "Media management", covers: "Transfers, organization and verified backups",
                        detail: "\(Int(media.rounded())) hours", amount: media * r.mediaHourly),
@@ -234,6 +260,18 @@ enum Estimator {
                         low: local * localPeople * (r.onSetHoursLow + r.localDriveHoursLow),
                         high: local * localPeople * (r.onSetHoursHigh + r.localDriveHoursHigh)),
         ]
+        // A shoot booked only in half days or hours has no full local days to list.
+        if o.localDays == 0 && (o.halfDayCount > 0 || o.hourCount > 0) { workload.removeLast() }
+        if o.halfDayCount > 0 {
+            workload.append(WorkloadRow(label: "\(o.halfDayCount) local half day\(o.halfDayCount == 1 ? "" : "s")",
+                                        detail: "\(Int(localPeople))-person crew; about 4 to 5 hours on set plus driving",
+                                        low: half * localPeople * (4 + r.localDriveHoursLow), high: half * localPeople * (5 + r.localDriveHoursHigh)))
+        }
+        if o.hourCount > 0 {
+            workload.append(WorkloadRow(label: "\(o.hourCount) hour\(o.hourCount == 1 ? "" : "s") of local filming",
+                                        detail: "\(Int(localPeople))-person crew, booked by the hour",
+                                        low: hourly * localPeople, high: hourly * localPeople + localPeople * r.localDriveHoursLow))
+        }
         if o.travelDays > 0 {
             workload.append(WorkloadRow(label: "\(o.travelDays) out-of-state filming day\(o.travelDays == 1 ? "" : "s")",
                                         detail: o.travelPlaces.isEmpty ? "\(Int(travelPeople)) crew" : "\(o.travelPlaces); \(Int(travelPeople)) crew",
@@ -243,7 +281,8 @@ enum Estimator {
         }
         workload.append(WorkloadRow(label: "Media organization + backups", detail: "Transfers, verified backups, project prep",
                                     low: (media * 0.75).rounded(), high: media.rounded()))
-        workload.append(WorkloadRow(label: "Main film post-production", detail: "Story edit, sound, color, titles, \(o.revisionRounds) revision rounds",
+        workload.append(WorkloadRow(label: o.footageOnly ? "Edited images and B-roll" : "Main film post-production",
+                                    detail: o.footageOnly ? "Selects, color and export; no final film edit" : "Story edit, sound, color, titles, \(o.revisionRounds) revision rounds",
                                     low: round5(mainEdit * 0.95), high: round5(mainEdit * 1.05)))
         if extrasEdit > 0 {
             workload.append(WorkloadRow(label: "Extras", detail: o.extras.filter { $0 != .rawFootage }.map(\.shortLabel).joined(separator: ", "),
@@ -253,6 +292,8 @@ enum Estimator {
         // What the user keeps
         let emmaShoot = local * (r.onSetHoursLow + r.onSetHoursHigh + r.localDriveHoursLow + r.localDriveHoursHigh) / 2
                       + travel * ((r.onSetHoursLow + r.onSetHoursHigh) / 2 + r.travelPrepHours)
+                      + half * (4.5 + (r.localDriveHoursLow + r.localDriveHoursHigh) / 2)
+                      + hourly + (hourly > 0 ? (r.localDriveHoursLow + r.localDriveHoursHigh) / 2 : 0)
         // Handed-off work: someone cheaper does the hours, the user pays their rate and keeps the difference
         let hours: [WorkType: Double] = [.planning: planning, .editing: mainEdit, .extras: extrasEdit, .media: media]
         let charge: [WorkType: Double] = [.planning: r.planningHourly, .editing: r.editHourly, .extras: r.editHourly, .media: r.mediaHourly]
@@ -265,7 +306,8 @@ enum Estimator {
             handOffCharged += h * (charge[work] ?? 0)
         }
         let emmaHours = planning + emmaShoot + mainEdit + extrasEdit + media - handOffHours * (1 - r.handOffOversight)
-        let collaboratorCost = (local * Double(o.localCrew) + travel * Double(o.travelCrew) * (1 + r.travelPrepDayFactor)) * r.collaboratorDayCost
+        let collaboratorCost = (local * Double(o.localCrew) + travel * Double(o.travelCrew) * (1 + r.travelPrepDayFactor)
+                                + half * Double(o.localCrew) * 0.6 + hourly * Double(o.localCrew) / 8 * 1.25) * r.collaboratorDayCost
         let hardCosts = equipment * r.equipmentCostShare
 
         // Client-facing budget: the user's lines scaled to the quote, rounded to $100, adding up exactly

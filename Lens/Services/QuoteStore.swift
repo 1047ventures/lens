@@ -23,6 +23,10 @@ struct Quote: Codable, Identifiable, Hashable {
     var projectID: UUID?
     var dealID: UUID?
     var notes: String = ""
+    /// The options offered in the proposal ("Option A, half day, $1,800"), when there were several.
+    var packages: [QuotePackage] = []
+    /// The package the client went for, by name.
+    var chosen: String?
 
     init(date: Date, client: String, title: String) {
         self.date = date
@@ -48,7 +52,19 @@ struct Quote: Codable, Identifiable, Hashable {
         projectID = try? c.decode(UUID.self, forKey: .projectID)
         dealID = try? c.decode(UUID.self, forKey: .dealID)
         notes = (try? c.decode(String.self, forKey: .notes)) ?? ""
+        packages = (try? c.decode([QuotePackage].self, forKey: .packages)) ?? []
+        chosen = try? c.decode(String.self, forKey: .chosen)
     }
+
+    /// An uploaded file on this Mac that can be opened as the proposal.
+    var isFile: Bool { !location.isEmpty && !location.lowercased().hasPrefix("http") && !location.hasPrefix("freshbooks:") }
+}
+
+/// One option in a proposal: its name, price and what it includes.
+struct QuotePackage: Codable, Hashable {
+    var name: String
+    var amount: Double?
+    var includes: String = ""
 }
 
 struct QuoteItem: Codable, Hashable {
@@ -82,6 +98,58 @@ final class QuoteStore: ObservableObject {
     }
 
     func quotes(forProject id: UUID) -> [Quote] { quotes.filter { $0.projectID == id } }
+
+    /// Opens the proposal for a deal: the one Emma uploaded if there is one, otherwise the one Lens builds.
+    func openProposal(for deal: Deal, deals: DealStore, projects: ProjectStore) {
+        if let q = uploadedProposal(dealID: deal.id, projectID: deal.projectID),
+           FileManager.default.fileExists(atPath: q.location) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: q.location))
+        } else {
+            ProposalRenderer.open(deal, store: deals, projects: projects)
+        }
+    }
+
+    /// The proposal file Emma uploaded for this deal or project, newest first.
+    func uploadedProposal(dealID: UUID?, projectID: UUID?) -> Quote? {
+        quotes.first { q in
+            q.isFile && ((dealID != nil && q.dealID == dealID) || (projectID != nil && q.projectID == projectID))
+        }
+    }
+
+    /// Emma says which option the client went for. The quote takes that price, and the deal's options
+    /// become the ones she actually offered (so Pipeline, Money and the project show her real numbers).
+    func choose(_ name: String, in quote: Quote, deals: DealStore, projects: ProjectStore) {
+        var q = quote
+        q.chosen = name
+        q.status = "Accepted"
+        if let p = q.packages.first(where: { $0.name == name }), let amount = p.amount { q.amount = amount }
+        update(q)
+        if let dealID = q.dealID, var deal = deals.deal(id: dealID) {
+            deal.options = Self.options(from: q)
+            deal.chosenOptionID = deal.options.first(where: { $0.name == name })?.id
+            deals.update(deal)
+        }
+        if let projectID = q.projectID ?? q.dealID.flatMap({ deals.deal(id: $0)?.projectID }), let amount = q.amount {
+            projects.edit(projectID) { $0.price = amount }
+        }
+    }
+
+    /// The deal's options, rebuilt from what Emma's own proposal offered, at her prices.
+    static func options(from q: Quote) -> [ScopeOption] {
+        let packages = q.packages.isEmpty
+            ? [QuotePackage(name: q.title.isEmpty ? "Proposal" : q.title, amount: q.amount, includes: q.deliverables)]
+            : q.packages
+        return packages.map { p in
+            var o = ScopeOption.starter()
+            o.name = p.name
+            o.tagline = ""
+            o.pitch = p.includes
+            o.quote = p.amount
+            o.note = "From your proposal: \(q.title)"
+            if let days = q.shootDays { o.localDays = max(0, Int(days.rounded(.down))); o.halfDayCount = days - days.rounded(.down) >= 0.5 ? 1 : 0 }
+            return o
+        }
+    }
     func quotes(forDeal id: UUID) -> [Quote] { quotes.filter { $0.dealID == id } }
 
     /// Asks Emma for proposal or quote files, keeps them on the project (or deal), and reads each one
@@ -131,6 +199,12 @@ final class QuoteStore: ObservableObject {
                 }
             }
             add(quote)
+            // Emma's own proposal replaces the options Lens worked out, so the deal shows what she really offered.
+            if let dealID, var deal = deals.deal(id: dealID), quote.amount != nil || !quote.packages.isEmpty {
+                deal.options = Self.options(from: quote)
+                deal.chosenOptionID = deal.options.count == 1 ? deal.options.first?.id : nil
+                deals.update(deal)
+            }
             // A project without a price takes it from its proposal.
             if let projectID, let amount = quote.amount, projects.project(id: projectID)?.price == nil,
                deals.deals.first(where: { $0.projectID == projectID }) == nil {
@@ -163,6 +237,14 @@ final class QuoteStore: ObservableObject {
             if let d = i["amount"] as? Double { amount = d } else if let n = i["amount"] as? Int { amount = Double(n) }
             if let a = amount, a <= 0 { amount = nil }
             return QuoteItem(name: name, amount: amount)
+        }
+        q.packages = (read["packages"] as? [[String: Any]] ?? []).compactMap { p in
+            let name = ((p["name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            var amount: Double? = nil
+            if let d = p["price"] as? Double { amount = d } else if let n = p["price"] as? Int { amount = Double(n) }
+            if let a = amount, a <= 0 { amount = nil }
+            return QuotePackage(name: name, amount: amount, includes: ((p["includes"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if q.amount == nil {
             let sum = q.items.compactMap(\.amount).reduce(0, +)
