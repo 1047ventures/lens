@@ -9,10 +9,10 @@ enum DealStage: Int, Codable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .inquiry: return "New inquiry"
-        case .proposalOut: return "Proposal out"
-        case .talking: return "Talking terms"
-        case .won: return "Won"
-        case .lost: return "Lost"
+        case .proposalOut: return "Quote sent"
+        case .talking: return "Quote sent"
+        case .won: return "Booked"
+        case .lost: return "Didn't book"
         }
     }
 

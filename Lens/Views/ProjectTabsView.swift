@@ -54,8 +54,12 @@ struct ProjectPeopleTab: View {
             let found = suggestions
             if !found.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    ColorLabel("Suggested · \(found.count)", Palette.violet)
-                    Text("People in this project's emails and meeting notes who aren't on the list yet.")
+                    HStack {
+                        ColorLabel("Maybe on this project · \(found.count)", Palette.violet)
+                        Spacer()
+                        Button("Hide all") { dismiss(found.map(\.email)) }.buttonStyle(.link).font(.system(size: 12))
+                    }
+                    Text("People in this project's emails and calls. Add the ones who belong, hide the rest.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(found, id: \.email) { s in
                         HStack(spacing: 12) {
@@ -76,6 +80,11 @@ struct ProjectPeopleTab: View {
                             }
                             .menuStyle(.borderedButton)
                             .fixedSize()
+                            Button { dismiss([s.email]) } label: {
+                                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Not on this project. Lens won't suggest them here again.")
                         }
                         .padding(12)
                         .background(Theme.raised.opacity(0.5))
@@ -148,10 +157,20 @@ struct ProjectPeopleTab: View {
         }
     }
 
+    private var dismissKey: String { "hiddenSuggestions.\(project.id.uuidString)" }
+
+    /// Emma said these people aren't on this project.
+    private func dismiss(_ emails: [String]) {
+        var hidden = Set(UserDefaults.standard.stringArray(forKey: dismissKey) ?? [])
+        hidden.formUnion(emails.map { $0.lowercased() })
+        UserDefaults.standard.set(Array(hidden), forKey: dismissKey)
+        projects.objectWillChange.send()
+    }
+
     /// Everyone on the project's emails and calls who isn't listed yet, most often seen first.
     private var suggestions: [(name: String, email: String, count: Int)] {
         let me = logins.ownerEmail.lowercased()
-        let known = Set(people.map { $0.email.lowercased() })
+        let known = Set(people.map { $0.email.lowercased() }).union(UserDefaults.standard.stringArray(forKey: dismissKey) ?? [])
         var found: [String: (name: String, count: Int)] = [:]
         func note(_ name: String, _ email: String) {
             let e = email.lowercased()
@@ -316,6 +335,14 @@ struct ProjectProposalTab: View {
     @ViewBuilder private var proposal: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionLabel("Proposal")
+            if let deal, let option = deal.chosenOption ?? deal.options.first {
+                // The booked option, editable here: rates, hours, price and what you keep.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What you're doing and the price").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                    OptionColumn(dealID: deal.id, optionID: option.id, isSelected: true, isChosen: true,
+                                 canRemove: false, onSelect: {})
+                }
+            }
             if let deal {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(deal.story.headline.isEmpty ? deal.title : deal.story.headline)

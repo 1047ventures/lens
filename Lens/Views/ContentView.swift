@@ -215,6 +215,8 @@ struct ContentView: View {
                     deals.link(d, to: pid, option: nil, projects: projects)
                 }
             }
+            // Once: take emails off projects that aren't about the job (an earlier pull was too wide).
+            ProjectRelevance.tidy(projects)
             ai.attachHistory(history)
             // Every work conversation in Gmail, summarized, with people's details and quotes pulled out.
             history.attach(logins: logins, gmail: gmail, people: people, quotes: quotes, ai: ai)
