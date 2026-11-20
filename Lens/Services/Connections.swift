@@ -424,7 +424,7 @@ final class LoopbackReceiver: @unchecked Sendable {
 // MARK: - Log-ins
 
 enum LoginID: String, CaseIterable, Identifiable, Codable {
-    case google, calendar, drive, zoom, website, social, directories, bank, paypal, venmo, claude, github, homeServer
+    case google, calendar, drive, zoom, website, social, directories, bank, paypal, venmo, claude, github, homeServer, freshbooks
     var id: String { rawValue }
 }
 
@@ -839,6 +839,11 @@ final class ConnectionStore: ObservableObject {
             let listed = field("directories").split(separator: ",").count
             if isConfirmed("directories") { return gmail != nil ? .connected("\(listed) listing\(listed == 1 ? "" : "s"), leads via Gmail") : .partial("Waiting on Google") }
             return .todo("Pick where she's listed")
+        case .freshbooks:
+            let connected = UserDefaults.standard.string(forKey: "freshbooks.accountID") != nil
+                && !(Keychain.get("freshbooks.refreshToken") ?? "").isEmpty
+            if connected { return .connected(UserDefaults.standard.string(forKey: "freshbooks.business") ?? "Invoices and estimates") }
+            return .todo("One-time setup, then invoices come in")
         case .bank, .paypal, .venmo:
             if let last = lastImport(id) { return .connected("Updated \(last.formatted(.dateTime.month().day()))") }
             if isConfirmed(id.rawValue) { return .connected("Monthly statements") }

@@ -12,6 +12,15 @@ final class EmailHistory: ObservableObject {
         var updated: Date
         /// Gmail's change counter when Lens read it, so it's only read again when something new arrives.
         var history: String
+        // Added for finding Emma's current work. Optional so older saved summaries still load.
+        var subject: String?
+        var lastDate: Date?
+        var client: String?
+        var kind: String?
+        /// "booked", "ongoing", "upcoming", "potential", "done" or "other".
+        var status: String?
+        var projectName: String?
+        var people: [String]?
     }
 
     @Published private(set) var summaries: [String: Summary] = [:]
@@ -76,12 +85,157 @@ final class EmailHistory: ObservableObject {
                 pageToken = page.next
                 if page.next == nil { done = true }
                 save()
+                // Gmail gives the newest first, so after a few hundred conversations Lens knows the current work.
+                if lastFind == nil && summaries.count >= 200 { await findWork(force: true) }
             }
         } catch {
             // Gmail or Claude didn't answer: carry on from here next hour.
         }
         save()
+        await findWork()
     }
+
+    // MARK: Finding Emma's current work
+
+    private weak var deals: DealStore?
+    private weak var projects: ProjectStore?
+    private weak var zoom: ZoomNotes?
+    /// Projects and inquiries Lens added by itself, newest first, so Emma can see and undo them.
+    @Published private(set) var found: [Found] = []
+    /// Names Lens has already added, or Emma removed ("removed:<name>"), so they aren't added again.
+    private var known: Set<String> = []
+    private var lastFind: Date?
+
+    struct Found: Codable, Identifiable, Hashable {
+        var id: UUID           // the project or deal
+        var name: String
+        var isProject: Bool
+        var why: String
+        var added: Date
+    }
+
+    func attachWork(deals: DealStore, projects: ProjectStore, zoom: ZoomNotes) {
+        self.deals = deals
+        self.projects = projects
+        self.zoom = zoom
+    }
+
+    /// Looks at recent work email (summaries) and call notes, works out Emma's current, upcoming and
+    /// possible projects, and puts each one in Lens: booked work becomes a project with its people and
+    /// keywords (so its emails and calls are pulled in), possible work becomes an inquiry on Pipeline.
+    /// Things already in Lens get any missing people and keywords. Runs at most every six hours.
+    func findWork(force: Bool = false) async {
+        guard let ai, ai.hasKey, let deals, let projects else { return }
+        if !force, let lastFind, Date().timeIntervalSince(lastFind) < 6 * 3600 { return }
+        let since = Date().addingTimeInterval(-270 * 86400)
+        let mail: [[String: Any]] = summaries.values
+            .filter { !$0.summary.isEmpty && ($0.lastDate ?? .distantPast) > since && $0.status != "other" }
+            .sorted { ($0.lastDate ?? .distantPast) > ($1.lastDate ?? .distantPast) }
+            .prefix(250)
+            .map { s in
+                ["date": (s.lastDate ?? Date()).formatted(.iso8601.year().month().day()), "subject": s.subject ?? "",
+                 "project": s.projectName ?? "", "client": s.client ?? "", "kind": s.kind ?? "", "status": s.status ?? "",
+                 "people": s.people ?? [], "summary": s.summary, "decisions": s.decisions]
+            }
+        let calls: [[String: Any]] = (zoom?.allNotes(deals: deals, projects: projects) ?? [])
+            .filter { $0.date > since }
+            .sorted { $0.date > $1.date }
+            .prefix(120)
+            .map { n in
+                ["date": n.date.formatted(.iso8601.year().month().day()), "title": n.title,
+                 "people": (n.people ?? []).map(\.name) + (n.attendees ?? []), "summary": String(n.fullText.prefix(1200))]
+            }
+        guard !mail.isEmpty || !calls.isEmpty else { return }
+        let existing: [[String: Any]] = projects.projects.filter { $0.stage != .archived }.map {
+            ["id": $0.id.uuidString, "type": "project", "name": $0.name, "client": $0.client,
+             "people": ($0.people ?? []).map { "\($0.name) \($0.email)" }, "keywords": $0.keywords ?? []]
+        } + deals.deals.filter { $0.stage != .lost && $0.projectID == nil }.map {
+            ["id": $0.id.uuidString, "type": "deal", "name": $0.title, "client": $0.client,
+             "people": $0.contacts.map { "\($0.name) \($0.email)" }]
+        }
+        let removed = known.filter { $0.hasPrefix("removed:") }.map { String($0.dropFirst(8)) }
+        let payload: [String: Any] = ["today": Date().formatted(.iso8601.year().month().day()), "already_in_lens": existing,
+                                      "email_conversations": mail, "calls": calls, "removed_before": removed]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let work = try? await ai.findWork(String(decoding: data, as: UTF8.self)) else { return }
+        lastFind = Date()
+        let day = DateFormatter()
+        day.dateFormat = "yyyy-MM-dd"
+        day.locale = Locale(identifier: "en_US_POSIX")
+
+        for w in work {
+            func s(_ k: String) -> String { ((w[k] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+            let name = s("name")
+            let status = s("status")
+            guard !name.isEmpty, ["booked", "ongoing", "upcoming", "potential"].contains(status) else { continue }
+            let people: [ProjectPerson] = (w["people"] as? [[String: Any]] ?? []).compactMap { p in
+                let n = ((p["name"] as? String) ?? "").trimmingCharacters(in: .whitespaces)
+                let e = ((p["email"] as? String) ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                guard !n.isEmpty || e.contains("@") else { return nil }
+                return ProjectPerson(name: n.isEmpty ? e : n, email: e, role: (p["role"] as? String) ?? "")
+            }
+            let keywords = (w["keywords"] as? [String] ?? []).map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count >= 2 }
+            let dates = (w["dates"] as? [String] ?? []).compactMap { day.date(from: $0) }.sorted()
+            let upcoming = dates.first(where: { $0 > Date().addingTimeInterval(-86400) })
+
+            // Already in Lens: add any people and keywords it's missing, so its emails and calls come in.
+            if let id = UUID(uuidString: s("existing_id")) {
+                if projects.project(id: id) != nil {
+                    projects.edit(id) { p in
+                        var list = p.people ?? []
+                        for person in people where !list.contains(where: {
+                            (!person.email.isEmpty && $0.email.lowercased() == person.email) || $0.name.lowercased() == person.name.lowercased()
+                        }) { list.append(person) }
+                        p.people = list.isEmpty ? nil : list
+                        var words = p.keywords ?? []
+                        for k in keywords where !words.contains(where: { $0.lowercased() == k.lowercased() }) { words.append(k) }
+                        p.keywords = words.isEmpty ? nil : words
+                        if p.shootDate == nil, let upcoming { p.shootDate = upcoming }
+                    }
+                }
+                continue
+            }
+            let key = name.lowercased()
+            guard (w["sure"] as? Bool) == true, !known.contains(key), !known.contains("removed:" + key),
+                  !projects.projects.contains(where: { $0.name.lowercased() == key }),
+                  !deals.deals.contains(where: { $0.title.lowercased() == key }) else { continue }
+            known.insert(key)
+            let why = s("why")
+            if status == "potential" {
+                var deal = Deal(client: s("client").isEmpty ? name : s("client"), title: name, source: "Found in email", stage: .inquiry,
+                                lastTouch: Date(), createdAt: Date())
+                deal.contacts = people.map { Contact(name: $0.name, role: $0.role, email: $0.email) }
+                deal.eventDate = upcoming
+                deal.callNotes = why
+                deals.add(deal)
+                found.insert(Found(id: deal.id, name: name, isProject: false, why: why, added: Date()), at: 0)
+            } else {
+                var project = Project(name: name, client: s("client"), shootDate: upcoming ?? dates.first,
+                                      stage: status == "ongoing" ? .edit : .booked)
+                project.people = people.isEmpty ? nil : people
+                project.keywords = keywords.isEmpty ? nil : keywords
+                projects.add(project)
+                found.insert(Found(id: project.id, name: name, isProject: true, why: why, added: Date()), at: 0)
+            }
+        }
+        save()
+    }
+
+    /// Emma took something Lens added back out: remove it and don't add it again.
+    func undo(_ item: Found) {
+        if item.isProject, let p = projects?.project(id: item.id) { projects?.delete(p) }
+        if !item.isProject, let d = deals?.deal(id: item.id) { deals?.delete(d) }
+        found.removeAll { $0.id == item.id }
+        known.insert("removed:" + item.name.lowercased())
+        save()
+    }
+
+    /// Emma is happy with it: stop showing it in the "found" list.
+    func keep(_ item: Found) {
+        found.removeAll { $0.id == item.id }
+        save()
+    }
+
 
     private func process(_ items: [(id: String, history: String)]) async throws {
         guard let logins, let ai, let gmail else { return }
@@ -125,9 +279,17 @@ final class EmailHistory: ObservableObject {
                 continue
             }
             func s(_ k: String) -> String { ((a[k] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
-            summaries[thread.id] = Summary(summary: s("summary"), decisions: (a["decisions"] as? [String] ?? []).filter { !$0.isEmpty },
-                                           updated: Date(), history: history)
             let link = gmail.threadLink(thread, me: me)
+            var summary = Summary(summary: s("summary"), decisions: (a["decisions"] as? [String] ?? []).filter { !$0.isEmpty },
+                                  updated: Date(), history: history)
+            summary.subject = link.subject
+            summary.lastDate = link.lastDate
+            summary.client = s("client")
+            summary.kind = s("kind_of_work")
+            summary.status = s("work_status")
+            summary.projectName = s("project_name")
+            summary.people = link.people
+            summaries[thread.id] = summary
 
             // The person: details go into People, and the conversation goes on their page.
             if let who = a["person"] as? [String: Any] {
@@ -172,6 +334,9 @@ final class EmailHistory: ObservableObject {
         var summaries: [String: Summary]?
         var pageToken: String?
         var done: Bool?
+        var found: [Found]?
+        var known: [String]?
+        var lastFind: Date?
     }
 
     private func load() {
@@ -182,12 +347,16 @@ final class EmailHistory: ObservableObject {
         summaries = saved.summaries ?? [:]
         pageToken = saved.pageToken
         done = saved.done ?? false
+        found = saved.found ?? []
+        known = Set(saved.known ?? [])
+        lastFind = saved.lastFind
     }
 
     private func save() {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(Saved(summaries: summaries, pageToken: pageToken, done: done)) {
+        if let data = try? encoder.encode(Saved(summaries: summaries, pageToken: pageToken, done: done, found: found,
+                                               known: Array(known), lastFind: lastFind)) {
             try? data.write(to: DealStore.url("email_history.json"), options: .atomic)
         }
     }

@@ -54,6 +54,7 @@ struct ProjectsView: View {
                         .foregroundStyle(Theme.text3)
                 }
 
+                FoundWorkPanel()
                 EmailSuggestionsPanel(place: .projects)
                 UnmatchedNotesPanel()
 
@@ -260,5 +261,49 @@ struct ProjectEditor: View {
         if stageChanged { project.events.append(ProjectEvent(text: "Moved to \(stage.label)")) }
         onSave(project)
         dismiss()
+    }
+}
+
+/// Projects and inquiries Lens found in Emma's email and calls and added by itself, with Keep and Remove.
+struct FoundWorkPanel: View {
+    @EnvironmentObject private var history: EmailHistory
+    @EnvironmentObject private var navigator: Navigator
+    @State private var looking = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionLabel(history.found.isEmpty ? "Your work, from email and calls" : "Lens found these in your email and calls")
+                Spacer()
+                Button(looking ? "Looking…" : "Look again now") {
+                    looking = true
+                    Task { await history.findWork(force: true); looking = false }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(looking)
+            }
+            if history.found.isEmpty {
+                Text("Lens reads your work email and call notes and adds your current and upcoming projects here by itself, with their people. Possible jobs go on Pipeline.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(history.found) { item in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: item.isProject ? "folder.fill" : "tray.and.arrow.down.fill").foregroundStyle(Theme.teal)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Button(item.name) {
+                            if item.isProject { navigator.openProject(item.id) } else { navigator.openDeal(item.id) }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text((item.isProject ? "Added as a project" : "Added to Pipeline") + (item.why.isEmpty ? "" : " · " + item.why))
+                            .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Keep") { history.keep(item) }.buttonStyle(SecondaryButtonStyle())
+                    Button("Remove") { history.undo(item) }.buttonStyle(SecondaryButtonStyle())
+                }
+            }
+        }
+        .panel(padding: 22)
     }
 }

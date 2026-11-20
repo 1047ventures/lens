@@ -93,6 +93,7 @@ FILES = [
     (f"{APP_NAME}/Services/QuoteStore.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/QuotesView.swift",                f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/EmailHistory.swift",           f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/FreshBooks.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/GmailSync.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomNotes.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomAPI.swift",                f"{APP_NAME}/Services"),

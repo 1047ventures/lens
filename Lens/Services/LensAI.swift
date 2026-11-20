@@ -92,6 +92,64 @@ final class LensAI: ObservableObject {
     func attachQuotes(_ quotes: QuoteStore) { self.quotes = quotes }
     func attachHistory(_ history: EmailHistory) { self.history = history }
 
+    /// Works out Emma's current, upcoming and possible jobs from her email summaries and call notes.
+    func findWork(_ payload: String) async throws -> [[String: Any]] {
+        guard let answer = try await structured(system: Self.workPrompt, schema: Self.workSchema, payload: payload) else {
+            throw AIError("Claude's answer about your projects didn't come through. Lens will try again later.")
+        }
+        return answer["work"] as? [[String: Any]] ?? []
+    }
+
+    private static let workPrompt = """
+    You help a freelance filmmaker and photographer (Emma) keep her business app (Lens) up to date. You get \
+    summaries of her recent work email conversations, her recent call notes, and what's already in Lens \
+    (projects and pipeline deals, with their people and keywords). List each distinct job she has: one entry \
+    per job, merging all the emails and calls about it. Give a short name as she would say it ("CEJ \
+    documentary", "Parents Anonymous commercial photography", "Facial Aesthetics", "Jenna Shapiro shoot"), \
+    the client, status (booked, ongoing, upcoming, potential, done), any shoot or event dates (YYYY-MM-DD), \
+    the people on it with name, email and role (Client, Director, Producer, Crew, Interviewee, Editor, \
+    Planning), keywords that show an email or call is about it (the client's name, the film's title, short \
+    names like "CEJ" or "OFTV"), and one sentence on why you think so. If the job is already in Lens, set \
+    existing_id to its id (still list new people and keywords). sure is true only when the emails or calls \
+    clearly show a real job; a single vague mention is not sure. Leave out jobs that are done, and anything in \
+    removed_before. Use "" for anything not known.
+    """
+
+    private static let workSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "work": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "name": ["type": "string"],
+                        "client": ["type": "string"],
+                        "status": ["type": "string", "enum": ["booked", "ongoing", "upcoming", "potential", "done"]],
+                        "dates": ["type": "array", "items": ["type": "string"]],
+                        "people": [
+                            "type": "array",
+                            "items": [
+                                "type": "object",
+                                "properties": ["name": ["type": "string"], "email": ["type": "string"], "role": ["type": "string"]],
+                                "required": ["name", "email", "role"],
+                                "additionalProperties": false,
+                            ],
+                        ],
+                        "keywords": ["type": "array", "items": ["type": "string"]],
+                        "existing_id": ["type": "string"],
+                        "sure": ["type": "boolean"],
+                        "why": ["type": "string"],
+                    ],
+                    "required": ["name", "client", "status", "dates", "people", "keywords", "existing_id", "sure", "why"],
+                    "additionalProperties": false,
+                ],
+            ],
+        ],
+        "required": ["work"],
+        "additionalProperties": false,
+    ]
+
     /// Reads a batch of email conversations: is it work, who's the person, what was discussed and decided,
     /// and any prices quoted.
     func readConversations(_ payload: String) async throws -> [[String: Any]] {
@@ -111,7 +169,10 @@ final class LensAI: ObservableObject {
     Music video, Commercial, Other); a summary of two to four sentences of what was discussed; decisions as \
     short bullet points (dates, scope, price agreed, deliverables, who does what); and every price Emma \
     quoted (amount in dollars, what it was for, date YYYY-MM-DD, status Sent, Accepted or Declined if the \
-    replies make it clear, else ""). Leave a field "" when it isn't in the emails. Plain English, no em dashes.
+    replies make it clear, else ""). Also give project_name, a short name for the job as Emma would say it \
+    ("CEJ documentary", "Jenna Shapiro shoot"), and work_status: booked (agreed, not started), ongoing (being \
+    shot or edited), upcoming (booked with a date ahead), potential (being discussed, not agreed), done \
+    (finished and delivered) or other. Leave a field "" when it isn't in the emails. Plain English, no em dashes.
     """
 
     private static let historySchema: [String: Any] = [
@@ -133,6 +194,8 @@ final class LensAI: ObservableObject {
                         ],
                         "client": ["type": "string"],
                         "kind_of_work": ["type": "string"],
+                        "project_name": ["type": "string"],
+                        "work_status": ["type": "string", "enum": ["booked", "ongoing", "upcoming", "potential", "done", "other", ""]],
                         "summary": ["type": "string"],
                         "decisions": ["type": "array", "items": ["type": "string"]],
                         "quotes": [
@@ -146,7 +209,8 @@ final class LensAI: ObservableObject {
                             ],
                         ],
                     ],
-                    "required": ["thread_id", "is_work", "person", "client", "kind_of_work", "summary", "decisions", "quotes"],
+                    "required": ["thread_id", "is_work", "person", "client", "kind_of_work", "project_name", "work_status",
+                                 "summary", "decisions", "quotes"],
                     "additionalProperties": false,
                 ],
             ],
@@ -1304,6 +1368,13 @@ final class LensAI: ObservableObject {
     - Keep replies short and plain: a sentence or two, or a short list. No jargon. Money in dollars.
     - When the user corrects you, states a preference, or explains how they like to work, offer to remember it with \
     the remember tool, phrased as a short rule.
+    - FreshBooks setup, one step at a time: (1) sign in at my.freshbooks.com and open the developer page \
+    (my.freshbooks.com/#/developer); (2) Create an app: name Lens, application type Private app, website \
+    https://localhost, redirect URI exactly https://localhost:8765/freshbooks, scopes user:profile:read, \
+    user:invoices:read, user:estimates:read, user:clients:read; save; (3) copy the Client ID and Client Secret \
+    into Lens, Log-ins, FreshBooks, and click Save keys; (4) click Connect FreshBooks, press Allow; (5) the next \
+    page won't load, which is expected: copy its whole address and paste it in Lens, then click Finish. Menus \
+    may be named a little differently: ask what she sees. Never ask her to paste the keys into the chat.
     - Pricing a new job or writing a quote: look at list_quotes for similar past work (same kind, similar days \
     and deliverables) and get_rates, then suggest a price with a short reason ("your last two brand films with \
     2 shoot days were $6,500 and $7,200"). Say which past quotes were accepted or declined.
