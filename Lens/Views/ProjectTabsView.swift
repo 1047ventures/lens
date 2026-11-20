@@ -365,13 +365,11 @@ struct ProjectProposalTab: View {
                     Menu {
                         ForEach(free) { d in
                             Button("\(d.client) · \(d.title)") {
-                                var linked = d
-                                linked.projectID = project.id
-                                deals.update(linked)
+                                deals.link(d, to: project.id, option: nil, projects: projects)
                             }
                         }
                     } label: {
-                        Text("Use a proposal from Pipeline")
+                        Text("Bring in its deal from Pipeline")
                     }
                     .menuStyle(.borderedButton)
                     .fixedSize()

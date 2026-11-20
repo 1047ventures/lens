@@ -184,7 +184,12 @@ enum Money {
 /// Turns one option's dials into hours, a budget, a price, and what the user actually keeps.
 /// Pure arithmetic: no AI, so every number can be traced back to a rate on the rate card.
 enum Estimator {
-    static func estimate(_ o: ScopeOption, rates r: RateCard) -> Estimate {
+    static func estimate(_ o: ScopeOption, rates card: RateCard) -> Estimate {
+        // This job's own rates, where Emma set them, on top of her rate card.
+        var r = card
+        if let day = o.dayRateSet { r.emmaDayRate = day }
+        if let half = o.halfDayRateSet { r.emmaHalfDayRate = half }
+        if let hour = o.hourRateSet { r.emmaHourlyRate = hour }
         let owner = r.ownerName.isEmpty ? "Lead filmmaker" : r.ownerName
         let localPeople = Double(1 + o.localCrew)
         let travelPeople = Double(1 + o.travelCrew)
@@ -239,7 +244,7 @@ enum Estimator {
             : "\(Estimate.range(mainEdit * 0.95, mainEdit * 1.05)) hours, \(o.revisionRounds) revision round\(o.revisionRounds == 1 ? "" : "s")")
             + (extrasEdit > 0 ? " + \(Int(extrasEdit.rounded())) hours of extras" : "")
 
-        let lines = [
+        let baseLines = [
             BudgetLine(category: "Pre-production", covers: "Research, story development and planning",
                        detail: "\(Estimate.range(round5(planning * 0.9), round5(planning * 1.05))) hours",
                        amount: planning * r.planningHourly),
@@ -252,8 +257,16 @@ enum Estimator {
             BudgetLine(category: "Equipment and support", covers: "Drives, music, supplemental gear, production assistant on select days",
                        detail: "", amount: equipment),
         ]
+        // Budget lines Emma typed in herself replace the worked-out amounts, and the total follows them exactly.
+        let typed = o.lineSet ?? [:]
+        let lines = baseLines.map { line -> BudgetLine in
+            guard let amount = typed[line.category] else { return line }
+            var l = line
+            l.amount = amount
+            return l
+        }
         let sum = lines.reduce(0) { $0 + $1.amount }
-        let calculated = (sum / r.roundTo).rounded() * r.roundTo
+        let calculated = typed.isEmpty ? (sum / r.roundTo).rounded() * r.roundTo : sum
         let quote = o.quote ?? calculated
 
         // Workload table, same shape as the one in her proposal

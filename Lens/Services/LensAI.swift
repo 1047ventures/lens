@@ -611,6 +611,8 @@ final class LensAI: ObservableObject {
         case 401: return AIError("The Claude API key isn't valid. Check it in Log-ins.")
         case 429: return AIError("Claude is busy or the monthly limit was hit. Try again in a minute.")
         case 529, 500...599: return AIError("Claude is having a moment. Try again shortly.")
+        case 400 where message.lowercased().contains("credit balance") || message.lowercased().contains("credits"):
+            return AIError("Your Claude account is out of credit. Add credit at console.anthropic.com (Settings, then Billing), then try again.")
         case 400 where message.contains("`thinking` block") || message.contains("block_binding"):
             return AIError("Ask Lens lost track of its earlier answers in this chat.", staleThinking: true)
         default: return AIError("Claude couldn't answer: \(message)")

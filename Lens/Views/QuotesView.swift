@@ -111,9 +111,7 @@ struct QuoteRow: View {
                     get: { quote.amount.map { String(Int($0.rounded())) } ?? "" },
                     set: { text in
                         let digits = text.filter(\.isNumber)
-                        var q = quote
-                        q.amount = digits.isEmpty ? nil : Double(digits)
-                        quotes.update(q)
+                        quotes.setPrice(quote, digits.isEmpty ? nil : Double(digits), deals: deals, projects: projects)
                     }))
                     .textFieldStyle(.roundedBorder).frame(width: 84).multilineTextAlignment(.trailing)
                     .help("The price. Type it in if Lens couldn't read it.")

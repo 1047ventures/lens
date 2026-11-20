@@ -226,10 +226,21 @@ struct DealDetailView: View {
                             }
                         }
                         Spacer()
-                        Text(Money.string(line.amount)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                        // Emma can type the amount for any line; the total follows.
+                        TextField(Money.string(line.amount), text: Binding(
+                            get: { option.lineSet?[line.category].map { String(Int($0.rounded())) } ?? String(Int(line.amount.rounded())) },
+                            set: { text in
+                                let digits = text.filter(\.isNumber)
+                                setLine(option, line.category, digits.isEmpty ? nil : Double(digits))
+                            }))
+                            .textFieldStyle(.roundedBorder).frame(width: 90).multilineTextAlignment(.trailing)
                     }
                     .padding(.vertical, 8)
                     Divider().overlay(Theme.lineSoft)
+                }
+                if !(option.lineSet ?? [:]).isEmpty {
+                    Button("Use my rates again") { clearLines(option) }
+                        .buttonStyle(.link).font(.system(size: 12)).padding(.top, 4)
                 }
                 if est.travelAllowance > 0 {
                     row("Travel allowance", Money.string(est.travelAllowance))
@@ -264,6 +275,22 @@ struct DealDetailView: View {
         .accentBar(Palette.lime)
     }
 
+    /// Emma typed an amount for a budget line: it replaces Lens's number, and the price follows the lines.
+    private func setLine(_ option: ScopeOption, _ category: String, _ amount: Double?) {
+        guard var d = deals.deal(id: dealID), let i = d.options.firstIndex(where: { $0.id == option.id }) else { return }
+        var lines = d.options[i].lineSet ?? [:]
+        lines[category] = amount
+        d.options[i].lineSet = lines.isEmpty ? nil : lines
+        d.options[i].quote = nil
+        deals.update(d)
+    }
+
+    private func clearLines(_ option: ScopeOption) {
+        guard var d = deals.deal(id: dealID), let i = d.options.firstIndex(where: { $0.id == option.id }) else { return }
+        d.options[i].lineSet = nil
+        deals.update(d)
+    }
+
     private func row(_ label: String, _ value: String, bold: Bool = false) -> some View {
         HStack {
             Text(label).font(.system(size: 13, weight: bold ? .semibold : .regular)).foregroundStyle(bold ? Theme.text : Theme.text3)
@@ -292,7 +319,7 @@ struct DealDetailView: View {
                 }
                 row("Combined team hours", "\(Estimate.range(est.teamHoursLow, est.teamHoursHigh)) h", bold: true)
             }
-            Text("Calculated from your rate card. This is the table the proposal shows the client.")
+            Text("Worked out from your rates and the hours you typed on the option. Change the hours there and this follows.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
         }
         .panel()
@@ -588,6 +615,13 @@ struct OptionColumn: View {
 
                 // Emma's own hours and costs for this job. Empty = worked out from her rates.
                 VStack(alignment: .leading, spacing: 5) {
+                    Text("Your rates for this job").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                    ownNumber("Day rate ($)", \.dayRateSet, auto: deals.rates.emmaDayRate)
+                    ownNumber("Half day rate ($)", \.halfDayRateSet, auto: deals.rates.halfDay)
+                    ownNumber("Hourly rate ($)", \.hourRateSet, auto: deals.rates.shootHourly)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
                     Text("Your hours for this job").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
                     ownNumber("Planning hours", \.planningHoursSet, auto: est.planningHours)
                     ownNumber(option.footageOnly ? "Editing images + B-roll hours" : "Editing hours", \.editHoursSet, auto: est.editHours)
@@ -844,12 +878,26 @@ struct LostSheet: View {
 }
 
 struct WonSheet: View {
+    /// A project Emma made herself for the same job: same name, or the same client.
+    static func sameJob(_ p: Project, _ deal: Deal) -> Bool {
+        guard p.stage != .archived else { return false }
+        let title: String = deal.title.lowercased()
+        let client: String = deal.client.lowercased()
+        let name: String = p.name.lowercased()
+        if name == title { return true }
+        if !client.isEmpty && p.client.lowercased() == client { return true }
+        if !title.isEmpty && name.contains(title) { return true }
+        return !name.isEmpty && title.contains(name)
+    }
+
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var navigator: Navigator
     @Environment(\.dismiss) private var dismiss
     let dealID: UUID
     @State private var optionID: UUID?
+    /// nil = make a new project; otherwise the project Emma already made for this job.
+    @State private var existingProjectID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -874,21 +922,40 @@ struct WonSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Text("This creates the project at Booked, carrying over the timeline and history. Later, the contract, payment schedule and deposit invoice will be drafted here too.")
+                let open = projects.projects.filter { $0.stage != .archived }
+                if !open.isEmpty {
+                    Picker("Project", selection: $existingProjectID) {
+                        Text("Make a new project").tag(UUID?.none)
+                        ForEach(open) { p in Text("Use \(p.name)").tag(UUID?.some(p.id)) }
+                    }
+                }
+                Text(existingProjectID == nil
+                     ? "This creates the project at Booked, with this deal's emails, call notes, people and price."
+                     : "This books the deal into that project and brings its emails, call notes, people and price with it.")
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 HStack {
                     Spacer()
                     Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle())
                     Button("Book it") {
                         guard let option = deal.options.first(where: { $0.id == optionID }) else { return }
-                        let projectID = deals.markWon(deal, option: option, projects: projects)
-                        dismiss()
-                        navigator.openProject(projectID)
+                        if let existing = existingProjectID {
+                            deals.link(deal, to: existing, option: option, projects: projects)
+                            dismiss()
+                            navigator.openProject(existing)
+                        } else {
+                            let projectID = deals.markWon(deal, option: option, projects: projects)
+                            dismiss()
+                            navigator.openProject(projectID)
+                        }
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(optionID == nil)
                 }
-                .onAppear { optionID = deal.chosenOptionID ?? (deal.options.count == 1 ? deal.options.first?.id : nil) }
+                .onAppear {
+                    optionID = deal.chosenOptionID ?? (deal.options.count == 1 ? deal.options.first?.id : nil)
+                    // A project Emma already made for this job (same name or client) is picked for her.
+                    existingProjectID = projects.projects.first(where: { Self.sameJob($0, deal) })?.id
+                }
             }
         }
         .padding(24).frame(width: 460)
