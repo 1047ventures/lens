@@ -141,26 +141,24 @@ struct PeopleView: View {
                         tag = tag == t.rawValue ? nil : t.rawValue
                     }
                 }
-                Menu {
-                    Button("Any deal or project") { onID = nil }
-                    let active = projects.projects.filter { $0.stage != .archived }
-                    if !active.isEmpty {
-                        Section("Projects") {
-                            ForEach(active) { p in Button(p.name) { onID = p.id } }
+            }
+
+            let active = projects.projects.filter { $0.stage != .archived }
+            if !active.isEmpty || !deals.open.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(active) { p in
+                        TagChip(text: p.name, color: p.stage.color, selected: onID == p.id) {
+                            onID = onID == p.id ? nil : p.id
                         }
+                        .help("\(p.stage.label) · show everyone on this project")
                     }
-                    if !deals.open.isEmpty {
-                        Section("Open deals") {
-                            ForEach(deals.open) { d in Button(d.title) { onID = d.id } }
+                    ForEach(deals.open) { d in
+                        TagChip(text: d.title, color: ProjectStage.lead.color, selected: onID == d.id) {
+                            onID = onID == d.id ? nil : d.id
                         }
+                        .help("Open deal · show everyone on it")
                     }
-                } label: {
-                    Text(onName.map { "On \($0)" } ?? "On any deal or project")
-                        .font(.system(size: 12, weight: .semibold))
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .padding(.leading, 6)
             }
         }
     }
