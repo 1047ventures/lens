@@ -562,6 +562,7 @@ private struct ZoomControls: View {
 private struct GoogleControls: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var history: EmailHistory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -581,6 +582,15 @@ private struct GoogleControls: View {
                         .buttonStyle(.link)
                         .font(.system(size: 12))
                         .help("Forgets Lens's saved Google setup and sign-in, so a new Google file can be used.")
+                }
+                if let progress = history.progress {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progress).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    }
+                } else if history.workCount > 0 {
+                    Text("\(history.workCount) work conversations summarized" + (history.done ? "" : ", more on the way"))
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if logins.googleNeedsNewSignIn {
                     Text("Lens now also reads Google Calendar. Sign in once more to allow it.")

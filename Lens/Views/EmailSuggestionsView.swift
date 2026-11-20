@@ -159,6 +159,7 @@ private struct SuggestionRow: View {
 /// The Gmail conversations linked to a deal or project, newest first, each opening in Gmail.
 struct EmailThreadsList: View {
     let threads: [EmailThread]
+    @EnvironmentObject private var history: EmailHistory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -174,7 +175,14 @@ struct EmailThreadsList: View {
                     }
                     Text("\(thread.from) · \(thread.messageCount) message\(thread.messageCount == 1 ? "" : "s")")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                    if !thread.snippet.isEmpty {
+                    if let s = history.summary(for: thread.id) {
+                        Text(s.summary).font(.system(size: 12)).foregroundStyle(Theme.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(s.decisions.prefix(6), id: \.self) { d in
+                            Text("• " + d).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else if !thread.snippet.isEmpty {
                         Text(thread.snippet).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
                     }
                     if let url = URL(string: thread.link) {
