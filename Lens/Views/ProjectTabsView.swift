@@ -305,6 +305,7 @@ struct ProjectProposalTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             proposal
+            QuotesPanel(projectID: project.id, dealID: deal?.id, client: project.client)
             filesPanel
         }
     }
@@ -482,6 +483,8 @@ struct ProjectProposalTab: View {
 
     static func guessKind(_ name: String) -> String {
         let n = name.lowercased()
+        if n.contains("proposal") { return "Proposal" }
+        if n.contains("quote") || n.contains("estimate") { return "Quote" }
         if n.contains("contract") || n.contains("agreement") { return "Contract" }
         if n.contains("treatment") { return "Treatment" }
         if n.contains("call sheet") || n.contains("callsheet") || n.contains("call-sheet") { return "Call sheet" }

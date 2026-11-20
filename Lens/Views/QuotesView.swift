@@ -1,0 +1,172 @@
+import SwiftUI
+import AppKit
+
+/// The quotes and proposals on one project or deal, with an Upload button. Uploaded files are read by
+/// Claude so the price and what it covered go into Emma's quote history.
+struct QuotesPanel: View {
+    var projectID: UUID?
+    var dealID: UUID?
+    var client: String
+    @EnvironmentObject private var quotes: QuoteStore
+    @EnvironmentObject private var ai: LensAI
+    @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var deals: DealStore
+
+    private var list: [Quote] {
+        quotes.quotes.filter { q in
+            (projectID != nil && q.projectID == projectID) || (dealID != nil && q.dealID == dealID)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel("Proposals and quotes · \(list.count)")
+            if list.isEmpty {
+                Text("Upload the proposal or quote you sent. Lens keeps the file here, reads the price and what it covered, and remembers it for pricing future jobs.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(list) { q in QuoteRow(quote: q) }
+            HStack(spacing: 10) {
+                Button("Upload a proposal or quote…") {
+                    quotes.upload(projectID: projectID, dealID: dealID, client: client, ai: ai, projects: projects, deals: deals)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                if let reading = quotes.reading {
+                    ProgressView().controlSize(.small)
+                    Text(reading).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+            }
+            if let problem = quotes.problem {
+                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .panel(padding: 22)
+    }
+}
+
+/// One quote: who, when, how much, and whether it went ahead.
+struct QuoteRow: View {
+    let quote: Quote
+    var showClient = false
+    @EnvironmentObject private var quotes: QuoteStore
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: quote.source == "Lens proposal" ? "doc.richtext" : quote.source == "Email" ? "envelope" : "doc.text")
+                .foregroundStyle(Theme.muted).frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(showClient && !quote.client.isEmpty ? "\(quote.client) · \(quote.title)" : quote.title)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(details).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(2)
+            }
+            Spacer()
+            Text(quote.amount.map { Money.string($0) } ?? "No price found")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(quote.amount == nil ? Theme.muted : Theme.text)
+            if quote.source != "Lens proposal" {
+                Menu {
+                    ForEach(["Sent", "Accepted", "Declined"], id: \.self) { s in
+                        Button(s) { var q = quote; q.status = s; quotes.update(q) }
+                    }
+                    if !quote.location.isEmpty {
+                        Button("Open") { open() }
+                    }
+                    Button("Remove from history") { quotes.remove(quote) }
+                } label: {
+                    Text(quote.status.isEmpty ? "Status" : quote.status)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            } else if !quote.status.isEmpty {
+                Text(quote.status).font(.system(size: 12)).foregroundStyle(Theme.text3)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var details: String {
+        var parts = [quote.date.formatted(date: .abbreviated, time: .omitted)]
+        if !quote.kind.isEmpty { parts.append(quote.kind) }
+        if let days = quote.shootDays { parts.append(days == 1 ? "1 shoot day" : "\(days.formatted()) shoot days") }
+        if !quote.deliverables.isEmpty { parts.append(quote.deliverables) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func open() {
+        let url = quote.location.lowercased().hasPrefix("http") ? URL(string: quote.location) : URL(fileURLWithPath: quote.location)
+        if let url { NSWorkspace.shared.open(url) }
+    }
+}
+
+/// Everything Emma has quoted, to look back on and to price new work from.
+struct QuoteHistoryView: View {
+    @EnvironmentObject private var quotes: QuoteStore
+    @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var navigator: Navigator
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    private var list: [Quote] {
+        let all = quotes.history(deals: deals)
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return all }
+        return all.filter { [$0.client, $0.title, $0.kind, $0.deliverables].joined(separator: " ").lowercased().contains(q) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Past quotes").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.text)
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(SecondaryButtonStyle())
+            }
+            summary
+            TextField("Search by client, kind of work or deliverable", text: $search).textFieldStyle(.roundedBorder)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    if list.isEmpty {
+                        Text("No quotes yet. Upload past proposals on a project or deal, and Lens also finds the ones you sent by email.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(list) { q in QuoteRow(quote: q, showClient: true) }
+                }
+            }
+            HStack(spacing: 10) {
+                Button("Help me price a new job") {
+                    dismiss()
+                    navigator.askDraft = "Help me price a new job. Ask me what it is, then compare it with my past quotes and suggest a price."
+                    navigator.askOpen = true
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Text("Ask Lens compares it with what you charged before.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 640, minHeight: 520)
+        .background(Theme.ground)
+    }
+
+    @ViewBuilder private var summary: some View {
+        let priced = list.filter { $0.amount != nil }
+        let accepted = priced.filter { $0.status == "Accepted" }
+        let decided = priced.filter { $0.status == "Accepted" || $0.status == "Declined" }
+        HStack(spacing: 28) {
+            figure("Quotes", "\(list.count)")
+            if !priced.isEmpty {
+                figure("Average quote", Money.string(priced.compactMap(\.amount).reduce(0, +) / Double(priced.count)))
+            }
+            if !accepted.isEmpty {
+                figure("Average accepted", Money.string(accepted.compactMap(\.amount).reduce(0, +) / Double(accepted.count)))
+            }
+            if !decided.isEmpty {
+                figure("Accepted", "\(Int((Double(accepted.count) / Double(decided.count) * 100).rounded()))%")
+            }
+        }
+    }
+
+    private func figure(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
+        }
+    }
+}

@@ -18,6 +18,10 @@ enum Attachments {
             } else if type?.conforms(to: .pdf) == true, let data = try? Data(contentsOf: url), data.count <= maxPDFBytes {
                 blocks.append(["type": "document", "title": url.lastPathComponent,
                                "source": ["type": "base64", "media_type": "application/pdf", "data": data.base64EncodedString()]])
+            } else if ["docx", "doc", "rtf", "odt"].contains(url.pathExtension.lowercased()),
+                      let doc = try? NSAttributedString(url: url, options: [:], documentAttributes: nil), !doc.string.isEmpty {
+                // Word and similar documents: their text.
+                blocks.append(["type": "text", "text": "<file name=\"\(url.lastPathComponent)\">\n\(doc.string.prefix(maxTextChars))\n</file>"])
             } else if type?.conforms(to: .text) == true || ["csv", "md", "json", "txt", "eml", "vtt", "srt"].contains(url.pathExtension.lowercased()),
                       let text = try? String(contentsOf: url, encoding: .utf8) {
                 blocks.append(["type": "text", "text": "<file name=\"\(url.lastPathComponent)\">\n\(text.prefix(maxTextChars))\n</file>"])
