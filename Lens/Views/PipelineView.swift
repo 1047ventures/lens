@@ -6,6 +6,7 @@ struct PipelineView: View {
     @EnvironmentObject private var navigator: Navigator
     @State private var showNew = false
     @State private var showRates = false
+    @State private var showQuotes = false
 
     var body: some View {
         if let id = navigator.dealID, deals.deal(id: id) != nil {
@@ -28,6 +29,8 @@ struct PipelineView: View {
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 16)
+                    Button("Past quotes") { showQuotes = true }
+                        .buttonStyle(SecondaryButtonStyle())
                     Button("Rates & profile") { showRates = true }
                         .buttonStyle(SecondaryButtonStyle())
                     Button("New inquiry") { showNew = true }
@@ -52,6 +55,7 @@ struct PipelineView: View {
         }
         .sheet(isPresented: $showNew) { NewDealSheet() }
         .sheet(isPresented: $showRates) { RateCardSheet() }
+        .sheet(isPresented: $showQuotes) { QuoteHistoryView() }
     }
 
     private var summary: String {

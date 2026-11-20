@@ -90,6 +90,8 @@ FILES = [
     (f"{APP_NAME}/Services/Attachments.swift",            f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/LensAI.swift",                 f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/LensScreen.swift",             f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/QuoteStore.swift",             f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Views/QuotesView.swift",                f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/GmailSync.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomNotes.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomAPI.swift",                f"{APP_NAME}/Services"),

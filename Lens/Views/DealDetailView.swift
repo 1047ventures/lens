@@ -35,6 +35,7 @@ struct DealDetailView: View {
                     header(deal)
                     actions(deal)
                     checks(deal)
+                    QuotesPanel(projectID: deal.projectID, dealID: deal.id, client: deal.client)
                     optionsSection(deal)
                     if let option = selectedOption(deal) {
                         ViewThatFits(in: .horizontal) {
