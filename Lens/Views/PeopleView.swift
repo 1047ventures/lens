@@ -616,7 +616,7 @@ struct MomentRow: View {
                     Text(moment.date.formatted(.dateTime.month(.abbreviated).day().year()))
                         .font(.system(size: 11)).foregroundStyle(Theme.muted)
                 }
-                Text(moment.detail).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(3)
+                Text(moment.detail).font(.system(size: 12)).foregroundStyle(stage == nil ? Theme.text3 : color).lineLimit(3)
             }
         }
         .contentShape(Rectangle())
@@ -643,7 +643,12 @@ struct MomentRow: View {
         }
     }
 
+    private var stage: ProjectStage? {
+        moment.kind == .project || moment.kind == .deal ? ProjectStage.mentioned(in: moment.detail) : nil
+    }
+
     private var color: Color {
+        if let stage { return stage.color }
         switch moment.kind {
         case .deal: return Palette.gold
         case .project: return Palette.mint

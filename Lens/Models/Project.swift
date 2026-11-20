@@ -20,6 +20,17 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
     }
 
     var next: ProjectStage? { ProjectStage(rawValue: rawValue + 1) }
+
+    /// The step a history line is about ("Paid", "Moved to Edit", "Shoot day at…"), if any.
+    static func mentioned(in text: String) -> ProjectStage? {
+        var t = text.lowercased().trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("moved to ") { t.removeFirst(9) }
+        let starts: [(String, ProjectStage)] = [
+            ("paid", .paid), ("deliver", .delivered), ("shot", .shoot), ("shoot", .shoot),
+            ("edit", .edit), ("booked", .booked), ("lead", .lead), ("inquiry", .lead), ("archiv", .archived)
+        ]
+        return starts.first { t.hasPrefix($0.0) }?.1
+    }
 }
 
 /// One line in a project's running history ("Booked", "Footage moved to the server"…).

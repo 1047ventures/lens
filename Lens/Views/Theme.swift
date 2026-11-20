@@ -62,6 +62,21 @@ struct StageBar: View {
     }
 }
 
+extension ProjectStage {
+    /// One colour per step, so a project's history reads at a glance.
+    var color: Color {
+        switch self {
+        case .lead: return Palette.slate
+        case .booked: return Palette.blue
+        case .shoot: return Palette.violet
+        case .edit: return Palette.orchid
+        case .delivered: return Palette.gold
+        case .paid: return Palette.lime
+        case .archived: return Theme.muted
+        }
+    }
+}
+
 /// Small uppercase section heading.
 struct SectionLabel: View {
     let text: String
