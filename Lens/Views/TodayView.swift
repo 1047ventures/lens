@@ -30,6 +30,7 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
+                needsYou
                 if logins.googleCalendarReady {
                     DashCard(title: "Today", color: Palette.blue) {
                         DayTimeline(events: events, loaded: eventsLoaded)
@@ -54,7 +55,6 @@ struct TodayView: View {
                         WeekStrip(projects: projects.active) { navigator.openProject($0) }
                     }
                 }
-                needsYou
                 AutoFiledToday()
                     .frame(maxWidth: 720, alignment: .leading)
             }
