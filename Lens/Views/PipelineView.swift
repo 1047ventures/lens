@@ -261,6 +261,8 @@ struct RateCardSheet: View {
                 }
                 Section("Day rates") {
                     money("Your day rate", $card.emmaDayRate)
+                    money("Your half day rate", $card.halfDay)
+                    money("Your hourly filming rate", $card.shootHourly)
                     money("Collaborator day rate (charged)", $card.collaboratorDayRate)
                     money("Collaborator day cost (what you pay)", $card.collaboratorDayCost)
                 }

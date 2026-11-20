@@ -3,6 +3,7 @@ import SwiftUI
 /// One potential gig: the options and their live prices, the budget and workload the
 /// proposal will show, what the user actually keeps, and the words of the pitch.
 struct DealDetailView: View {
+    @EnvironmentObject private var quotes: QuoteStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var people: PeopleStore
@@ -127,9 +128,11 @@ struct DealDetailView: View {
             }
             Button("Build proposal · \(BuilderStep.progress(deal))/\(BuilderStep.allCases.count)") { navigator.builderDealID = deal.id }
                 .buttonStyle(deal.stage == .inquiry ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))
-            Button("Preview proposal") { ProposalRenderer.open(deal, store: deals, projects: projects) }
+            Button(quotes.uploadedProposal(dealID: deal.id, projectID: deal.projectID) != nil ? "Open your proposal" : "Preview proposal") {
+                quotes.openProposal(for: deal, deals: deals, projects: projects)
+            }
                 .buttonStyle(SecondaryButtonStyle())
-                .disabled(deal.options.isEmpty)
+                .disabled(deal.options.isEmpty && quotes.uploadedProposal(dealID: deal.id, projectID: deal.projectID) == nil)
             if deal.stage.isOpen {
                 Button("Log a follow-up") { showFollowUp = true }.buttonStyle(SecondaryButtonStyle())
                 Button("Mark lost…") { showLost = true }.buttonStyle(SecondaryButtonStyle())
@@ -507,13 +510,22 @@ struct OptionColumn: View {
 
                 VStack(spacing: 6) {
                     Dial("Local days", bind(\.localDays), 0...30)
+                    Dial("Local half days", bind(\.halfDayCount), 0...20)
+                    Dial("Hours of filming", bind(\.hourCount), 0...40)
                     Dial("Out-of-state days", bind(\.travelDays), 0...10)
                     Dial("Crew beside you", bind(\.localCrew), 0...6)
                     Dial("Cameras", bind(\.cameraCount), 1...6)
                     Dial("Interviewees", bind(\.interviewees), 0...20)
-                    Dial("Film minutes", bind(\.filmMinutes), 1...60)
-                    Dial("Revision rounds", bind(\.revisionRounds), 0...6)
+                    if !option.footageOnly {
+                        Dial("Film minutes", bind(\.filmMinutes), 1...60)
+                        Dial("Revision rounds", bind(\.revisionRounds), 0...6)
+                    }
                 }
+                Toggle(isOn: bind(\.footageOnly)) {
+                    Text("Edited images and B-roll only, no final film").font(.system(size: 12)).foregroundStyle(Theme.text2)
+                }
+                .toggleStyle(.checkbox)
+                .help("For shoots where you deliver edited photos and B-roll clips without editing a finished film")
 
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Extra.allCases) { extra in

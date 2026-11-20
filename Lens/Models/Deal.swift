@@ -139,6 +139,29 @@ struct ScopeOption: Codable, Identifiable, Hashable {
     }
 
     var shootDays: Int { localDays + travelDays }
+
+    // Smaller shoots. Optional so older saved deals still load.
+    /// Local half days (about 4 to 5 hours on set).
+    var halfDays: Int? = nil
+    /// Local filming booked by the hour.
+    var shootHours: Int? = nil
+    /// "footage": edited images and B-roll only, no final film edit. nil means a finished film.
+    var deliverable: String? = nil
+
+    var halfDayCount: Int {
+        get { halfDays ?? 0 }
+        set { halfDays = newValue > 0 ? newValue : nil }
+    }
+    var hourCount: Int {
+        get { shootHours ?? 0 }
+        set { shootHours = newValue > 0 ? newValue : nil }
+    }
+    var footageOnly: Bool {
+        get { deliverable == "footage" }
+        set { deliverable = newValue ? "footage" : nil }
+    }
+    /// Shoot time in full-day equivalents, for planning, gear and media.
+    var filmDayEquivalent: Double { Double(shootDays) + Double(halfDayCount) * 0.5 + Double(hourCount) / 8 }
 }
 
 struct Contact: Codable, Hashable, Identifiable {
