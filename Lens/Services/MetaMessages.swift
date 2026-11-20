@@ -79,11 +79,23 @@ enum MetaMessages {
     static func conversations(_ site: Site) async throws -> [Conversation] {
         guard var token = token(site) else { return [] }
         if site == .instagram { token = await renewIfNeeded(token) }
-        let me = try await get(site, "me", ["fields": site == .instagram ? "user_id,username" : "id,name"], token: token)
-        let myIDs = Set([me["id"], me["user_id"]].compactMap { $0.map { "\($0)" } })
+        var out = try await conversations(site, host: site, platform: site == .instagram ? "instagram" : nil, token: token)
+        // A Facebook Page linked to an Instagram professional account also reads its Instagram DMs,
+        // so one Page code covers both (when there's no separate Instagram code).
+        if site == .facebook, !isConnected(.instagram),
+           let dms = try? await conversations(.instagram, host: .facebook, platform: "instagram", token: token) {
+            out += dms
+        }
+        return out
+    }
+
+    private static func conversations(_ site: Site, host: Site, platform: String?, token: String) async throws -> [Conversation] {
+        let me = try await get(host, "me", ["fields": host == .instagram ? "user_id,username" : "id,name,instagram_business_account"], token: token)
+        var myIDs = Set([me["id"], me["user_id"]].compactMap { $0.map { "\($0)" } })
+        if let ig = (me["instagram_business_account"] as? [String: Any])?["id"] { myIDs.insert("\(ig)") }
         var query = ["fields": "id,updated_time,messages.limit(10){id,created_time,from,to,message}", "limit": "25"]
-        if site == .instagram { query["platform"] = "instagram" }
-        let json = try await get(site, "me/conversations", query, token: token)
+        if let platform { query["platform"] = platform }
+        let json = try await get(host, "me/conversations", query, token: token)
         var out: [Conversation] = []
         for c in json["data"] as? [[String: Any]] ?? [] {
             guard let id = c["id"] as? String else { continue }
@@ -92,7 +104,7 @@ enum MetaMessages {
                 var item = m
                 // Some answers leave out the text; ask for that one message on its own.
                 if item["message"] == nil, let mid = m["id"] as? String,
-                   let full = try? await get(site, mid, ["fields": "id,created_time,from,to,message"], token: token) {
+                   let full = try? await get(host, mid, ["fields": "id,created_time,from,to,message"], token: token) {
                     item = full
                 }
                 let from = item["from"] as? [String: Any] ?? [:]
@@ -109,6 +121,14 @@ enum MetaMessages {
             out.append(Conversation(id: id, site: site, updated: updated, messages: messages.sorted { $0.date < $1.date }))
         }
         return out
+    }
+
+    /// The Instagram account linked to the connected Facebook Page, if any ("@emmapion").
+    static func linkedInstagram() async -> String? {
+        guard let token = token(.facebook),
+              let me = try? await get(.facebook, "me", ["fields": "instagram_business_account{username}"], token: token),
+              let ig = me["instagram_business_account"] as? [String: Any], let name = ig["username"] as? String else { return nil }
+        return "@" + name
     }
 
     /// Instagram tokens last 60 days. Renew it every week so it never runs out.

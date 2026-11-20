@@ -741,8 +741,15 @@ private struct SocialControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(MetaMessages.Site.allCases, id: \.rawValue) { site in
-                row(site)
+            if MetaMessages.isConnected(.facebook) && !MetaMessages.isConnected(.instagram) {
+                // One Page code covers both when Instagram is linked to the Page.
+                row(.facebook)
+                Text("Instagram DMs come in through your Facebook Page, as long as your Instagram is linked to it.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(MetaMessages.Site.allCases, id: \.rawValue) { site in
+                    row(site)
+                }
             }
             HStack(spacing: 10) {
                 if MetaMessages.Site.allCases.contains(where: MetaMessages.isConnected) {
