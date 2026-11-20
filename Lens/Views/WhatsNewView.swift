@@ -19,6 +19,12 @@ enum WhatsNew {
             Item(icon: "clock.arrow.circlepath", title: "Your past quotes",
                  detail: "Pipeline has Past quotes: everything you've quoted, what was accepted, and your averages. Ask Lens uses them to help price new jobs."),
         ]),
+        ("1.0.49", [
+            Item(icon: "bubble.left.and.text.bubble.right.fill", title: "Instagram and Facebook messages",
+                 detail: "Connect them once in Log-ins and Lens reads your DMs and Page messages every hour. Real inquiries show up on Pipeline."),
+            Item(icon: "star.fill", title: "Directories and reviews, no setup",
+                 detail: "Leads from The Knot, Thumbtack, Google and more come in by themselves, and your Google reviews are listed in Log-ins."),
+        ]),
         ("1.0.48", [
             Item(icon: "phone.fill", title: "Your My Notes calls",
                  detail: "Once Zoom is connected, every call you recorded with Zoom My Notes comes in with its notes and full transcript, and goes on the right project."),

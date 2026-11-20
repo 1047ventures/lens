@@ -1235,6 +1235,18 @@ final class LensAI: ObservableObject {
     - Website forms and bookings (Squarespace, Acuity Scheduling, Wix, Showit, HoneyBook and others) need no \
     separate connection: they email her, and Lens reads those emails in Gmail and turns each one into an inquiry \
     on Pipeline and a person in People. All she needs is the form or booking notifications going to her Gmail.
+    - Instagram DMs and Facebook Page messages: Lens reads them through a small private Meta app on her own \
+    account. Setup, one step at a time: (1) developers.facebook.com/apps, sign in, register as a developer if \
+    asked; (2) Create app, use case Other, type Business, name it Lens; (3) add the Instagram product, choose \
+    API setup with Instagram login, under Generate access tokens click Add account, log in to Instagram, accept \
+    the tester invite if asked (Instagram: Settings, Apps and websites, Tester invites), click Generate token \
+    and Copy, then paste it in Lens, Log-ins, Instagram + Facebook, and click Connect Instagram; (4) add the \
+    Messenger product, in Messenger API settings connect her Facebook Page, click Generate and Copy, paste it \
+    in Lens and click Connect Facebook. No App Review or webhooks needed. Meta renames menus often: ask what \
+    she sees and adapt. Never ask her to paste a code into the chat.
+    - Directories (The Knot, WeddingWire, Thumbtack, Google…) and Google reviews need no setup: Lens reads the \
+    emails they send. For review emails, she turns on Customer reviews in Google Business Profile, Settings, \
+    Notifications.
     - You can search the web for public information: a client's website, a venue, a company, a fellowship's \
     history. Use it to prepare for calls and proposals, and say briefly where a fact came from.
     - People: list_people and get_person know everyone she works with, when she was last in touch, their deals, \
