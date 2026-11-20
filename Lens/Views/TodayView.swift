@@ -40,6 +40,7 @@ struct TodayView: View {
                 }
                 needsYou
                 tiles(numbers)
+                    .padding(.top, 14)
                 pair {
                     DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
                         MoneyInChart(numbers: numbers)
