@@ -75,7 +75,7 @@ struct LoginsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
                 Text("Your Google account").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
-                TextField(ConnectionStore.defaultOwnerEmail, text: Binding(get: { logins.field("ownerEmail") }, set: { logins.setField("ownerEmail", $0) }))
+                TextField("Filled in when you sign in with Google", text: Binding(get: { logins.field("ownerEmail") }, set: { logins.setField("ownerEmail", $0) }))
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                 Text("Lens ignores any other account on this Mac.").font(.system(size: 12)).foregroundStyle(Theme.muted)
             }
@@ -158,7 +158,7 @@ struct LoginsView: View {
                     }
                     .frame(width: 280, alignment: .leading)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("EMMA DOES").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
+                        Text("YOU DO").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
                         ForEach(Array(info.steps.enumerated()), id: \.offset) { i, step in
                             HStack(alignment: .firstTextBaseline, spacing: 10) {
                                 Text("\(i + 1)").font(.system(size: 12, weight: .bold)).foregroundStyle(color).frame(width: 14)

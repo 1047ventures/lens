@@ -491,14 +491,15 @@ final class ConnectionStore: ObservableObject {
     // MARK: Whose accounts
 
     /// Lens only ever connects to the user's accounts. Anything signed in as someone else on this Mac is ignored.
-    static let defaultOwnerEmail = "emmapionberlin@gmail.com"
+    static let defaultOwnerEmail = ""
 
     var ownerEmail: String {
         let saved = field("ownerEmail").trimmingCharacters(in: .whitespaces).lowercased()
         return saved.isEmpty ? Self.defaultOwnerEmail : saved
     }
 
-    func isOwner(_ email: String) -> Bool { email.lowercased() == ownerEmail }
+    /// Until someone signs in, any account is theirs; the first Google sign-in becomes "your account".
+    func isOwner(_ email: String) -> Bool { ownerEmail.isEmpty || email.lowercased() == ownerEmail }
 
     // MARK: Simple answers
 
@@ -595,6 +596,7 @@ final class ConnectionStore: ObservableObject {
                 googleErrorCode = "wrong_account"
                 return
             }
+            if field("ownerEmail").trimmingCharacters(in: .whitespaces).isEmpty { setField("ownerEmail", result.email.lowercased()) }
             Keychain.set(result.refreshToken, for: "google.refreshToken")
             state.googleEmail = result.email
             state.googleConnectedAt = Date()
