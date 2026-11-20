@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import PDFKit
 
 /// A quote or proposal Emma sent: uploaded from a file, found in an email, or made in Lens.
 struct Quote: Codable, Identifiable, Hashable {
@@ -126,8 +127,15 @@ final class QuoteStore: ObservableObject {
         update(q)
         if let dealID = q.dealID, var deal = deals.deal(id: dealID) {
             deal.options = Self.options(from: q)
-            deal.chosenOptionID = deal.options.first(where: { $0.name == name })?.id
+            let chosen = deal.options.first(where: { $0.name == name })
+            deal.chosenOptionID = chosen?.id
             deals.update(deal)
+            // They said yes to it: book the job and give it a project (with its emails and call notes).
+            if deal.stage != .won, deal.projectID == nil, let chosen {
+                let projectID = deals.markWon(deal, option: chosen, projects: projects)
+                q.projectID = projectID
+                update(q)
+            }
         }
         if let projectID = q.projectID ?? q.dealID.flatMap({ deals.deal(id: $0)?.projectID }), let amount = q.amount {
             projects.edit(projectID) { $0.price = amount }
@@ -141,6 +149,11 @@ final class QuoteStore: ObservableObject {
             : q.packages
         return packages.map { p in
             var o = ScopeOption.starter()
+            // Her proposal sets the price; start the dials small instead of documentary-sized.
+            o.interviewees = 0
+            o.localCrew = 0
+            o.filmMinutes = 1
+            o.revisionRounds = 1
             o.name = p.name
             o.tagline = ""
             o.pitch = p.includes
@@ -188,14 +201,22 @@ final class QuoteStore: ObservableObject {
             }
             if ai.hasKey {
                 let (blocks, _) = await Task.detached { Attachments.blocks(for: [url]) }.value
+                var read: [String: Any]? = nil
+                var why = ""
                 if !blocks.isEmpty {
-                    do {
-                        if let read = try await ai.readQuote(blocks) { quote = Self.merge(read, into: quote) }
-                    } catch {
-                        problem = "Lens kept the file but couldn't read the price in it just now."
-                    }
+                    do { read = try await ai.readQuote(blocks) } catch { why = (error as? LocalizedError)?.errorDescription ?? "" }
+                }
+                // Second try: the PDF's text on its own.
+                if read == nil, let text = await Task.detached(operation: { Self.pdfText(url) }).value {
+                    read = try? await ai.readQuote([["type": "text", "text": "<file name=\"\(url.lastPathComponent)\">\n\(text)\n</file>"]])
+                }
+                if let read {
+                    quote = Self.merge(read, into: quote)
+                } else if blocks.isEmpty {
+                    problem = "Lens kept \(url.lastPathComponent) but can't read that kind of file. Save it as a PDF and upload that."
                 } else {
-                    problem = "Lens kept \(url.lastPathComponent) but can't read that kind of file. A PDF works best."
+                    problem = "Lens kept \(url.lastPathComponent) but couldn't read the price in it" + (why.isEmpty ? "." : ": \(why)")
+                        + " Click Read again, or type the price in."
                 }
             }
             add(quote)
@@ -220,6 +241,21 @@ final class QuoteStore: ObservableObject {
             }
         }
         reading = nil
+    }
+
+    /// Reads a quote's file again (for example after an update that reads more kinds of files).
+    func reread(_ quote: Quote, ai: LensAI, projects: ProjectStore, deals: DealStore) async {
+        guard quote.isFile else { return }
+        remove(quote)
+        await read([URL(fileURLWithPath: quote.location)], projectID: quote.projectID, dealID: quote.dealID,
+                   client: quote.client, ai: ai, projects: projects, deals: deals)
+    }
+
+    /// The text of a PDF, for when Claude can't take the PDF itself (too big, scanned oddly, or locked).
+    nonisolated static func pdfText(_ url: URL) -> String? {
+        guard url.pathExtension.lowercased() == "pdf", let doc = PDFDocument(url: url), let text = doc.string,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return String(text.prefix(200_000))
     }
 
     /// What Claude read from a quote, on top of what Lens already knew.

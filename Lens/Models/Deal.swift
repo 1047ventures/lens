@@ -160,6 +160,13 @@ struct ScopeOption: Codable, Identifiable, Hashable {
         get { deliverable == "footage" }
         set { deliverable = newValue ? "footage" : nil }
     }
+    // Emma's own numbers for this job, used instead of the rate card's rules of thumb. Optional so older
+    // saved deals still load; nil means "work it out from my rates".
+    var planningHoursSet: Double? = nil
+    var editHoursSet: Double? = nil
+    var mediaHoursSet: Double? = nil
+    var gearCostSet: Double? = nil
+
     /// Shoot time in full-day equivalents, for planning, gear and media.
     var filmDayEquivalent: Double { Double(shootDays) + Double(halfDayCount) * 0.5 + Double(hourCount) / 8 }
 }

@@ -238,7 +238,10 @@ struct ContentView: View {
             if connected { Task { await zoom.check() } }
         }
         // @Published sends the new list before it's stored, so pass it along rather than reading the store.
-        .onReceive(deals.$deals) { list in people.sync(deals: list, projects: projects.projects) }
+        .onReceive(deals.$deals) { list in
+            people.sync(deals: list, projects: projects.projects)
+            DealHistory.pull(list, gmail: gmail)
+        }
         .onReceive(projects.$projects) { list in
             people.sync(deals: deals.deals, projects: list)
             money.autoTagProjects(list)
@@ -530,6 +533,30 @@ enum ProjectHistory {
                 await zoom.backfill(project)
                 UserDefaults.standard.set(signature, forKey: key)
                 running.remove(project.id)
+            }
+        }
+    }
+}
+
+/// When a deal gets its people (or its first email), Lens goes back through Gmail for every conversation
+/// with them, however old, so the deal shows the whole thread of the job.
+@MainActor
+enum DealHistory {
+    private static var running = Set<UUID>()
+
+    static func pull(_ list: [Deal], gmail: GmailSync) {
+        for deal in list where deal.stage != .lost {
+            var people = deal.contacts.map { $0.email.lowercased() }.filter { $0.contains("@") }
+            for t in deal.emails ?? [] { people += GmailSync.emails(in: t).map { $0.lowercased() } }
+            let signature = Set(people).sorted().joined(separator: ";")
+            let key = "dealHistory.\(deal.id.uuidString)"
+            guard !signature.isEmpty, UserDefaults.standard.string(forKey: key) != signature, !running.contains(deal.id) else { continue }
+            running.insert(deal.id)
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                await gmail.backfill(deal: deal)
+                UserDefaults.standard.set(signature, forKey: key)
+                running.remove(deal.id)
             }
         }
     }
