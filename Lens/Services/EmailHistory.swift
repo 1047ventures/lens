@@ -190,15 +190,10 @@ final class EmailHistory: ObservableObject {
             let dates = (w["dates"] as? [String] ?? []).compactMap { day.date(from: $0) }.sorted()
             let upcoming = dates.first(where: { $0 > Date().addingTimeInterval(-86400) })
 
-            // Already in Lens: add any people and keywords it's missing, so its emails and calls come in.
+            // Already in Lens: add keywords and the date. Emma decides who is on it, so no people are added.
             if let id = UUID(uuidString: s("existing_id")) {
                 if projects.project(id: id) != nil {
                     projects.edit(id) { p in
-                        var list = p.people ?? []
-                        for person in people where !list.contains(where: {
-                            (!person.email.isEmpty && $0.email.lowercased() == person.email) || $0.name.lowercased() == person.name.lowercased()
-                        }) { list.append(person) }
-                        p.people = list.isEmpty ? nil : list
                         var words = p.keywords ?? []
                         for k in keywords where !words.contains(where: { $0.lowercased() == k.lowercased() }) { words.append(k) }
                         p.keywords = words.isEmpty ? nil : words

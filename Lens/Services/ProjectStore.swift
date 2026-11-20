@@ -165,6 +165,19 @@ final class ProjectStore: ObservableObject {
         }
     }
 
+    /// Takes someone off a project: Lens won't add or suggest them there again, and emails that
+    /// were only there because of them come off too.
+    func removePerson(_ person: ProjectPerson, from projectID: UUID) {
+        let e = person.email.lowercased()
+        edit(projectID) { p in
+            p.people = (p.people ?? []).filter { $0.id != person.id }
+            if p.people?.isEmpty == true { p.people = nil }
+            if e.contains("@"), !(p.notPeople ?? []).contains(e) { p.notPeople = (p.notPeople ?? []) + [e] }
+        }
+        if e.contains("@") { dropAutoFiled(.person, itemID: person.email, from: projectID) }
+        ProjectRelevance.tidy(self, projectID: projectID)
+    }
+
     /// Takes a person Lens added off the project, and remembers not to add them again.
     func removeAutoPerson(_ email: String, from projectID: UUID) {
         let e = email.lowercased()
@@ -341,55 +354,48 @@ final class ProjectStore: ObservableObject {
 /// every email that happens to include one of its people.
 @MainActor
 enum ProjectRelevance {
-    /// Words that point to this job: the project's name, the client, the people marked Client, and
-    /// Emma's keywords. Generic words ("project", "shoot", "video"…) are left out.
-    static func words(_ p: Project) -> [String] {
-        let common: Set<String> = ["project", "projects", "shoot", "shoots", "video", "videos", "photo", "photos", "film",
-                                   "films", "photography", "videography", "wedding", "event", "the", "and", "for", "with",
-                                   "session", "documentary", "commercial", "brand", "content", "interview", "meeting"]
-        var out: [String] = []
-        let phrases = [p.name, p.client] + (p.people ?? []).filter { $0.role.lowercased() == "client" }.map(\.name)
-        for phrase in phrases {
-            let lower = phrase.lowercased().trimmingCharacters(in: .whitespaces)
-            if lower.count >= 4 { out.append(lower) }
-            for w in lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
-                where w.count >= 4 && !common.contains(w) { out.append(w) }
-        }
-        for k in p.keywords ?? [] {
-            let lower = k.lowercased().trimmingCharacters(in: .whitespaces)
-            if lower.count >= 2 && !common.contains(lower) { out.append(lower) }
-        }
-        return Array(Set(out))
+    /// Emma's own address, so she never counts as "someone on the project".
+    static var me = ""
+
+    /// The email addresses of the people on the project's People list (not Emma's).
+    static func personEmails(_ p: Project) -> Set<String> {
+        let mine = me.lowercased()
+        return Set((p.people ?? []).map { $0.email.lowercased().trimmingCharacters(in: .whitespaces) }
+            .filter { $0.contains("@") && $0 != mine })
     }
 
-    /// The email addresses of the people Emma marked as the client.
-    static func clientEmails(_ p: Project) -> Set<String> {
-        Set((p.people ?? []).filter { $0.role.lowercased() == "client" }.map { $0.email.lowercased() }.filter { $0.contains("@") })
+    /// The email addresses in a conversation.
+    static func addresses(_ t: EmailThread) -> [String] {
+        (t.people ?? []).map { GmailAPI.parseAddress($0).email.lowercased() }.filter { $0.contains("@") }
     }
 
-    /// True when the conversation names the job (in the given text) or includes the client.
-    static func isAbout(_ p: Project, text: String, emails: [String]) -> Bool {
-        let t = text.lowercased()
-        let clients = clientEmails(p)
-        if emails.contains(where: { clients.contains($0.lowercased()) }) { return true }
-        return words(p).contains { w in
-            w.count <= 3 ? t.range(of: "\\b\(NSRegularExpression.escapedPattern(for: w))\\b", options: .regularExpression) != nil : t.contains(w)
+    /// A conversation belongs on a project only when someone on its People list is in it.
+    static func belongs(_ t: EmailThread, to p: Project) -> Bool {
+        let people = personEmails(p)
+        guard !people.isEmpty else { return false }
+        return addresses(t).contains { people.contains($0) }
+    }
+
+    /// Takes off a project every email that has none of its people in it. Projects with no one on
+    /// People yet are left alone, so nothing disappears before Emma has added anyone.
+    static func tidy(_ projects: ProjectStore, projectID: UUID) {
+        guard let p = projects.project(id: projectID), !personEmails(p).isEmpty else { return }
+        for t in p.emails ?? [] where !addresses(t).isEmpty && !belongs(t, to: p) {
+            projects.removeEmail(t.id, from: p.id)
         }
     }
 
-    /// One-time tidy: takes off a project the emails that neither name the job nor include its client.
+    /// Once: the new rule for every project, and people Lens added by itself come off again.
     static func tidy(_ projects: ProjectStore) {
         for p in projects.projects {
-            let key = "emailTidy.v1.\(p.id.uuidString)"
+            let key = "projectTidy.v2.\(p.id.uuidString)"
             guard !UserDefaults.standard.bool(forKey: key) else { continue }
             UserDefaults.standard.set(true, forKey: key)
-            guard !words(p).isEmpty || !clientEmails(p).isEmpty else { continue }
-            for t in p.emails ?? [] {
-                let emails = (t.people ?? []).map { GmailAPI.parseAddress($0).email }
-                if !isAbout(p, text: t.subject + " " + t.snippet + " " + (t.people ?? []).joined(separator: " "), emails: emails) {
-                    projects.removeEmail(t.id, from: p.id)
-                }
+            let added = (p.autoFiled ?? []).filter { $0.kind == .person }.map { $0.itemID.lowercased() }
+            for person in p.people ?? [] where added.contains(person.email.lowercased()) || PeopleStore.isAutomated(person.email) {
+                projects.removePerson(person, from: p.id)
             }
+            tidy(projects, projectID: p.id)
         }
     }
 }

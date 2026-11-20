@@ -215,7 +215,8 @@ struct ContentView: View {
                     deals.link(d, to: pid, option: nil, projects: projects)
                 }
             }
-            // Once: take emails off projects that aren't about the job (an earlier pull was too wide).
+            // Once: each project keeps only emails with its own people, and people Lens added come off.
+            ProjectRelevance.me = logins.ownerEmail
             ProjectRelevance.tidy(projects)
             // Once: clear junk Lens added to People before it got stricter.
             if !UserDefaults.standard.bool(forKey: "peopleTidy.v1") {

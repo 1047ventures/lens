@@ -111,8 +111,7 @@ final class ZoomNotes: ObservableObject {
                 await checkGmail(logins: logins, deals: deals, projects: projects)
             }
         } while again
-        // People who keep turning up on one project's calls and emails go on its People list.
-        projects.addRegulars()
+        // Emma decides who is on a project: Lens only suggests people (People tab).
     }
 
     // MARK: Straight from Zoom
