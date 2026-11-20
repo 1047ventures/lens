@@ -12,7 +12,8 @@ struct TodayView: View {
 
     private struct Item: Identifiable {
         enum Tone { case overdue, soon, neutral }
-        let id = UUID()
+        /// Stable across redraws so an opened row stays open.
+        var id: String { "\(actionTitle)|\(title)" }
         let tone: Tone
         let kicker: String
         let title: String
@@ -24,6 +25,8 @@ struct TodayView: View {
     @EnvironmentObject private var money: MoneyStore
     @State private var events: [LensCalendarEvent] = []
     @State private var eventsLoaded = false
+    @State private var openItems: Set<String> = []
+    @State private var showAllItems = false
 
     var body: some View {
         let numbers = TodayNumbers(money: money, deals: deals, projects: projects)
@@ -138,9 +141,22 @@ struct TodayView: View {
     }
 
     private var needsYou: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ColorLabel("Needs you · \(items.count)", items.contains { $0.tone == .overdue } ? Theme.coral : Theme.amber)
-            if items.isEmpty {
+        let all = items
+        let shown = showAllItems ? all : Array(all.prefix(4))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                ColorLabel("Needs you · \(all.count)", all.contains { $0.tone == .overdue } ? Theme.coral : Theme.amber)
+                Spacer()
+                if all.count > 4 {
+                    Button(showAllItems ? "Show fewer" : "Show all \(all.count)") {
+                        withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.teal)
+                }
+            }
+            if all.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle").foregroundStyle(Theme.teal)
                     Text("All clear. Nothing needs you right now.")
@@ -148,39 +164,61 @@ struct TodayView: View {
                 }
                 .panel()
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 12)], spacing: 12) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        HStack(alignment: .center, spacing: 14) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.kicker)
-                                    .font(.system(size: 11.5, weight: .bold))
-                                    .foregroundStyle(color(for: item.tone))
-                                Text(item.title)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Theme.text)
-                                    .lineLimit(1)
-                                Text(item.detail)
-                                    .font(.system(size: 12.5))
-                                    .foregroundStyle(Theme.muted)
-                                    .lineLimit(2)
-                            }
-                            Spacer(minLength: 8)
-                            if index == 0 {
-                                Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
-                            } else {
-                                Button(item.actionTitle, action: item.action).buttonStyle(SecondaryButtonStyle())
-                            }
-                        }
-                        .padding(.leading, 18).padding(.trailing, 14).padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
-                        .background(color(for: item.tone).opacity(0.06))
-                        .background(Theme.panel)
-                        .accentBar(color(for: item.tone))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-                    }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 10, alignment: .top)], alignment: .leading, spacing: 8) {
+                    ForEach(shown) { item in needRow(item) }
                 }
             }
         }
+    }
+
+    /// One thin line per thing; click it to see the detail and the button.
+    private func needRow(_ item: Item) -> some View {
+        let open = openItems.contains(item.id)
+        let tint = color(for: item.tone)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    if open { openItems.remove(item.id) } else { openItems.insert(item.id) }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Circle().fill(tint).frame(width: 7, height: 7)
+                    Text(item.title)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Text(item.kicker)
+                        .font(.system(size: 12))
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open {
+                HStack(alignment: .center, spacing: 12) {
+                    Text(item.detail)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
+                }
+                .padding(.leading, 31).padding(.trailing, 12).padding(.bottom, 12)
+                .transition(.opacity)
+            }
+        }
+        .background(open ? tint.opacity(0.07) : Color.clear)
+        .background(Theme.panel)
+        .accentBar(tint, cornerRadius: 10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(open ? tint.opacity(0.35) : Theme.line))
     }
 
     // MARK: - Data
