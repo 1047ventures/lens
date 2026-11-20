@@ -69,6 +69,17 @@ jobs:
           [ -z "$NOTES" ] && NOTES="Improvements and fixes."
           { echo "notes<<EOF"; echo "$NOTES"; echo "EOF"; } >> "$GITHUB_OUTPUT"
 
+      - name: Add the built-in Google sign-in (kept out of the code)
+        env:
+          GOOGLE_CLIENT_JSON: ${{ secrets.GOOGLE_CLIENT_JSON }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_JSON" ]; then
+            D=Lens/Assets.xcassets/GoogleClient.dataset
+            mkdir -p "$D"
+            printf '%s' "$GOOGLE_CLIENT_JSON" > "$D/google.json"
+            printf '{"info":{"author":"xcode","version":1},"data":[{"idiom":"universal","filename":"google.json"}]}' > "$D/Contents.json"
+          fi
+
       - name: Build, sign, notarize and publish
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}

@@ -316,6 +316,20 @@ enum GoogleClientFile {
     }
 }
 
+/// The Google client that ships inside Lens (added when GitHub builds it, never in the code),
+/// so anyone can click Sign in with Google without setting anything up.
+enum BuiltInGoogleClient {
+    static let pair: (id: String, secret: String)? = {
+        guard let data = NSDataAsset(name: "GoogleClient")?.data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let block = json["installed"] as? [String: Any],
+              let id = block["client_id"] as? String, !id.isEmpty,
+              let secret = block["client_secret"] as? String, !secret.isEmpty
+        else { return nil }
+        return (id, secret)
+    }()
+}
+
 /// Listens once on 127.0.0.1 for Google's redirect after sign-in, then shuts down.
 final class LoopbackReceiver: @unchecked Sendable {
     private let listener: NWListener
@@ -500,8 +514,13 @@ final class ConnectionStore: ObservableObject {
 
     // MARK: Google
 
-    var googleClientID: String { Keychain.get("google.clientID") ?? "" }
-    var hasGoogleClient: Bool { !googleClientID.isEmpty && Keychain.get("google.clientSecret") != nil }
+    /// Someone's own Google client (from a downloaded file) wins; otherwise the one built into Lens.
+    var googleClientID: String { Keychain.get("google.clientID") ?? BuiltInGoogleClient.pair?.id ?? "" }
+    var googleClientSecret: String? {
+        if Keychain.get("google.clientID") != nil { return Keychain.get("google.clientSecret") }
+        return BuiltInGoogleClient.pair?.secret
+    }
+    var hasGoogleClient: Bool { !googleClientID.isEmpty && googleClientSecret != nil }
     var googleConnected: Bool {
         guard let email = state.googleEmail else { return false }
         return isOwner(email) && Keychain.get("google.refreshToken") != nil
@@ -563,7 +582,7 @@ final class ConnectionStore: ObservableObject {
 
     func signInWithGoogle() async {
         importGoogleClient()
-        guard hasGoogleClient, let secret = Keychain.get("google.clientSecret") else { return }
+        guard hasGoogleClient, let secret = googleClientSecret else { return }
         googleBusy = true
         googleError = nil
         googleErrorCode = nil
@@ -596,7 +615,7 @@ final class ConnectionStore: ObservableObject {
     }
 
     func googleAccessToken() async throws -> String {
-        guard let secret = Keychain.get("google.clientSecret"), let refresh = Keychain.get("google.refreshToken") else {
+        guard let secret = googleClientSecret, let refresh = Keychain.get("google.refreshToken") else {
             throw GoogleAuth.explain(code: "invalid_grant")
         }
         return try await GoogleAuth.accessToken(clientID: googleClientID, clientSecret: secret, refreshToken: refresh)
