@@ -23,6 +23,9 @@ in step 7.
    - Meetings: `meeting:read:list_meetings` (list her meetings, used if the list above isn't allowed)
    - Meetings: `meeting:read:list_past_participants` (who was in each meeting)
    - Users: `user:read:user` (which Zoom account is connected)
+   - My Notes: `my_notes:read:note` and `my_notes:read:content` (calls she recorded with My Notes,
+     including phone calls, with their transcripts)
+   - Docs: `canvas:write:file_search` (lets Lens list her My Notes; despite the name it only searches)
    Nothing else. Lens never changes or deletes anything in Zoom.
 6. Left side: **Basic Information** (or **App Credentials**). Have her click the copy button next to
    **Client ID** and then **Client Secret**, one at a time, and paste each into Claude Code on her Mac.
@@ -39,3 +42,5 @@ in step 7.
 
 If Zoom says the address doesn't match, check step 4 (both boxes, exactly `http://127.0.0.1:8765/zoom`).
 If Lens says Zoom isn't letting it read summaries, check the scopes in step 5.
+If Lens says Zoom isn't letting it read My Notes, add the My Notes and Docs scopes from step 5, then click
+**Connect Zoom** again in Lens. My Notes also has to be turned on in Zoom (Settings, AI Companion, My Notes).

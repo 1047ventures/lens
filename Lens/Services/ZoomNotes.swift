@@ -29,6 +29,10 @@ final class ZoomNotes: ObservableObject {
     @Published private(set) var zoomNewest: Date?
     /// Every summary read from Zoom has been read, back to the oldest Zoom keeps.
     @Published private(set) var backfillDone = false
+    /// Set when Zoom won't let Lens read My Notes (the Zoom app needs the My Notes permissions).
+    @Published private(set) var myNotesProblem: String?
+    /// How many My Notes calls Lens has read.
+    var myNotesCount: Int { myNotesRead.count }
 
     private weak var deals: DealStore?
     private weak var projects: ProjectStore?
@@ -50,6 +54,11 @@ final class ZoomNotes: ObservableObject {
     private var lastZoomSync: Date?
     /// The Zoom app can only see her own meetings (not the whole account's summary list).
     private var userLevel = false
+    /// My Notes notes already read, and how far back Lens has looked through them.
+    private var myNotesRead: Set<String> = []
+    private var myNotesCursor: Date?
+    private var myNotesDone = false
+    private var lastMyNotesSync: Date?
     /// Notes the user said aren't for a client, so the same meeting read again from Zoom stays out of the way.
     private var dismissedStubs: [Stub] = []
     private var again = false
@@ -151,6 +160,15 @@ final class ZoomNotes: ObservableObject {
         lastZoomSync = started
         save()
 
+        // Calls she recorded with Zoom My Notes (phone calls too). Kept separate so a missing permission
+        // there doesn't stop the meeting summaries.
+        do {
+            try await syncMyNotes(logins: logins, deals: deals, projects: projects)
+            myNotesProblem = nil
+        } catch let failure as ZoomAuth.Failure where failure.code == "missing_scope" {
+            myNotesProblem = "Zoom isn't letting Lens read My Notes yet. Add the My Notes permissions to the Lens app in Zoom, then click Connect Zoom again."
+        }
+
         // First time: go back through her Zoom history a month at a time, saving after each month.
         while !backfillDone, let cursor = backfillCursor {
             let from = max(cursor.addingTimeInterval(-30 * 86400), Self.oldest)
@@ -159,6 +177,90 @@ final class ZoomNotes: ObservableObject {
             if from <= Self.oldest { backfillDone = true }
             updateReport()
             save()
+        }
+    }
+
+    // MARK: Zoom My Notes
+
+    /// Zoom's My Notes started in 2025, so there's nothing older to look for.
+    private static let myNotesOldest = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2025, month: 1, day: 1).date!
+
+    private func syncMyNotes(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        let now = Date()
+        // Recent days, one day at a time so each note gets the right date.
+        let since = (lastMyNotesSync ?? now.addingTimeInterval(-7 * 86400)).addingTimeInterval(-2 * 86400)
+        try await readMyNotesByDay(from: since, to: now, logins: logins, deals: deals, projects: projects)
+        if myNotesCursor == nil { myNotesCursor = since }
+        lastMyNotesSync = now
+        save()
+        // First time: go back a week at a time, and day by day inside any week that has notes.
+        while !myNotesDone, let cursor = myNotesCursor {
+            let from = max(cursor.addingTimeInterval(-7 * 86400), Self.myNotesOldest)
+            let week = try await ZoomAPI.myNotes(from: from, to: cursor, pageToken: nil, token: try await logins.zoomAccessToken())
+            if !week.notes.isEmpty {
+                try await readMyNotesByDay(from: from, to: cursor, logins: logins, deals: deals, projects: projects)
+            }
+            myNotesCursor = from
+            if from <= Self.myNotesOldest { myNotesDone = true }
+            save()
+        }
+    }
+
+    private func readMyNotesByDay(from: Date, to: Date, logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        var dayStart = from
+        while dayStart < to {
+            let dayEnd = min(dayStart.addingTimeInterval(86400), to)
+            var page: String?
+            repeat {
+                let result = try await ZoomAPI.myNotes(from: dayStart, to: dayEnd, pageToken: page, token: try await logins.zoomAccessToken())
+                for ref in result.notes where !myNotesRead.contains(ref.id) {
+                    try await readMyNote(ref, day: dayStart, logins: logins, deals: deals, projects: projects)
+                }
+                page = result.next
+            } while page != nil
+            dayStart = dayEnd
+            try? await Task.sleep(for: .milliseconds(120))   // gentle on Zoom
+        }
+    }
+
+    /// Reads one My Notes call (Zoom's notes and the transcript), writes a summary with Claude when Zoom
+    /// didn't, and files it like any other call.
+    private func readMyNote(_ ref: ZoomAPI.MyNoteRef, day: Date, logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
+        let key = "zoomnote:" + ref.id
+        if allNotes(deals: deals, projects: projects).contains(where: { $0.id == key }) { myNotesRead.insert(ref.id); return }
+        guard let n = try await ZoomAPI.myNote(ref, token: try await logins.zoomAccessToken()) else {
+            myNotesRead.insert(ref.id)
+            return
+        }
+        var parsed = n.content.isEmpty ? (overview: "", sections: [MeetingNoteSection](), nextSteps: [String]())
+                                       : ZoomAPI.parseMarkdown(n.content)
+        // Only a recording, no notes from Zoom: Claude writes the summary from the transcript.
+        if parsed.overview.isEmpty && parsed.sections.isEmpty, !n.transcript.isEmpty, let ai, ai.hasKey,
+           let written = try? await ai.summarizeCall(title: n.name, transcript: n.transcript) {
+            parsed = written
+        }
+        let shortText = parsed.overview.isEmpty ? (parsed.sections.first?.text ?? String(n.transcript.prefix(400))) : parsed.overview
+        // Noon on the day it was made, so it sorts with the rest of that day's calls.
+        let date = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day
+        let note = MeetingNote(id: key, title: n.name, date: date, summary: shortText,
+                               link: n.link.isEmpty ? "https://zoom.us" : n.link, source: "zoom_notes",
+                               overview: parsed.overview, sections: parsed.sections, nextSteps: parsed.nextSteps,
+                               people: n.speakers.map { MeetingPerson(name: $0, email: "") },
+                               transcript: n.transcript.isEmpty ? nil : n.transcript)
+        myNotesRead.insert(ref.id)
+        handled.insert(key)
+        progress = "Reading your Zoom My Notes… \(myNotesRead.count) so far"
+        if dismissedStubs.contains(where: { $0.matches(note) }) { kept.append(note); return }
+        switch match(note, deals: deals, projects: projects) {
+        case .sure(let dealID, let projectID):
+            place(note, dealID: dealID, projectID: projectID, auto: true)
+        case .maybe(let projectID):
+            if note.date > Date().addingTimeInterval(-Self.recentDays * 86400) {
+                unmatched.append(note)
+                if let projectID { suggested[note.id] = projectID }
+            } else {
+                kept.append(note)
+            }
         }
     }
 
@@ -746,6 +848,10 @@ final class ZoomNotes: ObservableObject {
         var lastZoomSync: Date?
         var userLevel: Bool?
         var dismissed: [Stub]?
+        var myNotesRead: [String]?
+        var myNotesCursor: Date?
+        var myNotesDone: Bool?
+        var lastMyNotesSync: Date?
     }
 
     private func load() {
@@ -768,6 +874,10 @@ final class ZoomNotes: ObservableObject {
         lastZoomSync = saved.lastZoomSync
         userLevel = saved.userLevel ?? false
         dismissedStubs = saved.dismissed ?? []
+        myNotesRead = Set(saved.myNotesRead ?? [])
+        myNotesCursor = saved.myNotesCursor
+        myNotesDone = saved.myNotesDone ?? false
+        lastMyNotesSync = saved.lastMyNotesSync
     }
 
     private func save() {
@@ -778,7 +888,9 @@ final class ZoomNotes: ObservableObject {
                           foundCount: foundCount, newestSummary: newestSummary,
                           suggested: suggested, remembered: remembered, kept: kept, zoomRead: Array(zoomRead),
                           zoomNewest: zoomNewest, backfillCursor: backfillCursor, backfillDone: backfillDone,
-                          lastZoomSync: lastZoomSync, userLevel: userLevel, dismissed: dismissedStubs)
+                          lastZoomSync: lastZoomSync, userLevel: userLevel, dismissed: dismissedStubs,
+                          myNotesRead: Array(myNotesRead), myNotesCursor: myNotesCursor, myNotesDone: myNotesDone,
+                          lastMyNotesSync: lastMyNotesSync)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("zoom_notes.json"), options: .atomic) }
     }
 }
