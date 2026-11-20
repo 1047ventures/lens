@@ -725,6 +725,11 @@ private struct FreshBooksControls: View {
             }
             if let problem = freshbooks.problem {
                 Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 /// Instagram and Facebook: paste the two codes from Emma's Meta app once, then Lens reads her messages hourly.
 private struct SocialControls: View {
     @EnvironmentObject private var gmail: GmailSync
