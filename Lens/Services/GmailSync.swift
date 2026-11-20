@@ -41,6 +41,20 @@ enum GmailAPI {
         }
     }
 
+    /// One page of thread ids for a Gmail search, and the token for the next page (nil on the last).
+    static func threadPage(matching q: String, pageToken: String?, max: Int, token: String) async throws
+        -> (threads: [(id: String, history: String)], next: String?) {
+        var query = [URLQueryItem(name: "q", value: q), URLQueryItem(name: "maxResults", value: String(max))]
+        if let pageToken, !pageToken.isEmpty { query.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+        let json = try await get("threads", query: query, token: token)
+        let threads: [(id: String, history: String)] = (json["threads"] as? [[String: Any]] ?? []).compactMap {
+            guard let id = $0["id"] as? String else { return nil }
+            return (id, ($0["historyId"] as? String) ?? "")
+        }
+        let next = json["nextPageToken"] as? String
+        return (threads, (next?.isEmpty ?? true) ? nil : next)
+    }
+
     static func thread(_ id: String, token: String) async throws -> Thread {
         let json = try await get("threads/\(id)", query: [URLQueryItem(name: "format", value: "full")], token: token)
         let messages = (json["messages"] as? [[String: Any]] ?? []).map(message)
@@ -410,7 +424,7 @@ final class GmailSync: ObservableObject {
             || domain == "instagram.com" || domain.hasSuffix(".instagram.com")
     }
 
-    private func threadLink(_ thread: GmailAPI.Thread, me: String) -> EmailThread {
+    func threadLink(_ thread: GmailAPI.Thread, me: String) -> EmailThread {
         let last = thread.messages.last!
         let subject = thread.messages.first(where: { !$0.subject.isEmpty })?.subject ?? ""
         let from = GmailAPI.parseAddress(last.from)

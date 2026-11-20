@@ -159,8 +159,10 @@ final class QuoteStore: ObservableObject {
         q.items = (read["items"] as? [[String: Any]] ?? []).compactMap { i in
             let name = ((i["name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return nil }
-            let amount = (i["amount"] as? Double) ?? (i["amount"] as? Int).map(Double.init)
-            return QuoteItem(name: name, amount: (amount ?? 0) > 0 ? amount : nil)
+            var amount: Double? = nil
+            if let d = i["amount"] as? Double { amount = d } else if let n = i["amount"] as? Int { amount = Double(n) }
+            if let a = amount, a <= 0 { amount = nil }
+            return QuoteItem(name: name, amount: amount)
         }
         if q.amount == nil {
             let sum = q.items.compactMap(\.amount).reduce(0, +)

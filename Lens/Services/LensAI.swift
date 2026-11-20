@@ -72,6 +72,7 @@ final class LensAI: ObservableObject {
     private weak var people: PeopleStore?
     private weak var logins: ConnectionStore?
     private weak var quotes: QuoteStore?
+    private weak var history: EmailHistory?
     private var messages: [[String: Any]] = []
     private var decisions: [String: CheckedContinuation<Bool, Never>] = [:]
     private var spend = Spend()
@@ -89,6 +90,134 @@ final class LensAI: ObservableObject {
     func attachZoom(_ zoom: ZoomNotes) { self.zoom = zoom }
     func attachLogins(_ logins: ConnectionStore) { self.logins = logins }
     func attachQuotes(_ quotes: QuoteStore) { self.quotes = quotes }
+    func attachHistory(_ history: EmailHistory) { self.history = history }
+
+    /// Works out Emma's current, upcoming and possible jobs from her email summaries and call notes.
+    func findWork(_ payload: String) async throws -> [[String: Any]] {
+        guard let answer = try await structured(system: Self.workPrompt, schema: Self.workSchema, payload: payload) else {
+            throw AIError("Claude's answer about your projects didn't come through. Lens will try again later.")
+        }
+        return answer["work"] as? [[String: Any]] ?? []
+    }
+
+    private static let workPrompt = """
+    You help a freelance filmmaker and photographer (Emma) keep her business app (Lens) up to date. You get \
+    summaries of her recent work email conversations, her recent call notes, and what's already in Lens \
+    (projects and pipeline deals, with their people and keywords). List each distinct job she has: one entry \
+    per job, merging all the emails and calls about it. Give a short name as she would say it ("CEJ \
+    documentary", "Parents Anonymous commercial photography", "Facial Aesthetics", "Jenna Shapiro shoot"), \
+    the client, status (booked, ongoing, upcoming, potential, done), any shoot or event dates (YYYY-MM-DD), \
+    the people on it with name, email and role (Client, Director, Producer, Crew, Interviewee, Editor, \
+    Planning), keywords that show an email or call is about it (the client's name, the film's title, short \
+    names like "CEJ" or "OFTV"), and one sentence on why you think so. If the job is already in Lens, set \
+    existing_id to its id (still list new people and keywords). sure is true only when the emails or calls \
+    clearly show a real job; a single vague mention is not sure. Leave out jobs that are done, and anything in \
+    removed_before. Use "" for anything not known.
+    """
+
+    private static let workSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "work": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "name": ["type": "string"],
+                        "client": ["type": "string"],
+                        "status": ["type": "string", "enum": ["booked", "ongoing", "upcoming", "potential", "done"]],
+                        "dates": ["type": "array", "items": ["type": "string"]],
+                        "people": [
+                            "type": "array",
+                            "items": [
+                                "type": "object",
+                                "properties": ["name": ["type": "string"], "email": ["type": "string"], "role": ["type": "string"]],
+                                "required": ["name", "email", "role"],
+                                "additionalProperties": false,
+                            ],
+                        ],
+                        "keywords": ["type": "array", "items": ["type": "string"]],
+                        "existing_id": ["type": "string"],
+                        "sure": ["type": "boolean"],
+                        "why": ["type": "string"],
+                    ],
+                    "required": ["name", "client", "status", "dates", "people", "keywords", "existing_id", "sure", "why"],
+                    "additionalProperties": false,
+                ],
+            ],
+        ],
+        "required": ["work"],
+        "additionalProperties": false,
+    ]
+
+    /// Reads a batch of email conversations: is it work, who's the person, what was discussed and decided,
+    /// and any prices quoted.
+    func readConversations(_ payload: String) async throws -> [[String: Any]] {
+        guard let answer = try await structured(system: Self.historyPrompt, schema: Self.historySchema, payload: payload) else {
+            throw AIError("Claude's answer about your email didn't come through. Lens will try again later.")
+        }
+        return answer["threads"] as? [[String: Any]] ?? []
+    }
+
+    private static let historyPrompt = """
+    You read email conversations of a freelance filmmaker and videographer (Emma, emma_email) to build her \
+    business records. For each conversation decide is_work: true when it's about her film or video work \
+    (inquiries, clients, collaborators, crew, vendors, bookings, quotes, projects), false for personal mail, \
+    newsletters, receipts, logins and admin. For work conversations give: the main other person (name, email, \
+    phone, company, role such as Client, Director, Producer, Crew, Vendor) using signatures for phone and \
+    company; the client or company the work is for; kind_of_work (Wedding, Documentary, Brand film, Event, \
+    Music video, Commercial, Other); a summary of two to four sentences of what was discussed; decisions as \
+    short bullet points (dates, scope, price agreed, deliverables, who does what); and every price Emma \
+    quoted (amount in dollars, what it was for, date YYYY-MM-DD, status Sent, Accepted or Declined if the \
+    replies make it clear, else ""). Also give project_name, a short name for the job as Emma would say it \
+    ("CEJ documentary", "Jenna Shapiro shoot"), and work_status: booked (agreed, not started), ongoing (being \
+    shot or edited), upcoming (booked with a date ahead), potential (being discussed, not agreed), done \
+    (finished and delivered) or other. Leave a field "" when it isn't in the emails. Plain English, no em dashes.
+    """
+
+    private static let historySchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "threads": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "thread_id": ["type": "string"],
+                        "is_work": ["type": "boolean"],
+                        "person": [
+                            "type": "object",
+                            "properties": ["name": ["type": "string"], "email": ["type": "string"], "phone": ["type": "string"],
+                                           "company": ["type": "string"], "role": ["type": "string"]],
+                            "required": ["name", "email", "phone", "company", "role"],
+                            "additionalProperties": false,
+                        ],
+                        "client": ["type": "string"],
+                        "kind_of_work": ["type": "string"],
+                        "project_name": ["type": "string"],
+                        "work_status": ["type": "string", "enum": ["booked", "ongoing", "upcoming", "potential", "done", "other", ""]],
+                        "summary": ["type": "string"],
+                        "decisions": ["type": "array", "items": ["type": "string"]],
+                        "quotes": [
+                            "type": "array",
+                            "items": [
+                                "type": "object",
+                                "properties": ["amount": ["type": "number"], "what": ["type": "string"],
+                                               "date": ["type": "string"], "status": ["type": "string"]],
+                                "required": ["amount", "what", "date", "status"],
+                                "additionalProperties": false,
+                            ],
+                        ],
+                    ],
+                    "required": ["thread_id", "is_work", "person", "client", "kind_of_work", "project_name", "work_status",
+                                 "summary", "decisions", "quotes"],
+                    "additionalProperties": false,
+                ],
+            ],
+        ],
+        "required": ["threads"],
+        "additionalProperties": false,
+    ]
 
     /// Said just before the picture of Lens's window in her message, so older pictures can be found and dropped.
     private static let screenMarker = "This is the Lens window as she sees it right now:"
@@ -601,6 +730,7 @@ final class LensAI: ObservableObject {
         case "get_library", "search_library": return "Looking through your drives…"
         case "get_rates": return "Checking your rates…"
         case "list_quotes": return "Looking through your past quotes…"
+        case "search_email_history": return "Reading your email history…"
         case "list_people", "get_person": return "Looking through People…"
         case "draft_email": return "Drafting the email…"
         case "open_screen": return "Opening it…"
@@ -728,6 +858,39 @@ final class LensAI: ObservableObject {
                 return d
             }
             return (json(["quotes_found": hits.count, "quotes": list]), false)
+        case "search_email_history":
+            guard let history else { return ("Lens hasn't read your email history yet.", false) }
+            let words = str("query").lowercased().split(separator: " ").map(String.init).filter { $0.count >= 3 }
+            // Subjects and people come from the conversations already on deals, projects and people.
+            var links: [String: EmailThread] = [:]
+            let dealThreads: [EmailThread] = deals.deals.flatMap { $0.emails ?? [] }
+            let projectThreads: [EmailThread] = projects.projects.flatMap { $0.emails ?? [] }
+            let personThreads: [EmailThread] = people?.people.flatMap { $0.threads } ?? []
+            for t in dealThreads { links[t.id] = t }
+            for t in projectThreads { links[t.id] = t }
+            for t in personThreads { links[t.id] = t }
+            var hits: [[String: Any]] = []
+            for (id, s) in history.summaries where !s.summary.isEmpty {
+                let link = links[id]
+                let subject: String = link?.subject ?? ""
+                let names: String = (link?.people ?? []).joined(separator: " ")
+                let parts: [String] = [s.summary, subject, names] + s.decisions
+                let text = parts.joined(separator: " ").lowercased()
+                guard words.isEmpty || words.contains(where: text.contains) else { continue }
+                var d: [String: Any] = ["summary": s.summary, "decisions": s.decisions]
+                if let link {
+                    d["subject"] = link.subject
+                    d["people"] = link.people ?? []
+                    d["last_message"] = day(link.lastDate)
+                }
+                hits.append(d)
+            }
+            hits.sort { a, b in
+                let x: String = (a["last_message"] as? String) ?? ""
+                let y: String = (b["last_message"] as? String) ?? ""
+                return x > y
+            }
+            return (json(["read": history.workCount, "matches": hits.count, "conversations": Array(hits.prefix(25))]), false)
         case "get_project":
             guard let p = projects.projects.first(where: { $0.id.uuidString == str("project_id") }) else { return ("No project with that id.", true) }
             var d = projectSummary(p)
@@ -1215,6 +1378,13 @@ final class LensAI: ObservableObject {
     - Keep replies short and plain: a sentence or two, or a short list. No jargon. Money in dollars.
     - When the user corrects you, states a preference, or explains how they like to work, offer to remember it with \
     the remember tool, phrased as a short rule.
+    - FreshBooks setup, one step at a time: (1) sign in at my.freshbooks.com and open the developer page \
+    (my.freshbooks.com/#/developer); (2) Create an app: name Lens, application type Private app, website \
+    https://localhost, redirect URI exactly https://localhost:8765/freshbooks, scopes user:profile:read, \
+    user:invoices:read, user:estimates:read, user:clients:read; save; (3) copy the Client ID and Client Secret \
+    into Lens, Log-ins, FreshBooks, and click Save keys; (4) click Connect FreshBooks, press Allow; (5) the next \
+    page won't load, which is expected: copy its whole address and paste it in Lens, then click Finish. Menus \
+    may be named a little differently: ask what she sees. Never ask her to paste the keys into the chat.
     - Pricing a new job or writing a quote: look at list_quotes for similar past work (same kind, similar days \
     and deliverables) and get_rates, then suggest a price with a short reason ("your last two brand films with \
     2 shoot days were $6,500 and $7,200"). Say which past quotes were accepted or declined.
@@ -1269,6 +1439,8 @@ final class LensAI: ObservableObject {
              ["deal_id": ["type": "string"]], ["deal_id"]),
         tool("list_quotes", "Emma's past quotes and proposals (uploaded files, ones found in email, and proposals made in Lens) with date, client, total, line items, kind of work, shoot days, deliverables and whether it was accepted. Use it whenever she prices a new job: compare with similar past work.",
              ["query": ["type": "string", "description": "Optional words to match (client, kind of work, deliverable). Empty for all."]], []),
+        tool("search_email_history", "Summaries of Emma's past work email conversations (what was discussed and decided, going back three years). Search by a person, client, company or topic.",
+             ["query": ["type": "string", "description": "Words to match: a name, company, project or topic."]], ["query"]),
         tool("list_projects", "List booked projects with stage, shoot date, location, hours logged, money spent and what the owner keeps.", [:], []),
         tool("get_project", "Everything in one project: details, history, the people on it with their roles (director, interviewee…), every Zoom call summary (meeting_notes), emails, the proposal from its deal (proposal_deal), attached files, time (hours in total, by type and this week, every entry) and money (price, received, every expense, what she keeps, per hour). Use it for questions across a whole project.", ["project_id": ["type": "string"]], ["project_id"]),
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",

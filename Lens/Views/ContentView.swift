@@ -100,6 +100,8 @@ struct ContentView: View {
     @StateObject private var zoom = ZoomNotes()
     @StateObject private var people = PeopleStore()
     @StateObject private var quotes = QuoteStore()
+    @StateObject private var history = EmailHistory()
+    @StateObject private var freshbooks = FreshBooksSync()
     @State private var whatsNew: [WhatsNew.Item] = []
 
     var body: some View {
@@ -191,6 +193,8 @@ struct ContentView: View {
         .environmentObject(zoom)
         .environmentObject(people)
         .environmentObject(quotes)
+        .environmentObject(history)
+        .environmentObject(freshbooks)
         // Look at the remembered drive as soon as the app opens, so Today is current right away.
         .task {
             // People: everyone on a deal or project, kept up to date as those change.
@@ -204,6 +208,13 @@ struct ContentView: View {
             ai.attachZoom(zoom)
             ai.attachLogins(logins)
             ai.attachQuotes(quotes)
+            ai.attachHistory(history)
+            // Every work conversation in Gmail, summarized, with people's details and quotes pulled out.
+            history.attach(logins: logins, gmail: gmail, people: people, quotes: quotes, ai: ai)
+            history.attachWork(deals: deals, projects: projects, zoom: zoom)
+            // FreshBooks invoices and estimates, hourly once connected.
+            freshbooks.attach(money: money, quotes: quotes, projects: projects)
+            history.start()
             logins.importZoomClient()
             zoom.start()
             // First time Lens opens, show the tour.

@@ -19,7 +19,7 @@ struct LoginsView: View {
         Group(id: "Google account", color: Palette.blue, note: "One sign-in covers most of what Lens reads.", items: [.google, .calendar, .drive]),
         Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes your calls.", items: [.zoom]),
         Group(id: "Where clients find you", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
-        Group(id: "Money", color: Palette.lime, note: "You log in on their own sites. Lens only reads statements.", items: [.bank, .paypal, .venmo]),
+        Group(id: "Money", color: Palette.lime, note: "You log in on their own sites. Lens only reads statements.", items: [.freshbooks, .bank, .paypal, .venmo]),
         Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending feature ideas.", items: [.claude, .github]),
         Group(id: "Coming later", color: Palette.slate, note: "", items: [.homeServer]),
     ]
@@ -209,6 +209,7 @@ struct LoginsView: View {
             }
         case .social: SocialControls()
         case .directories: DirectoryControls()
+        case .freshbooks: FreshBooksControls()
         case .bank, .paypal, .venmo: statementControls(id)
         case .claude: ClaudeControls()
         case .github: GitHubControls()
@@ -317,6 +318,16 @@ struct LoginsView: View {
     }
 
     static let info: [LoginID: Info] = [
+        .freshbooks: Info(
+            name: "FreshBooks", icon: "doc.text.fill",
+            covers: "Your invoices and estimates, kept up to date in Lens",
+            gets: ["Every invoice: unpaid ones show as money owed in Money and on the project, and they're marked paid when FreshBooks says so",
+                   "Every estimate goes into Past quotes, with whether it was accepted",
+                   "Checked every hour"],
+            never: "Read only: Lens never creates, changes or sends anything in FreshBooks.",
+            steps: ["One-time setup: make a small private app in FreshBooks. Click **Get help** and Claude walks you through it, one click at a time.",
+                    "Paste its two keys below, click **Connect FreshBooks** and press **Allow**.",
+                    "The page after Allow won't load. That's expected: copy its address from the top of the browser and paste it below."]),
         .google: Info(
             name: "Google (Gmail, Drive, Sheets, Docs, Calendar)", icon: "envelope.fill",
             covers: "Inquiries, client threads, Zoom summaries, payment emails, project folders, your calendar",
@@ -537,6 +548,7 @@ private struct ZoomControls: View {
 private struct GoogleControls: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var history: EmailHistory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -556,6 +568,15 @@ private struct GoogleControls: View {
                         .buttonStyle(.link)
                         .font(.system(size: 12))
                         .help("Forgets Lens's saved Google setup and sign-in, so a new Google file can be used.")
+                }
+                if let progress = history.progress {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progress).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    }
+                } else if history.workCount > 0 {
+                    Text("\(history.workCount) work conversations summarized" + (history.done ? "" : ", more on the way"))
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if logins.googleNeedsNewSignIn {
                     Text("Lens now also reads Google Calendar. Sign in once more to allow it.")
@@ -641,6 +662,70 @@ private struct GitHubControls: View {
                 .textFieldStyle(.roundedBorder).frame(width: 320)
             Button("Save") { ai.saveGitHubToken(token); token = "" }
                 .buttonStyle(SecondaryButtonStyle()).disabled(token.isEmpty)
+        }
+    }
+}
+
+/// FreshBooks: two keys from Emma's FreshBooks app, Allow, then paste the address of the page that doesn't load.
+private struct FreshBooksControls: View {
+    @EnvironmentObject private var freshbooks: FreshBooksSync
+    @EnvironmentObject private var navigator: Navigator
+    @State private var clientID = ""
+    @State private var secret = ""
+    @State private var pasted = ""
+    @State private var waitingForAddress = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if freshbooks.isConnected {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
+                    Text("Connected · \(freshbooks.businessName ?? "FreshBooks")").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                }
+                if let report = freshbooks.report {
+                    Text(report).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                HStack(spacing: 10) {
+                    Button(freshbooks.busy ? "Checking…" : "Check now") { Task { await freshbooks.sync() } }
+                        .buttonStyle(SecondaryButtonStyle()).disabled(freshbooks.busy)
+                    Button("Disconnect") { freshbooks.disconnect() }.buttonStyle(SecondaryButtonStyle())
+                }
+            } else {
+                if !freshbooks.hasKeys {
+                    HStack(spacing: 8) {
+                        TextField("Client ID", text: $clientID).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                        SecureField("Client Secret", text: $secret).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                        Button("Save keys") { freshbooks.saveKeys(id: clientID, secret: secret); clientID = ""; secret = "" }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .disabled(clientID.isEmpty || secret.isEmpty)
+                    }
+                }
+                HStack(spacing: 10) {
+                    Button("Connect FreshBooks") { freshbooks.openAllowPage(); waitingForAddress = true }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(!freshbooks.hasKeys)
+                    Button("Get help") {
+                        navigator.askDraft = "Walk me through connecting FreshBooks to Lens, one click at a time."
+                        navigator.askOpen = true
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                }
+                if waitingForAddress {
+                    Text("After you press Allow, the page won't load. Copy its address from the top of the browser and paste it here:")
+                        .font(.system(size: 12)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        TextField("https://localhost:8765/freshbooks?code=…", text: $pasted).textFieldStyle(.roundedBorder).frame(maxWidth: 420)
+                        Button(freshbooks.busy ? "Connecting…" : "Finish") {
+                            Task { await freshbooks.finish(pasted: pasted); if freshbooks.isConnected { pasted = ""; waitingForAddress = false } }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(pasted.isEmpty || freshbooks.busy)
+                    }
+                }
+            }
+            if let problem = freshbooks.problem {
+                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
