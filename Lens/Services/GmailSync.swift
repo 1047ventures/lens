@@ -978,14 +978,21 @@ final class GmailSync: ObservableObject {
         case notWork(IgnoreReason?, blockSender: Bool, blockDomain: Bool)
     }
 
-    /// Reads the last month of email, newest first, skipping conversations already gone through, ignored,
-    /// blocked or only from the user. Hands each card over as soon as it's read, so the first shows straight away.
+    /// Reads the last month of email, newest first, and hands over only the conversations Lens treated as
+    /// work (put on a deal or project, or suggested), skipping ones already gone through, ignored or blocked. Hands each card over as soon as it's read, so the first shows straight away.
     func teachCards(limit: Int = 40, found: @escaping (TeachCard) -> Void) async throws {
         guard ready, let logins, let deals, let projects else { return }
         let token = try await logins.googleAccessToken()
         let me = logins.ownerEmail
-        let ids = try await GmailAPI.threadIDs(
-            matching: "newer_than:30d -in:chats -in:spam -in:trash -category:promotions -category:social", max: 80, token: token)
+        let skip = "newer_than:30d -in:chats -in:spam -in:trash"
+        var ids = try await GmailAPI.threadIDs(
+            matching: "\(skip) -category:promotions -category:social -category:updates -category:forums", max: 100, token: token)
+        // Website forms and directories sometimes land in Updates: keep those.
+        let leadQuery = Self.leadSenders.map { "from:\($0.domain)" }.joined(separator: " ")
+        for extra in try await GmailAPI.threadIDs(matching: "\(skip) {\(leadQuery)}", max: 20, token: token)
+            where !ids.contains(where: { $0.id == extra.id }) {
+            ids.append(extra)
+        }
         var count = 0
         for item in ids where !taught.contains(item.id) && !ignored.contains(item.id) {
             guard count < limit else { break }
@@ -994,8 +1001,10 @@ final class GmailSync: ObservableObject {
             guard !thread.messages.isEmpty, !Self.isSocial(thread), !isBlocked(thread, me: me),
                   let sender = Self.realSender(thread, me: me) else { continue }
             let link = threadLink(thread, me: me)
-            found(TeachCard(thread: link, senderName: sender.name, senderEmail: sender.email,
-                            take: take(on: link.id, deals: deals, projects: projects)))
+            // Only what Lens thinks is work: emails it put on a job or suggested.
+            let take = take(on: link.id, deals: deals, projects: projects)
+            if take == .leftOut || take == .notSorted { continue }
+            found(TeachCard(thread: link, senderName: sender.name, senderEmail: sender.email, take: take))
             count += 1
         }
     }

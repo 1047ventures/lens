@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "Teach Lens": the last month of email, one conversation at a time. Each card shows what Lens did with it;
+/// "Teach Lens": the last month of email Lens treated as work, one at a time. Each card shows what Lens did with it;
 /// the user says whether that was right or fixes it, and Lens sorts her email by those answers from then on.
 struct TeachLensView: View {
     @EnvironmentObject private var gmail: GmailSync
@@ -29,7 +29,7 @@ struct TeachLensView: View {
                 Spacer()
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Reading your last month of email…").font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    Text("Finding the emails Lens thought were work…").font(.system(size: 13)).foregroundStyle(Theme.text3)
                 }
                 .frame(maxWidth: .infinity)
                 Spacer()
@@ -48,7 +48,7 @@ struct TeachLensView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Teach Lens what matters").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
-                Text("Go through your recent email. Tell Lens when it got one right, and fix it when it didn't.")
+                Text("These are the emails Lens thought were work. Tell it when it got one right, and fix it when it didn't.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text3)
             }
             Spacer()
@@ -173,7 +173,7 @@ struct TeachLensView: View {
             Spacer()
             if cards.isEmpty {
                 Text("Nothing new to go through.").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
-                Text("You've been through all of your last month of email. Come back after more comes in.")
+                Text("Lens hasn't treated any new emails from the last month as work. Come back after more comes in.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text3)
             } else {
                 Text("Thanks, that's all of them.").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
