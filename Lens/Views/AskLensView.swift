@@ -5,6 +5,7 @@ import AppKit
 /// propose changes the user approves with one tap, and learn how she likes to work.
 struct AskLensView: View {
     @EnvironmentObject private var ai: LensAI
+    @EnvironmentObject private var gmail: GmailSync
     @EnvironmentObject private var navigator: Navigator
     @State private var draft = ""
     @State private var voiceBase = ""
@@ -206,6 +207,17 @@ struct AskLensView: View {
 
     // MARK: Learned
 
+    private func ignoredRow(_ text: String, remove: @escaping () -> Void) -> some View {
+        HStack {
+            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text2)
+            Spacer()
+            Button("Remove", action: remove).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+        }
+        .padding(10)
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
     private var learned: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -228,6 +240,17 @@ struct AskLensView: View {
                     .padding(10)
                     .background(Theme.panel)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                if !gmail.blockedSenders.isEmpty || !gmail.blockedDomains.isEmpty {
+                    ColorLabel("Lens ignores", Palette.violet).padding(.top, 10)
+                    Text("Email and messages from these never show up as suggestions.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    ForEach(gmail.blockedDomains, id: \.self) { d in
+                        ignoredRow("Everyone at \(d)") { gmail.unblockDomain(d) }
+                    }
+                    ForEach(gmail.blockedSenders, id: \.self) { e in
+                        ignoredRow(e) { gmail.unblockSender(e) }
+                    }
                 }
                 if !ai.requests.isEmpty {
                     ColorLabel("Change requests sent", Palette.gold).padding(.top, 10)

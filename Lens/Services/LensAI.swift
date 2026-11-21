@@ -428,7 +428,7 @@ final class LensAI: ObservableObject {
     ]
 
     private static let emailPrompt = """
-    You help a freelance filmmaker and videographer keep their business app (Lens) in step with their Gmail.
+    You help a freelance filmmaker and videographer (the owner) keep their business app (Lens) in step with their email and Instagram and Facebook messages.
     You get recent email conversations plus the deals (possible gigs) and projects (booked gigs) already in Lens.
     Sort every conversation into exactly one kind:
     - "inquiry": someone new asking about hiring the owner (a shoot, a film, a video, availability, a quote). Website
@@ -442,6 +442,9 @@ final class LensAI: ObservableObject {
       or the link is a guess, set sure to false. For every other kind, sure is false.
     - "other": everything else (newsletters, receipts, personal mail, notifications, spam, her own reminders).
     When unsure between inquiry or project and other, choose other. Never invent details: use "" when unknown.
+    emma_rules are things the owner told Lens; follow them over your own judgement. emma_past_choices show what she \
+    added and ignored before (with her reason when she gave one); treat similar conversations the same way (same \
+    sender, same kind of sender, same kind of request).
     title: a short name for the job, like "Hartley wedding film" or "Bloom Co. brand video".
     client: the person or organisation. wants: one or two plain sentences on what they want.
     event_date: the shoot or event date as YYYY-MM-DD, or "". source: one of Email, Website form, The Knot,
@@ -1398,6 +1401,9 @@ final class LensAI: ObservableObject {
     - Keep replies short and plain: a sentence or two, or a short list. No jargon. Money in dollars.
     - When the user corrects you, states a preference, or explains how they like to work, offer to remember it with \
     the remember tool, phrased as a short rule.
+    - Rules you remember about which emails and messages matter (who is a client, which senders to skip) are also \
+    used when Lens sorts her email, Instagram and Facebook messages. When she says things like "emails from X aren't \
+    clients" or "ignore anything about Y", offer to remember it as a short rule.
     - FreshBooks setup, one step at a time: (1) sign in at my.freshbooks.com and open the developer page \
     (my.freshbooks.com/#/developer); (2) Create an app: name Lens, application type Private app, website \
     https://localhost, redirect URI exactly https://localhost:8765/freshbooks, scopes user:profile:read, \

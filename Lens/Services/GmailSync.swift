@@ -154,12 +154,27 @@ struct EmailSuggestion: Codable, Identifiable, Hashable {
     var targetProjectID: UUID?
     var targetName: String?
     var thread: EmailThread
+    /// The real sender (the From address, not Reply-To). Optional so older saved suggestions still load.
+    var senderEmail: String? = nil
+    var senderName: String? = nil
 
     var displayTitle: String {
         if !title.isEmpty { return title }
         if !client.isEmpty { return client }
         return thread.subject.isEmpty ? "An email" : thread.subject
     }
+}
+
+/// One thing the user decided about a suggestion, kept so Lens can learn what is relevant to her.
+struct EmailDecision: Codable, Hashable {
+    var senderEmail: String
+    var senderName: String
+    var subject: String
+    var source: String
+    var kind: String        // what Lens guessed: inquiry, project or attach
+    var verdict: String     // "added" or "ignored"
+    var reason: String?
+    var date: Date
 }
 
 /// Looks through recent Gmail when Lens opens and every hour after, and turns new inquiries and booked
@@ -193,6 +208,11 @@ final class GmailSync: ObservableObject {
     private weak var ai: LensAI?
     private weak var people: PeopleStore?
     private var ignored: Set<String> = []
+    /// Choices the user made on suggestions (newest last, at most 200). Fed to Claude when sorting.
+    private var decisions: [EmailDecision] = []
+    /// Senders and domains the user said to always ignore.
+    @Published private(set) var blockedSenders: [String] = []
+    @Published private(set) var blockedDomains: [String] = []
     /// Gmail's change counter for each conversation already looked at, so it's only read again when something new arrives.
     private var seen: [String: String] = [:]
     /// the user's own choices: "person:<email>" → project, so their next emails go to the same place.
@@ -295,7 +315,7 @@ final class GmailSync: ObservableObject {
                 }
                 // Put the conversation on the page of anyone in People, and suggest new people from real two-way conversations.
                 people?.noteThread(thread, link: link, me: me, onFile: false)
-                if ignored.contains(item.id) { seen[item.id] = item.history; continue }
+                if ignored.contains(item.id) || isBlocked(thread, me: me) { seen[item.id] = item.history; continue }
                 fresh.append((thread, link))
             }
 
@@ -356,7 +376,7 @@ final class GmailSync: ObservableObject {
                                    people: ["\(name)" + (them.handle.isEmpty ? "" : " (@\(them.handle))")])
             people?.noteDM(name: name, handle: them.handle, site: c.site.rawValue)
             // Already on a deal or project: bring it up to date there.
-            if linkKnown(link, deals: deals, projects: projects) || ignored.contains(key) { seen[key] = c.updated; continue }
+            if linkKnown(link, deals: deals, projects: projects) || ignored.contains(key) || isBlocked(thread, me: me) { seen[key] = c.updated; continue }
             fresh.append((thread, link))
         }
         if !fresh.isEmpty {
@@ -651,7 +671,15 @@ final class GmailSync: ObservableObject {
                   "text": String(m.text.prefix(2500))]
              }]
         }
-        let payload: [String: Any] = ["today": day, "emma_email": me, "already_in_lens": known, "conversations": conversations]
+        let rules = ai.notes.map(\.text)
+        let past: [[String: Any]] = decisions.suffix(40).map { d in
+            var item: [String: Any] = ["sender": d.senderEmail, "sender_name": d.senderName, "subject": d.subject,
+                                       "source": d.source, "lens_guessed": d.kind, "she": d.verdict]
+            if let r = d.reason, !r.isEmpty { item["reason"] = r }
+            return item
+        }
+        let payload: [String: Any] = ["today": day, "emma_email": me, "already_in_lens": known, "conversations": conversations,
+                                      "emma_rules": rules, "emma_past_choices": past]
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let answers = try await ai.sortEmails(String(decoding: data, as: UTF8.self))
 
@@ -667,6 +695,10 @@ final class GmailSync: ObservableObject {
                                              eventDate: dayFormat.date(from: s("event_date")), location: s("location"),
                                              budget: s("budget"), source: s("source").isEmpty ? "Email" : s("source"),
                                              thread: link)
+            if let sender = fresh.first(where: { $0.0.id == link.id }).flatMap({ Self.realSender($0.0, me: me) }) {
+                suggestion.senderEmail = sender.email
+                suggestion.senderName = sender.name
+            }
             switch s("kind") {
             case "inquiry": return suggestion
             case "project": suggestion.kind = .project; return suggestion
@@ -709,6 +741,7 @@ final class GmailSync: ObservableObject {
     func add(_ s: EmailSuggestion) -> UUID? {
         guard let deals, let projects else { return nil }
         suggestions.removeAll { $0.id == s.id }
+        record(s, verdict: "added", reason: nil)
         defer { save() }
         let name = s.client.isEmpty ? s.person : s.client
         switch s.kind {
@@ -740,6 +773,7 @@ final class GmailSync: ObservableObject {
     func file(_ s: EmailSuggestion, into projectID: UUID) {
         guard let deals, let projects else { return }
         suggestions.removeAll { $0.id == s.id }
+        record(s, verdict: "added", reason: nil)
         projects.attachEmail(s.thread, to: projectID)
         if let deal = deals.deals.first(where: { $0.projectID == projectID }) { deals.attachEmail(s.thread, to: deal.id) }
         notFor[s.id]?.removeAll { $0 == projectID }
@@ -810,10 +844,93 @@ final class GmailSync: ObservableObject {
         return thread
     }
 
-    func ignore(_ s: EmailSuggestion) {
+    /// Why the user ignored a suggestion. Lens learns from the reason.
+    enum IgnoreReason: String, CaseIterable {
+        case notWork = "Not work"
+        case spam = "Sales pitch or spam"
+        case handled = "Already handled"
+        case notForMe = "Not for me"
+    }
+
+    func ignore(_ s: EmailSuggestion, reason: IgnoreReason? = nil, blockSender: Bool = false, blockDomain: Bool = false) {
         suggestions.removeAll { $0.id == s.id }
         ignored.insert(s.id)
+        record(s, verdict: "ignored", reason: reason?.rawValue
+               ?? (blockSender ? "Always ignore this sender" : blockDomain ? "Always ignore this domain" : nil))
+        if let email = senderAddress(of: s) {
+            if blockSender, !blockedSenders.contains(email) { blockedSenders.append(email) }
+            if blockDomain, let d = Self.domain(of: email), !blockedDomains.contains(d) { blockedDomains.append(d) }
+        }
+        // Drop other waiting suggestions from what was just blocked.
+        suggestions.removeAll { other in
+            guard let e = senderAddress(of: other) else { return false }
+            return blockedSenders.contains(e) || (Self.domain(of: e).map(blockedDomains.contains) ?? false)
+        }
         save()
+    }
+
+    func unblockSender(_ email: String) { blockedSenders.removeAll { $0 == email }; save() }
+    func unblockDomain(_ domain: String) { blockedDomains.removeAll { $0 == domain }; save() }
+
+    /// Common mail providers: blocking the whole domain would block everyone who uses them.
+    static let mailProviders: Set<String> = ["gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "yahoo.com",
+                                             "outlook.com", "hotmail.com", "live.com", "msn.com", "aol.com", "proton.me", "protonmail.com"]
+
+    static func domain(of email: String) -> String? {
+        guard let at = email.lastIndex(of: "@") else { return nil }
+        let d = String(email[email.index(after: at)...]).lowercased()
+        return d.isEmpty ? nil : d
+    }
+
+    /// The sender address a user can choose to block, or nil when it shouldn't be offered. Lead emails from
+    /// directories and website forms are never offered: they come from no-reply addresses shared by every lead.
+    func senderAddress(of s: EmailSuggestion) -> String? {
+        guard let e = s.senderEmail, !e.isEmpty else { return nil }
+        return e
+    }
+
+    func canBlockSender(_ s: EmailSuggestion) -> Bool {
+        guard let e = senderAddress(of: s) else { return false }
+        return !Self.isLeadSender(e)
+    }
+
+    /// The domain to offer "Always ignore", or nil for personal mail providers, directories and Instagram/Facebook.
+    func blockableDomain(_ s: EmailSuggestion) -> String? {
+        guard canBlockSender(s), let e = senderAddress(of: s), let d = Self.domain(of: e), !Self.mailProviders.contains(d) else { return nil }
+        return d
+    }
+
+    private static func isLeadSender(_ email: String) -> Bool {
+        guard let d = domain(of: email) else { return false }
+        return leadSenders.contains { d == $0.domain || d.hasSuffix("." + $0.domain) }
+    }
+
+    /// The person who wrote to the user: the From of the first message that isn't hers. Never Reply-To.
+    static func realSender(_ thread: GmailAPI.Thread, me: String) -> (name: String, email: String)? {
+        let mine = me.lowercased()
+        for m in thread.messages {
+            let a = GmailAPI.parseAddress(m.from)
+            if a.email.isEmpty || a.email == mine || m.from.hasPrefix("Emma <") { continue }
+            return a
+        }
+        return nil
+    }
+
+    /// True when the conversation is from a sender or domain the user said to always ignore. Only the real
+    /// From address counts, so lead emails from directories (no-reply addresses) are never blocked this way.
+    private func isBlocked(_ thread: GmailAPI.Thread, me: String) -> Bool {
+        guard !blockedSenders.isEmpty || !blockedDomains.isEmpty,
+              let sender = Self.realSender(thread, me: me) else { return false }
+        if blockedSenders.contains(sender.email) { return true }
+        if let d = Self.domain(of: sender.email), blockedDomains.contains(where: { d == $0 || d.hasSuffix("." + $0) }) { return true }
+        return false
+    }
+
+    private func record(_ s: EmailSuggestion, verdict: String, reason: String?) {
+        decisions.append(EmailDecision(senderEmail: s.senderEmail ?? s.email, senderName: s.senderName ?? s.person,
+                                       subject: s.thread.subject, source: s.source, kind: s.kind.rawValue,
+                                       verdict: verdict, reason: reason, date: Date()))
+        if decisions.count > 200 { decisions.removeFirst(decisions.count - 200) }
     }
 
     // MARK: Saving (gmail.json; only thread ids and what the user will see, never passwords)
@@ -825,6 +942,9 @@ final class GmailSync: ObservableObject {
         var lastChecked: Date?
         var remembered: [String: UUID]?
         var notFor: [String: [UUID]]?
+        var decisions: [EmailDecision]?
+        var blockedSenders: [String]?
+        var blockedDomains: [String]?
     }
 
     private func load() {
@@ -838,6 +958,9 @@ final class GmailSync: ObservableObject {
         lastChecked = saved.lastChecked
         remembered = saved.remembered ?? [:]
         notFor = saved.notFor ?? [:]
+        decisions = saved.decisions ?? []
+        blockedSenders = saved.blockedSenders ?? []
+        blockedDomains = saved.blockedDomains ?? []
     }
 
     private func save() {
@@ -847,7 +970,8 @@ final class GmailSync: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = .prettyPrinted
         let saved = Saved(suggestions: suggestions, ignored: Array(ignored.suffix(3000)), seen: seen, lastChecked: lastChecked,
-                          remembered: remembered, notFor: notFor)
+                          remembered: remembered, notFor: notFor,
+                          decisions: decisions, blockedSenders: blockedSenders, blockedDomains: blockedDomains)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("gmail.json"), options: .atomic) }
     }
 }

@@ -116,14 +116,14 @@ private struct SuggestionRow: View {
                              onNone: { gmail.ignore(item) })
         } else if item.kind == .project {
             HStack(spacing: 8) {
-                Button("Ignore") { gmail.ignore(item) }.buttonStyle(SecondaryButtonStyle())
+                IgnoreMenu(item: item)
                 Button("Add project") { drafting = ProjectDraft(project: gmail.draft(for: item), email: item) }
                     .buttonStyle(PrimaryButtonStyle())
                     .help("Make a project for this, filled in from the email. You can check it before it's saved.")
             }
         } else {
             HStack(spacing: 8) {
-                Button("Ignore") { gmail.ignore(item) }.buttonStyle(SecondaryButtonStyle())
+                IgnoreMenu(item: item)
                 Button("Add") {
                     guard let id = gmail.add(item) else { return }
                     if item.kind == .project || item.targetProjectID != nil { navigator.openProject(id) } else { navigator.openDeal(id) }
@@ -191,5 +191,35 @@ struct EmailThreadsList: View {
                 }
             }
         }
+    }
+}
+
+/// Ignore, with a reason Lens learns from, or "always ignore" for a sender or domain.
+private struct IgnoreMenu: View {
+    @EnvironmentObject private var gmail: GmailSync
+    let item: EmailSuggestion
+
+    var body: some View {
+        Menu {
+            Button("Ignore") { gmail.ignore(item) }
+            Divider()
+            ForEach(GmailSync.IgnoreReason.allCases, id: \.self) { reason in
+                Button(reason.rawValue) { gmail.ignore(item, reason: reason) }
+            }
+            if gmail.canBlockSender(item), let email = gmail.senderAddress(of: item) {
+                Divider()
+                Button("Always ignore this sender") { gmail.ignore(item, blockSender: true) }
+                    .help(email)
+                if let domain = gmail.blockableDomain(item) {
+                    Button("Always ignore \(domain)") { gmail.ignore(item, blockDomain: true) }
+                }
+            }
+        } label: {
+            Text("Ignore")
+        }
+        .menuStyle(.button)
+        .buttonStyle(SecondaryButtonStyle())
+        .menuIndicator(.visible)
+        .fixedSize()
     }
 }
