@@ -220,6 +220,8 @@ final class GmailSync: ObservableObject {
     /// Conversations the user said aren't for a project: thread id → those projects, so Lens doesn't put them back.
     private var notFor: [String: [UUID]] = [:]
     private var loop: Task<Void, Never>?
+    /// Conversations the user has already been through in Teach Lens, so they aren't shown again.
+    private var taught: Set<String> = []
 
     /// Website builders and directories whose lead emails count as inquiries.
     static let leadSenders: [(domain: String, source: String)] = [
@@ -672,7 +674,10 @@ final class GmailSync: ObservableObject {
              }]
         }
         let rules = ai.notes.map(\.text)
-        let past: [[String: Any]] = decisions.suffix(40).map { d in
+        // Her corrections matter most, so more of those go in than plain "right" answers.
+        let corrections = decisions.filter { $0.verdict != "right" }.suffix(50)
+        let confirmed = decisions.filter { $0.verdict == "right" }.suffix(20)
+        let past: [[String: Any]] = (Array(corrections) + Array(confirmed)).map { d in
             var item: [String: Any] = ["sender": d.senderEmail, "sender_name": d.senderName, "subject": d.subject,
                                        "source": d.source, "lens_guessed": d.kind, "she": d.verdict]
             if let r = d.reason, !r.isEmpty { item["reason"] = r }
@@ -933,6 +938,161 @@ final class GmailSync: ObservableObject {
         if decisions.count > 200 { decisions.removeFirst(decisions.count - 200) }
     }
 
+    // MARK: Teach Lens
+
+    /// One recent conversation in "Teach Lens", with what Lens did with it, so the user can say if that was right.
+    struct TeachCard: Identifiable, Hashable {
+        enum Take: Hashable {
+            case onProject(UUID, String)
+            case onDeal(UUID, String)
+            case waiting(EmailSuggestion.Kind, String?)
+            case leftOut
+            case notSorted
+        }
+        let thread: EmailThread
+        let senderName: String
+        let senderEmail: String
+        let take: Take
+        var id: String { thread.id }
+
+        /// What Lens did, as Claude reads it when sorting.
+        var guess: String {
+            switch take {
+            case .onProject(_, let name), .onDeal(_, let name): return "put it on \(name)"
+            case .waiting(.inquiry, _): return "suggested it as a new inquiry"
+            case .waiting(.project, _): return "suggested it as booked work"
+            case .waiting(.attach, let name): return name.map { "asked if it belongs to \($0)" } ?? "asked which job it is for"
+            case .leftOut: return "left it out as not work"
+            case .notSorted: return "had not sorted it yet"
+            }
+        }
+    }
+
+    /// What the user said about a card.
+    enum TeachAnswer {
+        case right
+        case inquiry
+        case project
+        case belongsToProject(UUID)
+        case belongsToDeal(UUID)
+        case notWork(IgnoreReason?, blockSender: Bool, blockDomain: Bool)
+    }
+
+    /// Reads the last month of email, newest first, skipping conversations already gone through, ignored,
+    /// blocked or only from the user. Hands each card over as soon as it's read, so the first shows straight away.
+    func teachCards(limit: Int = 40, found: @escaping (TeachCard) -> Void) async throws {
+        guard ready, let logins, let deals, let projects else { return }
+        let token = try await logins.googleAccessToken()
+        let me = logins.ownerEmail
+        let ids = try await GmailAPI.threadIDs(
+            matching: "newer_than:30d -in:chats -in:spam -in:trash -category:promotions -category:social", max: 80, token: token)
+        var count = 0
+        for item in ids where !taught.contains(item.id) && !ignored.contains(item.id) {
+            guard count < limit else { break }
+            try Task.checkCancellation()
+            let thread = try await GmailAPI.thread(item.id, token: token)
+            guard !thread.messages.isEmpty, !Self.isSocial(thread), !isBlocked(thread, me: me),
+                  let sender = Self.realSender(thread, me: me) else { continue }
+            let link = threadLink(thread, me: me)
+            found(TeachCard(thread: link, senderName: sender.name, senderEmail: sender.email,
+                            take: take(on: link.id, deals: deals, projects: projects)))
+            count += 1
+        }
+    }
+
+    private func take(on id: String, deals: DealStore, projects: ProjectStore) -> TeachCard.Take {
+        if let p = projects.projects.first(where: { ($0.emails ?? []).contains { $0.id == id } }) { return .onProject(p.id, p.name) }
+        if let d = deals.deals.first(where: { ($0.emails ?? []).contains { $0.id == id } }) {
+            return .onDeal(d.id, d.title.isEmpty ? d.client : d.title)
+        }
+        if let s = suggestions.first(where: { $0.id == id }) { return .waiting(s.kind, s.targetName) }
+        return seen[id] != nil ? .leftOut : .notSorted
+    }
+
+    /// The sender and domain the user may choose to always ignore for a card (never directories or mail providers).
+    func blockable(_ card: TeachCard) -> (sender: String?, domain: String?) {
+        let s = teachSuggestion(card)
+        return (canBlockSender(s) ? card.senderEmail : nil, blockableDomain(s))
+    }
+
+    private func teachSuggestion(_ card: TeachCard) -> EmailSuggestion {
+        var s = suggestions.first(where: { $0.id == card.id })
+            ?? EmailSuggestion(kind: .inquiry, person: card.senderName, email: card.senderEmail, client: "", title: "", wants: "",
+                               eventDate: nil, location: "", budget: "", source: "Email", thread: card.thread)
+        s.senderEmail = card.senderEmail
+        s.senderName = card.senderName
+        return s
+    }
+
+    /// Does what the user said (moves the email, takes it off, or puts it on Pipeline) and keeps the answer,
+    /// with Lens's guess and her note, so the next sorting follows it.
+    func teach(_ card: TeachCard, _ answer: TeachAnswer, note: String = "") {
+        guard let deals, let projects else { return }
+        taught.insert(card.id)
+        let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        var s = teachSuggestion(card)
+
+        func takeOff() {
+            switch card.take {
+            case .onProject(let id, _):
+                _ = unfile(card.id, from: id)
+                notFor[card.id, default: []].append(id)
+            case .onDeal(let id, _):
+                deals.removeEmail(card.id, from: id)
+            default: break
+            }
+            suggestions.removeAll { $0.id == card.id }
+        }
+        func keep(_ verdict: String, _ reason: String? = nil) {
+            let why = [reason, note.isEmpty ? nil : note].compactMap { $0 }.joined(separator: ". ")
+            decisions.append(EmailDecision(senderEmail: card.senderEmail, senderName: card.senderName, subject: card.thread.subject,
+                                           source: "Email", kind: card.guess, verdict: verdict,
+                                           reason: why.isEmpty ? nil : why, date: Date()))
+            if decisions.count > 300 { decisions.removeFirst(decisions.count - 300) }
+        }
+
+        switch answer {
+        case .right:
+            keep("right")
+        case .inquiry, .project:
+            takeOff()
+            ignored.remove(card.id)
+            s.kind = { if case .project = answer { return .project } else { return .inquiry } }()
+            s.targetDealID = nil; s.targetProjectID = nil; s.targetName = nil
+            suggestions.insert(s, at: 0)
+            keep(s.kind == .project ? "said it is booked work" : "said it is a new inquiry")
+        case .belongsToProject(let id):
+            if case .onProject(let current, _) = card.take, current == id { keep("right"); break }
+            takeOff()
+            projects.attachEmail(card.thread, to: id)
+            if let deal = deals.deals.first(where: { $0.projectID == id }) { deals.attachEmail(card.thread, to: deal.id) }
+            notFor[card.id]?.removeAll { $0 == id }
+            for e in Self.emails(in: card.thread) { remembered["person:" + e] = id }
+            keep("said it belongs to \(projects.project(id: id)?.name ?? "another project")")
+        case .belongsToDeal(let id):
+            if case .onDeal(let current, _) = card.take, current == id { keep("right"); break }
+            takeOff()
+            deals.attachEmail(card.thread, to: id)
+            let deal = deals.deal(id: id)
+            keep("said it belongs to \(deal.map { $0.title.isEmpty ? $0.client : $0.title } ?? "another deal")")
+        case .notWork(let reason, let blockSender, let blockDomain):
+            takeOff()
+            ignored.insert(card.id)
+            let (sender, domain) = blockable(card)
+            if blockSender, let sender, !blockedSenders.contains(sender) { blockedSenders.append(sender) }
+            if blockDomain, let domain, !blockedDomains.contains(domain) { blockedDomains.append(domain) }
+            if blockSender || blockDomain {
+                suggestions.removeAll { other in
+                    guard let e = senderAddress(of: other) else { return false }
+                    return blockedSenders.contains(e) || (Self.domain(of: e).map(blockedDomains.contains) ?? false)
+                }
+            }
+            keep("said it is not work", reason?.rawValue
+                 ?? (blockSender ? "Always ignore this sender" : blockDomain ? "Always ignore this domain" : nil))
+        }
+        save()
+    }
+
     // MARK: Saving (gmail.json; only thread ids and what the user will see, never passwords)
 
     private struct Saved: Codable {
@@ -945,6 +1105,7 @@ final class GmailSync: ObservableObject {
         var decisions: [EmailDecision]?
         var blockedSenders: [String]?
         var blockedDomains: [String]?
+        var taught: [String]?
     }
 
     private func load() {
@@ -961,6 +1122,7 @@ final class GmailSync: ObservableObject {
         decisions = saved.decisions ?? []
         blockedSenders = saved.blockedSenders ?? []
         blockedDomains = saved.blockedDomains ?? []
+        taught = Set(saved.taught ?? [])
     }
 
     private func save() {
@@ -971,7 +1133,8 @@ final class GmailSync: ObservableObject {
         encoder.outputFormatting = .prettyPrinted
         let saved = Saved(suggestions: suggestions, ignored: Array(ignored.suffix(3000)), seen: seen, lastChecked: lastChecked,
                           remembered: remembered, notFor: notFor,
-                          decisions: decisions, blockedSenders: blockedSenders, blockedDomains: blockedDomains)
+                          decisions: decisions, blockedSenders: blockedSenders, blockedDomains: blockedDomains,
+                          taught: Array(taught.suffix(3000)))
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("gmail.json"), options: .atomic) }
     }
 }

@@ -45,10 +45,7 @@ struct ProjectDetailView: View {
                         VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance; AutoFiledPanel(project: project) }
                     }
                 case .people:
-                    VStack(alignment: .leading, spacing: 28) {
-                        ProjectPeopleTab(project: project)
-                        PeoplePanel(target: .project(project.id))
-                    }
+                    ProjectPeopleTab(project: project)
                 case .notes: ProjectNotesTab(project: project)
                 case .emails: ProjectEmailsTab(project: project)
                 case .proposal: ProjectProposalTab(project: project)

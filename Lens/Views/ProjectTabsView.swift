@@ -29,6 +29,8 @@ extension ProjectStore {
 struct ProjectPeopleTab: View {
     let project: Project
     @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var peopleStore: PeopleStore
+    @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var logins: ConnectionStore
     @State private var name = ""
     @State private var email = ""
@@ -105,7 +107,15 @@ struct ProjectPeopleTab: View {
     private func row(_ person: ProjectPerson) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                if let entry = peopleStore.person(for: person) {
+                    Button { navigator.openPerson(entry.id) } label: {
+                        Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open \(person.name) in People")
+                } else {
+                    Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                }
                 Text(person.email.isEmpty ? "No email" : person.email)
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
                     .textSelection(.enabled)

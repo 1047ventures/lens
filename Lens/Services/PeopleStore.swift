@@ -639,11 +639,35 @@ final class PeopleStore: ObservableObject {
         p.dealIDs.compactMap { deals?.deal(id: $0) }.sorted { $0.lastTouch > $1.lastTouch }
     }
 
+    /// Only projects that still list them on the project's own People list count. Older automatic links
+    /// stay saved but aren't shown, so taking someone off a project takes them off everywhere.
     func projects(for p: Person) -> [Project] {
-        p.projectIDs.compactMap { projects?.project(id: $0) }.sorted { ($0.shootDate ?? $0.createdAt) > ($1.shootDate ?? $1.createdAt) }
+        p.projectIDs.compactMap { projects?.project(id: $0) }.filter { Self.isOn(p, $0) }
+            .sorted { ($0.shootDate ?? $0.createdAt) > ($1.shootDate ?? $1.createdAt) }
     }
 
-    func people(onProject id: UUID) -> [Person] { sorted.filter { $0.projectIDs.contains(id) } }
+    func people(onProject id: UUID) -> [Person] {
+        guard let project = projects?.project(id: id) else { return [] }
+        return sorted.filter { $0.projectIDs.contains(id) && Self.isOn($0, project) }
+    }
+
+    /// The People entry for someone on a project's own list, if there is one.
+    func person(for member: ProjectPerson) -> Person? {
+        let email = member.email.trimmingCharacters(in: .whitespaces).lowercased()
+        if email.contains("@"), let p = sorted.first(where: { $0.emails.contains(email) }) { return p }
+        let key = Person.nameKey(member.name)
+        return key.isEmpty ? nil : sorted.first { Person.nameKey($0.name) == key }
+    }
+
+    /// True when the project's own People list has this person (by email, or by name when there's no email).
+    static func isOn(_ p: Person, _ project: Project) -> Bool {
+        (project.people ?? []).contains { member in
+            let email = member.email.trimmingCharacters(in: .whitespaces).lowercased()
+            if email.contains("@") { return p.emails.contains(email) }
+            let key = Person.nameKey(member.name)
+            return !key.isEmpty && Person.nameKey(p.name) == key
+        }
+    }
     func people(onDeal id: UUID) -> [Person] { sorted.filter { $0.dealIDs.contains(id) } }
 
     /// Their own conversations plus those on their deals and projects, newest first.

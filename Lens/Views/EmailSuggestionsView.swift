@@ -10,6 +10,7 @@ struct EmailSuggestionsPanel: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator
     let place: Place
+    @State private var teaching = false
 
     private var items: [EmailSuggestion] {
         place == .pipeline ? gmail.suggestions(for: [.inquiry, .attach], deals: true)
@@ -35,6 +36,9 @@ struct EmailSuggestionsPanel: View {
                     Text(statusText).font(.system(size: 12)).foregroundStyle(Theme.muted)
                     Spacer()
                     if gmail.checking { ProgressView().controlSize(.small) }
+                    Button("Teach Lens") { teaching = true }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .help("Go through your recent email and tell Lens what matters, so it sorts better")
                     Button("Check email now") { Task { await gmail.check() } }
                         .buttonStyle(SecondaryButtonStyle())
                         .disabled(gmail.checking)
@@ -55,6 +59,7 @@ struct EmailSuggestionsPanel: View {
             }
             .panel(padding: 18)
             .accentBar(Palette.blue)
+            .sheet(isPresented: $teaching) { TeachLensView() }
         }
     }
 

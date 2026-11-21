@@ -442,9 +442,10 @@ final class LensAI: ObservableObject {
       or the link is a guess, set sure to false. For every other kind, sure is false.
     - "other": everything else (newsletters, receipts, personal mail, notifications, spam, her own reminders).
     When unsure between inquiry or project and other, choose other. Never invent details: use "" when unknown.
-    emma_rules are things the owner told Lens; follow them over your own judgement. emma_past_choices show what she \
-    added and ignored before (with her reason when she gave one); treat similar conversations the same way (same \
-    sender, same kind of sender, same kind of request).
+    emma_rules are things the owner told Lens; follow them over your own judgement. emma_past_choices show what Lens \
+    did (lens_guessed) and what she said (she): added, ignored, right, or a correction such as "said it is not work" or \
+    "said it belongs to X", with her reason or note when she gave one. Never repeat a mistake she corrected, and treat \
+    similar conversations the same way (same sender, same kind of sender, same kind of request).
     title: a short name for the job, like "Hartley wedding film" or "Bloom Co. brand video".
     client: the person or organisation. wants: one or two plain sentences on what they want.
     event_date: the shoot or event date as YYYY-MM-DD, or "". source: one of Email, Website form, The Knot,
