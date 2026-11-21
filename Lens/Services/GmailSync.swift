@@ -317,7 +317,9 @@ final class GmailSync: ObservableObject {
                 }
                 // Put the conversation on the page of anyone in People, and suggest new people from real two-way conversations.
                 people?.noteThread(thread, link: link, me: me, onFile: false)
-                if ignored.contains(item.id) || isBlocked(thread, me: me) { seen[item.id] = item.history; continue }
+                if ignored.contains(item.id) || isBlocked(thread, me: me) || isFromMachine(thread, me: me) {
+                    seen[item.id] = item.history; continue
+                }
                 fresh.append((thread, link))
             }
 
@@ -931,6 +933,30 @@ final class GmailSync: ObservableObject {
         return false
     }
 
+    /// Sent by a machine (no-reply, notifications, receipts, newsletters, app alerts), not a person. Never work,
+    /// except website forms and directories, whose lead emails come from no-reply addresses.
+    /// Kept strict on purpose: a real client's address must never match, so only plain robot names and
+    /// sending-only services count (not whole companies, which can be clients).
+    static func isMachine(_ email: String) -> Bool {
+        let e = email.lowercased()
+        guard !isLeadSender(e), let at = e.lastIndex(of: "@") else { return false }
+        let local = String(e[..<at]), domain = String(e[e.index(after: at)...])
+        let robotWords = ["noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply",
+                          "notification", "mailer-daemon", "postmaster", "bounce", "newsletter", "digest"]
+        if robotWords.contains(where: local.contains) { return true }
+        let robotNames: Set<String> = ["news", "notify", "alerts", "alert", "updates", "billing", "invoice", "invoices",
+                                       "receipts", "receipt", "orders", "marketing", "automated", "support"]
+        if robotNames.contains(local) { return true }
+        let senders = ["github.com", "mcsv.net", "sendgrid.net", "mailgun.org", "amazonses.com",
+                       "hubspotemail.net", "klaviyomail.com", "calendar.google.com", "substack.com", "accounts.google.com"]
+        return senders.contains { domain == $0 || domain.hasSuffix("." + $0) }
+    }
+
+    private func isFromMachine(_ thread: GmailAPI.Thread, me: String) -> Bool {
+        guard let sender = Self.realSender(thread, me: me) else { return false }
+        return Self.isMachine(sender.email)
+    }
+
     private func record(_ s: EmailSuggestion, verdict: String, reason: String?) {
         decisions.append(EmailDecision(senderEmail: s.senderEmail ?? s.email, senderName: s.senderName ?? s.person,
                                        subject: s.thread.subject, source: s.source, kind: s.kind.rawValue,
@@ -998,7 +1024,7 @@ final class GmailSync: ObservableObject {
             guard count < limit else { break }
             try Task.checkCancellation()
             let thread = try await GmailAPI.thread(item.id, token: token)
-            guard !thread.messages.isEmpty, !Self.isSocial(thread), !isBlocked(thread, me: me),
+            guard !thread.messages.isEmpty, !Self.isSocial(thread), !isBlocked(thread, me: me), !isFromMachine(thread, me: me),
                   let sender = Self.realSender(thread, me: me) else { continue }
             let link = threadLink(thread, me: me)
             // Only what Lens thinks is work: emails it put on a job or suggested.
@@ -1132,6 +1158,8 @@ final class GmailSync: ObservableObject {
         blockedSenders = saved.blockedSenders ?? []
         blockedDomains = saved.blockedDomains ?? []
         taught = Set(saved.taught ?? [])
+        // Suggestions from machines (app alerts, receipts) that got through before Lens knew better.
+        suggestions.removeAll { s in s.senderEmail.map(Self.isMachine) ?? false }
     }
 
     private func save() {
