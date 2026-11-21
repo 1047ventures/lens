@@ -910,7 +910,7 @@ final class GmailSync: ObservableObject {
         let mine = me.lowercased()
         for m in thread.messages {
             let a = GmailAPI.parseAddress(m.from)
-            if a.email.isEmpty || a.email == mine || m.from.hasPrefix("Emma <") { continue }
+            if a.email.isEmpty || a.email == mine { continue }
             return a
         }
         return nil
