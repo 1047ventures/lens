@@ -321,7 +321,7 @@ struct Sidebar: View {
             .accessibilityElement(children: .combine)
             Section {
                 ForEach(SidebarSection.main) { section in
-                    Label(section.rawValue, systemImage: section.systemImage)
+                    Label(section == .pipeline && Appearance.shared.simple ? "Inquiries" : section.rawValue, systemImage: section.systemImage)
                         .badge(section == .pipeline ? deals.open.filter(\.isStale).count
                                : section == .people ? people.followUpsDue.count
                                : section == .logins ? logins.progress.total - logins.progress.done : 0)

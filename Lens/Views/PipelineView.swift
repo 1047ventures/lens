@@ -4,16 +4,153 @@ import SwiftUI
 struct PipelineView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
     @State private var showNew = false
+    @State private var closedOpen: Set<String> = []
     @State private var showRates = false
     @State private var showQuotes = false
 
     var body: some View {
         if let id = navigator.dealID, deals.deal(id: id) != nil {
             DealDetailView(dealID: id)
+        } else if appearance.simple {
+            simpleInquiries
         } else {
             board
         }
+    }
+
+    // MARK: - Simple
+
+    private enum SimpleKind { case reply, quote, waiting, booked, lost }
+
+    private func simpleGroup(_ title: String, _ kind: SimpleKind, _ items: [Deal], collapsible: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if collapsible {
+                Button {
+                    withAnimation { if closedOpen.contains(title) { closedOpen.remove(title) } else { closedOpen.insert(title) } }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("\(title) · \(items.count)")
+                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        Image(systemName: closedOpen.contains(title) ? "chevron.down" : "chevron.right")
+                            .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if closedOpen.contains(title) { ForEach(items) { simpleCard($0, kind) } }
+            } else {
+                Text(title).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                ForEach(items) { simpleCard($0, kind) }
+            }
+        }
+    }
+
+    private var simpleInquiries: some View {
+        let inquiries = deals.deals(in: .inquiry)
+        // A call has happened (or is booked): the next job is the quote itself.
+        let needQuote = inquiries.filter { $0.disc.callDate != nil }
+        let needReply = inquiries.filter { $0.disc.callDate == nil }
+        let waiting = (deals.deals(in: .proposalOut) + deals.deals(in: .talking)).sorted { $0.lastTouch < $1.lastTouch }
+        let booked = deals.deals(in: .won)
+        let lost = deals.deals(in: .lost)
+        let anyOpen = !(needReply.isEmpty && needQuote.isEmpty && waiting.isEmpty)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Inquiries")
+                            .font(Theme.display(size: 34))
+                            .foregroundStyle(Theme.text)
+                        Text("People who've asked about working with you, and what each one needs next.")
+                            .font(Theme.font(size: 15))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Button("New inquiry") { showNew = true }
+                        .buttonStyle(PrimaryButtonStyle())
+                }
+                EmailSuggestionsPanel(place: .pipeline)
+                UnmatchedNotesPanel()
+                if !anyOpen {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No one is waiting on you")
+                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        Text("When someone asks about working with you, they will show up here. You can also add one with New inquiry.")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                    .panel(padding: 22)
+                }
+                if !needReply.isEmpty { simpleGroup("Reply to these", .reply, needReply) }
+                if !needQuote.isEmpty { simpleGroup("Send a quote", .quote, needQuote) }
+                if !waiting.isEmpty { simpleGroup("Waiting to hear back", .waiting, waiting) }
+                if !booked.isEmpty { simpleGroup("Booked", .booked, booked, collapsible: true) }
+                if !lost.isEmpty { simpleGroup("Didn't go ahead", .lost, lost, collapsible: true) }
+            }
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $showNew) { NewDealSheet() }
+    }
+
+    private func simpleAgo(_ deal: Deal) -> String {
+        let days = deal.daysSinceTouch()
+        return days == 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
+    }
+
+    private func simpleCard(_ deal: Deal, _ kind: SimpleKind) -> some View {
+        let days = deal.daysSinceTouch()
+        let nudge = kind == .waiting && days >= 7
+        let heard: String
+        switch kind {
+        case .reply: heard = "Came in \(simpleAgo(deal))"
+        case .quote: heard = "Ready for a quote. Last talked \(simpleAgo(deal))"
+        case .waiting: heard = "Quote sent, last heard \(simpleAgo(deal))" + (nudge ? ". It may be time for a gentle nudge." : "")
+        case .booked: heard = "Booked, now a project"
+        case .lost: heard = deal.lostReason.map { "Didn't go ahead: \($0)" } ?? "Didn't go ahead"
+        }
+        let action: (title: String, run: () -> Void)? = {
+            switch kind {
+            case .reply: return ("Open deal", { navigator.openDeal(deal.id) })
+            case .quote: return ("Build proposal", { navigator.openDeal(deal.id); navigator.openBuilder(deal.id) })
+            case .waiting: return (nudge ? "Nudge them" : "Open deal", { navigator.openDeal(deal.id) })
+            default: return nil
+            }
+        }()
+        return Button {
+            navigator.openDeal(deal.id)
+        } label: {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(deal.client.isEmpty ? deal.title : deal.client)
+                        .font(Theme.display(size: 19)).foregroundStyle(Theme.text)
+                    if !deal.client.isEmpty && !deal.title.isEmpty {
+                        Text(deal.title)
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
+                            .lineLimit(1)
+                    }
+                    if kind != .lost, deals.valueText(of: deal) != "Didn't say" {
+                        Text(deals.valueText(of: deal))
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                    }
+                    Text(heard)
+                        .font(Theme.font(size: 13)).foregroundStyle(nudge ? Theme.amber : Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                if let action {
+                    Button(action.title, action: action.run)
+                        .buttonStyle(PrimaryButtonStyle())
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .panel(padding: 20)
     }
 
     private var board: some View {
