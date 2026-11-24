@@ -149,15 +149,22 @@ struct LibraryShootsView: View {
 
     /// Looks up each project's typed place once (town, state and where it is on the map) and
     /// remembers it on disk, so the map never waits on the map service at launch.
+    /// Each find shows on the map straight away. Places the map service didn't answer (busy, offline,
+    /// asked too often) are tried again a little later, a few times, while the Library is open.
     private func lookUpPlaces() async {
-        var found = false
-        for p in projects.projects {
-            let text = p.location.trimmingCharacters(in: .whitespaces)
-            guard !text.isEmpty, PlaceBook.shared.needsLookup(text: text) else { continue }
-            if await PlaceBook.shared.label(text: text) != nil { found = true }
+        for attempt in 0..<4 {
+            var waiting = false
+            for p in projects.projects {
+                let text = p.location.trimmingCharacters(in: .whitespaces)
+                guard !text.isEmpty, PlaceBook.shared.needsLookup(text: text) else { continue }
+                if await PlaceBook.shared.label(text: text) != nil { placesFound += 1 }
+                if Task.isCancelled { return }
+                if PlaceBook.shared.needsLookup(text: text) { waiting = true }
+            }
+            guard waiting, attempt < 3 else { return }
+            try? await Task.sleep(for: .seconds(75))
             if Task.isCancelled { return }
         }
-        if found { placesFound += 1 }
     }
 
     // MARK: Map or list

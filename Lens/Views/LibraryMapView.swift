@@ -97,7 +97,10 @@ struct LibraryMapView: View {
     }
 
     private func label(_ group: PinCluster) -> String {
-        if group.pins.count == 1 { return group.pins[0].title }
+        if group.pins.count == 1 {
+            let title = group.pins[0].title
+            return title.count > 24 ? String(title.prefix(22)).trimmingCharacters(in: .whitespaces) + "…" : title
+        }
         let shoots = group.pins.filter(\.isShoot).count
         if shoots == group.pins.count { return "\(shoots) shoots" }
         return "\(group.pins.count) here"
@@ -138,21 +141,27 @@ struct LibraryMapView: View {
         return max(max(maxLat - minLat, maxLon - minLon) * 1.4, 0.05)
     }
 
-    /// Splits the visible map into a loose grid and makes one group per square that has pins.
+    /// Groups pins that would sit on top of each other at this zoom. Each pin joins the first group
+    /// whose middle is within about a seventh of the view, so neighbours never overlap each other's names.
     private func clusters(at span: Double) -> [PinCluster] {
-        let cell = max(span / 7, 0.0005)
-        var byCell: [String: [MapPin]] = [:]
-        for pin in pins {
-            let key = "\(Int(floor(pin.coordinate.latitude / cell))),\(Int(floor(pin.coordinate.longitude / cell)))"
-            byCell[key, default: []].append(pin)
+        let near = max(span / 7, 0.0005)
+        // Shoots first, so a group's picture is a shoot rather than a loose folder.
+        let ordered = pins.sorted { ($0.isShoot ? 0 : 1, $0.title) < ($1.isShoot ? 0 : 1, $1.title) }
+        var groups: [(lat: Double, lon: Double, pins: [MapPin])] = []
+        for pin in ordered {
+            let lat = pin.coordinate.latitude, lon = pin.coordinate.longitude
+            if let i = groups.firstIndex(where: { abs($0.lat - lat) < near && abs($0.lon - lon) < near }) {
+                let n = Double(groups[i].pins.count)
+                groups[i].lat = (groups[i].lat * n + lat) / (n + 1)
+                groups[i].lon = (groups[i].lon * n + lon) / (n + 1)
+                groups[i].pins.append(pin)
+            } else {
+                groups.append((lat, lon, [pin]))
+            }
         }
-        return byCell.values.map { members in
-            // Shoots first, so the group's picture is a shoot rather than a loose folder.
-            let sorted = members.sorted { ($0.isShoot ? 0 : 1, $0.title) < ($1.isShoot ? 0 : 1, $1.title) }
-            let lat = members.map(\.coordinate.latitude).reduce(0, +) / Double(members.count)
-            let lon = members.map(\.coordinate.longitude).reduce(0, +) / Double(members.count)
-            return PinCluster(id: sorted.map(\.id).joined(separator: ","),
-                              coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), pins: sorted)
+        return groups.map { g in
+            PinCluster(id: g.pins.map(\.id).joined(separator: ","),
+                       coordinate: CLLocationCoordinate2D(latitude: g.lat, longitude: g.lon), pins: g.pins)
         }
         .sorted { $0.coordinate.latitude > $1.coordinate.latitude }
     }
@@ -241,9 +250,10 @@ private struct PinBubble: View {
                 .font(Theme.font(size: 11, weight: .semibold))
                 .foregroundStyle(lead.isShoot ? Theme.text : Theme.text3)
                 .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 7).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.panel.opacity(0.92)))
-                .frame(maxWidth: 150)
+                .background(Capsule().fill(Theme.panel.opacity(0.95)))
+                .overlay(Capsule().stroke(Theme.line))
         }
         .contentShape(Rectangle())
         .help(cluster.pins.map(\.title).joined(separator: ", "))
