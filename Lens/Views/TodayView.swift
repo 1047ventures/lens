@@ -8,6 +8,7 @@ struct TodayView: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
     @State private var scanningCard = false
 
     private struct Item: Identifiable {
@@ -20,17 +21,35 @@ struct TodayView: View {
         let detail: String
         let actionTitle: String
         let action: () -> Void
+
+        /// Behind-the-scenes jobs (drives, log-ins). Simple leaves them to Library and Log-ins.
+        var admin: Bool { ["Go to Library", "Open Library", "Open Log-ins"].contains(actionTitle) }
+        var icon: String {
+            switch actionTitle {
+            case "Build proposal": return "doc.text"
+            case "Open deal": return "envelope"
+            case "Open person": return "person"
+            case "Open project": return kicker.contains("payment") ? "dollarsign.circle" : "camera"
+            default: return "sparkles"
+            }
+        }
     }
 
     @EnvironmentObject private var money: MoneyStore
     @State private var events: [LensCalendarEvent] = []
+    /// The next seven days, for "The rest of your week".
+    @State private var weekEvents: [LensCalendarEvent] = []
     @State private var eventsLoaded = false
     @State private var openItems: Set<String> = []
     @State private var showAllItems = false
 
     var body: some View {
+        if appearance.simple { simpleToday } else { everything }
+    }
+
+    private var everything: some View {
         let numbers = TodayNumbers(money: money, deals: deals, projects: projects)
-        ScrollView {
+        return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 if logins.googleCalendarReady {
@@ -72,10 +91,12 @@ struct TodayView: View {
     private func loadEvents() async {
         guard logins.googleCalendarReady else { return }
         let start = Calendar.current.startOfDay(for: Date())
-        let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: start) ?? start
         let found = await logins.calendarEvents(from: start, to: end)
         var seen = Set<String>()
-        events = found.filter { seen.insert("\($0.title)|\($0.start)").inserted }
+        weekEvents = found.filter { seen.insert("\($0.title)|\($0.start)").inserted }
+        events = weekEvents.filter { $0.start < tomorrow }
         eventsLoaded = true
     }
 
@@ -229,6 +250,185 @@ struct TodayView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(open ? tint.opacity(0.35) : Theme.line))
     }
 
+    // MARK: - Simple
+
+    /// Simple: "What do I do today, and is my week okay?" A greeting, the day in time order, the few things
+    /// that need her (each with one button), the rest of the week, and a way to ask Lens. Numbers and charts
+    /// live in Money and Pipeline.
+    private var simpleToday: some View {
+        let all = items.filter { !$0.admin }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 30) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
+                        .font(Theme.font(size: 13, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted)
+                    Text("\(greeting)\(firstName.map { ", \($0)" } ?? "").")
+                        .font(Theme.display(size: 40)).foregroundStyle(Theme.text)
+                    Text(briefing)
+                        .font(Theme.font(size: 17)).lineSpacing(4).foregroundStyle(Theme.text2)
+                        .frame(maxWidth: 640, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(all.isEmpty ? "enjoy the quiet" : "you've got this")
+                        .font(Theme.script(size: 26)).foregroundStyle(Palette.violet)
+                }
+                if logins.googleCalendarReady { yourDay }
+                thingsForYou(all)
+                restOfWeek
+                Button { navigator.askOpen = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "sparkles").foregroundStyle(Palette.violet)
+                        Text("Ask Lens anything, like \u{201C}what should I charge for a half-day shoot?\u{201D}")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(minHeight: 54)
+                    .background(Theme.panel)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Theme.line, lineWidth: 1.5))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: 860, alignment: .leading)
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: .infinity)
+        }
+        .task { await loadEvents() }
+    }
+
+    private var yourDay: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Your day").font(Theme.display(size: 22)).foregroundStyle(Theme.text)
+            if !eventsLoaded {
+                ProgressView().controlSize(.small)
+            } else if events.isEmpty {
+                Text("Nothing on your calendar today.").font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+            } else {
+                ForEach(Array(events.sorted { ($0.allDay ? 0 : 1, $0.start) < ($1.allDay ? 0 : 1, $1.start) }.enumerated()), id: \.element.id) { i, e in
+                    if i > 0 { Divider().overlay(Theme.lineSoft) }
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Text(e.allDay ? "All day" : e.start.formatted(date: .omitted, time: .shortened))
+                            .font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Palette.mint)
+                            .frame(width: 76, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(e.title).font(Theme.font(size: 16, weight: .bold)).foregroundStyle(Theme.text)
+                            if let place = e.location, !place.isEmpty {
+                                Text(place).font(Theme.font(size: 14)).foregroundStyle(Theme.muted).lineLimit(1)
+                            }
+                        }
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .panel(padding: 26)
+    }
+
+    private func thingsForYou(_ all: [Item]) -> some View {
+        let shown = showAllItems ? all : Array(all.prefix(4))
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(all.isEmpty ? "Nothing needs you" : "A few things for you")
+                    .font(Theme.display(size: 22)).foregroundStyle(Theme.text)
+                if all.count > 4 {
+                    Button(showAllItems ? "Show fewer" : "See all \(all.count)") {
+                        withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(Theme.font(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.teal)
+                }
+            }
+            if all.isEmpty {
+                Text("All clear. Lens will put anything new here.")
+                    .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+            }
+            ForEach(shown) { item in
+                let tint = simpleColor(item.tone)
+                HStack(spacing: 16) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(tint)
+                        .frame(width: 40, height: 40)
+                        .background(tint.opacity(Theme.look == .daylight ? 0.14 : 0.22))
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.title).font(Theme.font(size: 16, weight: .bold)).foregroundStyle(Theme.text)
+                            .lineLimit(2)
+                        Text("\(item.kicker). \(item.detail)")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
+                }
+                .panel(padding: 18)
+            }
+        }
+    }
+
+    private var restOfWeek: some View {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let days = (1...6).compactMap { cal.date(byAdding: .day, value: $0, to: today) }
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("The rest of your week").font(Theme.display(size: 22)).foregroundStyle(Theme.text)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
+                ForEach(days, id: \.self) { day in
+                    let plan = plans(on: day)
+                    let shoot = projects.active.contains { $0.shootDate.map { cal.isDate($0, inSameDayAs: day) } ?? false }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(day.formatted(.dateTime.weekday(.wide)))
+                            .font(Theme.font(size: 13, weight: .bold))
+                            .foregroundStyle(shoot ? Palette.mint : Theme.muted)
+                        if plan.isEmpty {
+                            Text("Nothing booked").font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text3)
+                        } else {
+                            ForEach(plan.prefix(3), id: \.self) { line in
+                                Text(line).font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if plan.count > 3 {
+                                Text("and \(plan.count - 3) more").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
+                    .padding(16)
+                    .background(shoot ? Palette.mint.opacity(Theme.look == .daylight ? 0.12 : 0.18) : Theme.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.look == .daylight || shoot ? Color.clear : Theme.line))
+                }
+            }
+        }
+    }
+
+    /// What's on a day: shoots, proposals due, and calendar events.
+    private func plans(on day: Date) -> [String] {
+        let cal = Calendar.current
+        var lines: [String] = []
+        for p in projects.active where p.shootDate.map({ cal.isDate($0, inSameDayAs: day) }) ?? false {
+            lines.append("Shoot: \(p.name)")
+        }
+        for d in deals.open where d.proposalDue.map({ cal.isDate($0, inSameDayAs: day) }) ?? false {
+            lines.append("Proposal due: \(d.title)")
+        }
+        for e in weekEvents where cal.isDate(e.start, inSameDayAs: day) {
+            if !lines.contains(where: { $0.hasSuffix(e.title) }) { lines.append(e.title) }
+        }
+        return lines
+    }
+
+    private func simpleColor(_ tone: Item.Tone) -> Color {
+        switch tone {
+        case .overdue: return Theme.coral
+        case .soon: return Palette.violet
+        case .neutral: return Palette.mint
+        }
+    }
+
     // MARK: - Data
 
     private var items: [Item] {
@@ -252,12 +452,12 @@ struct TodayView: View {
             }
             if project.stage == .delivered {
                 result.append(Item(tone: .overdue, kicker: "Waiting on payment", title: project.name,
-                                   detail: "Delivered — mark it paid when the money lands",
+                                   detail: "Delivered. Mark it paid when the money lands",
                                    actionTitle: "Open project") { navigator.openProject(project.id) })
             }
             if project.stage == .paid, !project.isOnServer, project.folderPath != nil {
                 result.append(Item(tone: .neutral, kicker: "Ready for the server", title: project.name,
-                                   detail: "Delivered and paid — its footage can leave the SSD",
+                                   detail: "Delivered and paid. Its footage can leave the SSD",
                                    actionTitle: "Go to Library") { navigator.open(.footage) })
             }
         }
