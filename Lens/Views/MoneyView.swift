@@ -10,6 +10,7 @@ struct MoneyView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
 
     @AppStorage("moneyPeriod") private var periodRaw = MoneyStore.Period.thisYear.rawValue
     @State private var onlyUnsorted = false
@@ -21,6 +22,10 @@ struct MoneyView: View {
     private var period: MoneyStore.Period { MoneyStore.Period(rawValue: periodRaw) ?? .thisYear }
 
     var body: some View {
+        if appearance.simple { simpleMoney } else { everything }
+    }
+
+    private var everything: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
@@ -49,6 +54,151 @@ struct MoneyView: View {
         }
         .sheet(item: Binding(get: { importURL.map(ImportTarget.init) }, set: { importURL = $0?.url })) { target in
             ImportSheet(url: target.url) { message in show(message) }
+        }
+    }
+
+    // MARK: Simple
+
+    private func dollars(_ v: Double) -> String {
+        (v < 0 ? "-" : "") + abs(v).formatted(.currency(code: "USD").precision(.fractionLength(0)))
+    }
+
+    /// Money received in the three calendar months before this one, averaged. Nil when there's no history.
+    private var usualMonth: Double? {
+        let cal = Calendar.current
+        let thisStart = MoneyStore.Period.thisMonth.range().start
+        guard let from = cal.date(byAdding: .month, value: -3, to: thisStart) else { return nil }
+        let past = money.txns.filter { $0.category.group == .income && $0.date >= from && $0.date < thisStart }
+        guard !past.isEmpty else { return nil }
+        let avg = past.reduce(0) { $0 + $1.amount } / 3
+        return avg > 0 ? avg : nil
+    }
+
+    private func dueText(_ r: Receivable) -> (String, Bool) {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: r.due), to: cal.startOfDay(for: Date())).day ?? 0
+        if days > 0 { return ("\(days) day\(days == 1 ? "" : "s") late", true) }
+        return ("due \(r.due.formatted(.dateTime.month(.abbreviated).day()))", false)
+    }
+
+    private func simplePanel<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(Theme.font(size: 13, weight: .bold)).tracking(0.8).textCase(.uppercase)
+                .foregroundStyle(Theme.muted)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel(padding: 24)
+    }
+
+    private var simpleMoney: some View {
+        let inc = money.income(.thisMonth)
+        let cameIn = inc.totalRevenue
+        let unpaid = money.receivables.filter { $0.paidOn == nil }.sorted { $0.due < $1.due }
+        let owed = unpaid.reduce(0) { $0 + $1.amount }
+        let hasMonthActivity = !money.txns(in: .thisMonth).isEmpty
+        let hasBank = !money.data.openings.isEmpty
+        let bank = money.balance(.thisMonth).totalCash
+        let sortCount = money.unsortedCount
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Money").font(Theme.display(size: 34)).foregroundStyle(Theme.text)
+                    Text("A quick look at how this month is going.")
+                        .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+                }
+
+                simplePanel("Came in this month") {
+                    HeadlineNumber(text: dollars(cameIn), size: 44)
+                    if let usual = usualMonth {
+                        let ratio = cameIn / usual
+                        Text(ratio > 1.15 ? "A bit more than usual" : ratio < 0.85 ? "A bit less than usual so far" : "About usual")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    }
+                }
+
+                simplePanel("Waiting to be paid") {
+                    HeadlineNumber(text: dollars(owed), size: 44)
+                    if unpaid.isEmpty {
+                        Text("Nobody owes you anything right now.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(Array(unpaid.prefix(3))) { r in
+                                let (when, late) = dueText(r)
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.client.isEmpty ? r.label : r.client)
+                                            .font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                                        Text("\(dollars(r.amount)), \(when)")
+                                            .font(Theme.font(size: 14))
+                                            .foregroundStyle(late ? Theme.coral : Theme.muted)
+                                    }
+                                    Spacer()
+                                    if late {
+                                        Button("See it") {
+                                            if let id = r.projectID { navigator.openProject(id) }
+                                            else { Appearance.shared.detail = .everything }
+                                        }
+                                        .buttonStyle(SecondaryButtonStyle())
+                                    }
+                                }
+                            }
+                            if unpaid.count > 3 {
+                                Text("and \(unpaid.count - 3) more")
+                                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+
+                if hasMonthActivity {
+                    simplePanel("What you kept") {
+                        HeadlineNumber(text: dollars(inc.net), size: 44)
+                        Text(inc.net >= 0 ? "After costs you kept \(dollars(inc.net)) this month."
+                                          : "Costs ran \(dollars(-inc.net)) more than came in this month.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    }
+                }
+
+                if hasBank {
+                    simplePanel("In the bank") {
+                        HeadlineNumber(text: dollars(bank), size: 44)
+                        Text("Across your accounts and cash on hand.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    }
+                }
+
+                if sortCount > 0 {
+                    HStack(spacing: 12) {
+                        Image(systemName: "tray.full").foregroundStyle(Theme.amber)
+                        Text("\(sortCount) to sort when you have a minute")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                        Spacer()
+                        Button("Sort them") {
+                            onlyUnsorted = true
+                            Appearance.shared.detail = .everything
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
+                    .panel(padding: 16)
+                }
+
+                HStack(spacing: 0) {
+                    Text("Statements, charts and every transaction are in ")
+                    Button { Appearance.shared.detail = .everything } label: {
+                        Text("Everything").underline().foregroundStyle(Palette.violet)
+                    }
+                    .buttonStyle(.plain)
+                    Text(".")
+                }
+                .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+            }
+            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: .infinity)
         }
     }
 
