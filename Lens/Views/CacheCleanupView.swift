@@ -29,7 +29,7 @@ struct CacheCleanupView: View {
             if viewModel.cacheItems.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
-                    Image(systemName: "checkmark.circle").font(.system(size: 40)).foregroundColor(.green)
+                    Image(systemName: "checkmark.circle").font(Theme.font(size: 40)).foregroundColor(.green)
                     Text("Premiere's not hoarding anything right now.").foregroundColor(.secondary)
                     Spacer()
                 }

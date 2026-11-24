@@ -127,14 +127,14 @@ struct TodayView: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .tracking(0.8)
                     .foregroundStyle(Theme.muted)
                 Text("\(greeting)\(firstName.map { ", \($0)" } ?? "")")
-                    .font(.system(size: 32, weight: .bold))
+                    .font(Theme.font(size: 32, weight: .bold))
                     .foregroundStyle(Theme.text)
                 Text(briefing)
-                    .font(.system(size: 15))
+                    .font(Theme.font(size: 15))
                     .lineSpacing(3)
                     .foregroundStyle(Theme.text3)
                     .frame(maxWidth: 720, alignment: .leading)
@@ -160,7 +160,7 @@ struct TodayView: View {
                         withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.teal)
                 }
             }
@@ -168,7 +168,7 @@ struct TodayView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle").foregroundStyle(Theme.teal)
                     Text("All clear. Nothing needs you right now.")
-                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                 }
                 .panel()
             } else {
@@ -192,16 +192,16 @@ struct TodayView: View {
                 HStack(spacing: 10) {
                     Circle().fill(tint).frame(width: 7, height: 7)
                     Text(item.title)
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(Theme.font(size: 13.5, weight: .semibold))
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
                     Text(item.kicker)
-                        .font(.system(size: 12))
+                        .font(Theme.font(size: 12))
                         .foregroundStyle(tint)
                         .lineLimit(1)
                     Spacer(minLength: 6)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(Theme.font(size: 10, weight: .bold))
                         .foregroundStyle(Theme.muted)
                         .rotationEffect(.degrees(open ? 180 : 0))
                 }
@@ -213,7 +213,7 @@ struct TodayView: View {
             if open {
                 HStack(alignment: .center, spacing: 12) {
                     Text(item.detail)
-                        .font(.system(size: 12.5))
+                        .font(Theme.font(size: 12.5))
                         .foregroundStyle(Theme.text3)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)

@@ -16,17 +16,17 @@ struct MeetingNotesList: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline) {
                         Button { reading = note } label: {
-                            Text(note.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(note.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                 .lineLimit(2).multilineTextAlignment(.leading)
                         }
                         .buttonStyle(.plain)
                         .help("Read the whole summary")
                         Spacer()
                         Text(note.date.formatted(date: .abbreviated, time: .omitted))
-                            .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                     if !note.summary.isEmpty {
-                        Text(note.summary).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                        Text(note.summary).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
                             .lineLimit(open.contains(note.id) ? nil : 6)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
@@ -34,15 +34,15 @@ struct MeetingNotesList: View {
                     HStack(spacing: 14) {
                         if note.hasDetails {
                             Button("Read the whole summary") { reading = note }
-                                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                                .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Palette.violet)
                         } else if note.summary.count > 300 {
                             Button(open.contains(note.id) ? "Show less" : "Show all") {
                                 if open.contains(note.id) { open.remove(note.id) } else { open.insert(note.id) }
                             }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                            .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Palette.violet)
                         }
                         if let url = URL(string: note.link) {
-                            Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 12))
+                            Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(Theme.font(size: 12))
                         }
                         Spacer()
                         let others = projects.active.filter { $0.id != projectID }
@@ -54,11 +54,11 @@ struct MeetingNotesList: View {
                             }
                             .menuStyle(.borderlessButton)
                             .fixedSize()
-                            .font(.system(size: 12))
+                            .font(Theme.font(size: 12))
                             .help("Put this note on another project. Lens remembers, so calls with the same people go there too.")
                         }
                         Button("Wrong place?") { zoom.unassign(note) }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                             .help("Take this note off and pick where it goes")
                     }
                 }
@@ -80,10 +80,10 @@ struct MeetingNoteView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     ColorLabel(note.fromMyNotes ? "Zoom My Notes" : note.fromZoom ? "Zoom summary" : "Zoom summary email", Palette.violet)
-                    Text(note.title).font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
+                    Text(note.title).font(Theme.font(size: 22, weight: .bold)).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(note.date.formatted(date: .complete, time: .shortened))
-                        .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.defaultAction)
@@ -97,10 +97,10 @@ struct MeetingNoteView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(people, id: \.self) { p in
                                     HStack(spacing: 8) {
-                                        Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(Palette.violet)
-                                        Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                        Image(systemName: "person.fill").font(Theme.font(size: 11)).foregroundStyle(Palette.violet)
+                                        Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                         if !p.email.isEmpty && p.email != p.name {
-                                            Text(p.email).font(.system(size: 12)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                                            Text(p.email).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).textSelection(.enabled)
                                         }
                                     }
                                 }
@@ -119,8 +119,8 @@ struct MeetingNoteView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
                                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                        Image(systemName: "arrow.right.circle").font(.system(size: 12)).foregroundStyle(Palette.violet)
-                                        Text(FormattedText.inline(step)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                                        Image(systemName: "arrow.right.circle").font(Theme.font(size: 12)).foregroundStyle(Palette.violet)
+                                        Text(FormattedText.inline(step)).font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
                                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                                     }
                                 }
@@ -134,10 +134,10 @@ struct MeetingNoteView: View {
             Divider().overlay(Theme.line)
             HStack {
                 if let url = URL(string: note.link) {
-                    Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(.system(size: 13))
+                    Link(note.fromZoom ? "Open in Zoom ↗" : "Open in Gmail ↗", destination: url).font(Theme.font(size: 13))
                 }
                 Spacer()
-                Text("Written by Zoom's AI Companion").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Written by Zoom's AI Companion").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .padding(.horizontal, 24).padding(.vertical, 14)
         }
@@ -147,7 +147,7 @@ struct MeetingNoteView: View {
 
     private func block<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Palette.violet)
+            Text(title.uppercased()).font(Theme.font(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Palette.violet)
             content()
         }
     }
@@ -168,12 +168,12 @@ private struct FormattedText: View {
                 if let bullet = line.bullet {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(Theme.muted).frame(width: 4, height: 4)
-                        Text(Self.inline(bullet)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                        Text(Self.inline(bullet)).font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     }
                     .padding(.leading, CGFloat(line.indent) * 14)
                 } else {
-                    Text(Self.inline(line.text)).font(.system(size: 14)).foregroundStyle(Theme.text2)
+                    Text(Self.inline(line.text)).font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
                         .lineSpacing(3).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
             }
@@ -212,7 +212,7 @@ struct UnmatchedNotesPanel: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     ColorLabel("Unmatched notes · \(zoom.unmatched.count)", Palette.violet)
                     Text("Zoom calls Lens wasn't sure about. Tell it where each one goes and it remembers.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 ForEach(zoom.unmatched) { note in
                     row(note)
@@ -232,18 +232,18 @@ struct UnmatchedNotesPanel: View {
     private func row(_ note: MeetingNote) -> some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(note.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(note.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("Zoom call · \(note.date.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 if !note.summary.isEmpty {
-                    Text(note.summary).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
+                    Text(note.summary).font(Theme.font(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 14) {
                     Button("Read the whole summary") { reading = note }
-                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                        .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Palette.violet)
                     if let url = URL(string: note.link) {
-                        Link(note.fromZoom ? "Open in Zoom ↗" : "Open the email ↗", destination: url).font(.system(size: 12))
+                        Link(note.fromZoom ? "Open in Zoom ↗" : "Open the email ↗", destination: url).font(Theme.font(size: 12))
                     }
                 }
             }
@@ -266,7 +266,7 @@ struct ZoomCheck: View {
             HStack(spacing: 8) {
                 Image(systemName: arrived ? "checkmark.circle.fill" : "clock")
                     .foregroundStyle(arrived ? Theme.teal : Theme.amber)
-                Text(message).font(.system(size: 13)).foregroundStyle(Theme.text)
+                Text(message).font(Theme.font(size: 13)).foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if logins.gmailReady {
@@ -278,7 +278,7 @@ struct ZoomCheck: View {
                 }
             }
             if let problem = zoom.problem {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber)
+                Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
             }
         }
     }

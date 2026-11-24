@@ -47,10 +47,10 @@ struct PeopleView: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("People")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(Theme.font(size: 30, weight: .bold))
                             .foregroundStyle(Theme.text)
                         Text("Everyone you work with, and everything you've done together.")
-                            .font(.system(size: 15))
+                            .font(Theme.font(size: 15))
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer()
@@ -79,16 +79,16 @@ struct PeopleView: View {
                 if people.people.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No one here yet")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(Theme.font(size: 16, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text("Everyone on your deals, projects and Zoom calls shows up here by itself, and so does anyone who emails you about work once Google is connected in Log-ins. You can also scan business cards or bring in LinkedIn, Facebook and Instagram.")
-                            .font(.system(size: 14))
+                            .font(Theme.font(size: 14))
                             .foregroundStyle(Theme.muted)
                     }
                     .panel(padding: 22)
                 } else if filtered.isEmpty {
                     Text("No one matches that.")
-                        .font(.system(size: 14))
+                        .font(Theme.font(size: 14))
                         .foregroundStyle(Theme.text3)
                         .panel()
                 } else {
@@ -124,7 +124,7 @@ struct PeopleView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
                 TextField("Search by name, email, company or notes", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 14))
+                    .font(Theme.font(size: 14))
                 if !query.isEmpty {
                     Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
                         .buttonStyle(.plain)
@@ -187,8 +187,8 @@ struct PeopleView: View {
     private func checkInRow(_ p: Person, detail: String) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(p.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                Text(detail).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text(p.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(detail).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             Spacer()
             Button("Open") { navigator.personID = p.id }
@@ -212,7 +212,7 @@ struct TagChip: View {
 
     var body: some View {
         let label = Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(Theme.font(size: 12, weight: .semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(color.opacity(selected ? 0.32 : 0.12))
@@ -235,7 +235,7 @@ struct PersonBadge: View {
     var body: some View {
         let color = person.tags.first.map(PersonTag.color(for:)) ?? Palette.slate
         Text(person.initials)
-            .font(.system(size: size * 0.38, weight: .bold))
+            .font(Theme.font(size: size * 0.38, weight: .bold))
             .frame(width: size, height: size)
             .background(color.opacity(0.22))
             .foregroundStyle(color)
@@ -254,10 +254,10 @@ struct PersonRow: View {
                 PersonBadge(person: person)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(person.name)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Theme.font(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Text(person.subtitle.isEmpty ? "No details yet" : person.subtitle)
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                 }
@@ -266,7 +266,7 @@ struct PersonRow: View {
                     ForEach(person.tags.prefix(3), id: \.self) { TagChip(text: $0, color: PersonTag.color(for: $0)) }
                 }
                 Text(lastText)
-                    .font(.system(size: 12))
+                    .font(Theme.font(size: 12))
                     .foregroundStyle(person.isFollowUpDue() ? Theme.amber : Theme.text3)
                     .frame(width: 120, alignment: .trailing)
             }
@@ -304,7 +304,7 @@ struct PersonDetailView: View {
                     navigator.personID = nil
                 } label: {
                     Label("All people", systemImage: "chevron.left")
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
                 .buttonStyle(.plain)
@@ -357,15 +357,15 @@ struct PersonDetailView: View {
             PersonBadge(person: person, size: 60)
             VStack(alignment: .leading, spacing: 8) {
                 Text(person.name)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(Theme.font(size: 30, weight: .bold))
                     .foregroundStyle(Theme.text)
                     .textSelection(.enabled)
                 if !person.subtitle.isEmpty, person.subtitle != person.primaryEmail {
-                    Text(person.subtitle).font(.system(size: 15)).foregroundStyle(Theme.muted)
+                    Text(person.subtitle).font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 }
                 HStack(spacing: 6) {
                     ForEach(person.tags, id: \.self) { TagChip(text: $0, color: PersonTag.color(for: $0)) }
-                    Text(lastText).font(.system(size: 13)).foregroundStyle(Theme.text3).padding(.leading, person.tags.isEmpty ? 0 : 6)
+                    Text(lastText).font(Theme.font(size: 13)).foregroundStyle(Theme.text3).padding(.leading, person.tags.isEmpty ? 0 : 6)
                 }
             }
             Spacer()
@@ -422,7 +422,7 @@ struct PersonDetailView: View {
             ColorLabel("Everything together · \(moments.count)", Palette.slate)
             if moments.isEmpty {
                 Text("Nothing yet. Deals, projects, emails, Zoom notes and payments with \(person.name) show up here.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
             ForEach(moments.prefix(120)) { m in
                 MomentRow(moment: m)
@@ -440,9 +440,9 @@ struct PersonDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ColorLabel(due ? "Follow up now" : "Follow up", due ? Theme.amber : Palette.gold)
                 Text(date.formatted(date: .complete, time: .omitted))
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 if !person.followUpNote.isEmpty {
-                    Text(person.followUpNote).font(.system(size: 13)).foregroundStyle(Theme.text2)
+                    Text(person.followUpNote).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
@@ -511,11 +511,11 @@ struct PersonDetailView: View {
 
     private func row(_ label: String, _ value: String, url: URL? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.system(size: 12)).foregroundStyle(Theme.muted).frame(width: 96, alignment: .leading)
+            Text(label).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).frame(width: 96, alignment: .leading)
             if let url {
-                Link(value, destination: url).font(.system(size: 13)).lineLimit(1)
+                Link(value, destination: url).font(Theme.font(size: 13)).lineLimit(1)
             } else {
-                Text(value).font(.system(size: 13)).foregroundStyle(Theme.text2).textSelection(.enabled)
+                Text(value).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).textSelection(.enabled)
             }
             Spacer(minLength: 0)
         }
@@ -534,7 +534,7 @@ struct PersonDetailView: View {
             }
             Button("Add to a project") { linking = true }
                 .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Theme.font(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.teal)
                 .padding(.top, 2)
         }
@@ -546,8 +546,8 @@ struct PersonDetailView: View {
         HStack(alignment: .center) {
             Button(action: open) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                    Text(detail).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                    Text(detail).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 .contentShape(Rectangle())
             }
@@ -572,9 +572,9 @@ struct PersonDetailView: View {
                 HeadlineNumber(text: Money.string(payments.reduce(0) { $0 + $1.amount }), size: 26)
                 ForEach(payments.prefix(6)) { p in
                     HStack {
-                        Text(p.label).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(1)
+                        Text(p.label).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).lineLimit(1)
                         Spacer()
-                        Text(Money.string(p.amount)).font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.text2)
+                        Text(Money.string(p.amount)).font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.text2)
                     }
                 }
             }
@@ -587,7 +587,7 @@ struct PersonDetailView: View {
         if !person.notes.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 ColorLabel("Notes", Palette.rose)
-                Text(person.notes).font(.system(size: 13)).foregroundStyle(Theme.text2)
+                Text(person.notes).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -605,19 +605,19 @@ struct MomentRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Theme.font(size: 12, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 26, height: 26)
                 .background(color.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(moment.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(2)
+                    Text(moment.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(2)
                     Spacer()
                     Text(moment.date.formatted(.dateTime.month(.abbreviated).day().year()))
-                        .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                 }
-                Text(moment.detail).font(.system(size: 12)).foregroundStyle(stage == nil ? Theme.text3 : color).lineLimit(3)
+                Text(moment.detail).font(Theme.font(size: 12)).foregroundStyle(stage == nil ? Theme.text3 : color).lineLimit(3)
             }
         }
         .contentShape(Rectangle())
@@ -683,7 +683,7 @@ struct PersonEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(initial == nil ? "Add a person" : "Edit \(initial!.name)")
-                .font(.system(size: 20, weight: .bold))
+                .font(Theme.font(size: 20, weight: .bold))
             Form {
                 TextField("Name", text: $name, prompt: Text("Jordan Reyes"))
                 TextField("Email", text: $emails, prompt: Text("Separate more than one with commas"))
@@ -765,8 +765,8 @@ struct PersonFollowUpSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Follow up with \(person.name)").font(.system(size: 20, weight: .bold))
-            Text("Lens puts them on Today when the day comes.").font(.system(size: 13)).foregroundStyle(Theme.muted)
+            Text("Follow up with \(person.name)").font(Theme.font(size: 20, weight: .bold))
+            Text("Lens puts them on Today when the day comes.").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             HStack(spacing: 8) {
                 ForEach([("Tomorrow", 1), ("In a week", 7), ("In two weeks", 14), ("In a month", 30)], id: \.1) { label, days in
                     Button(label) { date = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? date }
@@ -805,9 +805,9 @@ struct LogTouchSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Log a chat with \(person.name)").font(.system(size: 20, weight: .bold))
+            Text("Log a chat with \(person.name)").font(Theme.font(size: 20, weight: .bold))
             Text("A call, a coffee, a hello at an event. It counts as being in touch.")
-                .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             TextField("What you talked about", text: $text, axis: .vertical)
                 .lineLimit(2...6)
                 .textFieldStyle(.roundedBorder)
@@ -836,8 +836,8 @@ struct PersonPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.system(size: 20, weight: .bold))
-            if !note.isEmpty { Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted) }
+            Text(title).font(Theme.font(size: 20, weight: .bold))
+            if !note.isEmpty { Text(note).font(Theme.font(size: 13)).foregroundStyle(Theme.muted) }
             TextField("Search", text: $query).textFieldStyle(.roundedBorder)
             let matches = people.search(query).filter { !excluding.contains($0.id) }
             ScrollView {
@@ -850,8 +850,8 @@ struct PersonPicker: View {
                             HStack(spacing: 10) {
                                 PersonBadge(person: p, size: 26)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                                    if !p.subtitle.isEmpty { Text(p.subtitle).font(.system(size: 11)).foregroundStyle(Theme.muted) }
+                                    Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                    if !p.subtitle.isEmpty { Text(p.subtitle).font(Theme.font(size: 11)).foregroundStyle(Theme.muted) }
                                 }
                                 Spacer()
                             }
@@ -861,7 +861,7 @@ struct PersonPicker: View {
                         .buttonStyle(.plain)
                     }
                     if matches.isEmpty {
-                        Text("No one matches.").font(.system(size: 13)).foregroundStyle(Theme.muted).padding(.vertical, 8)
+                        Text("No one matches.").font(Theme.font(size: 13)).foregroundStyle(Theme.muted).padding(.vertical, 8)
                     }
                 }
             }
@@ -893,7 +893,7 @@ struct ProjectPickerSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Add \(person.name) to a project").font(.system(size: 20, weight: .bold))
+            Text("Add \(person.name) to a project").font(Theme.font(size: 20, weight: .bold))
             let choices = projects.projects.filter { !person.projectIDs.contains($0.id) }
                 .sorted { ($0.stage == .archived ? 1 : 0, $0.name) < ($1.stage == .archived ? 1 : 0, $1.name) }
             ScrollView {
@@ -904,9 +904,9 @@ struct ProjectPickerSheet: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                 Spacer()
-                                Text(p.stage.label).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                                Text(p.stage.label).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                             }
                             .padding(.vertical, 7)
                             .contentShape(Rectangle())
@@ -914,7 +914,7 @@ struct ProjectPickerSheet: View {
                         .buttonStyle(.plain)
                     }
                     if choices.isEmpty {
-                        Text("No other projects yet.").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        Text("No other projects yet.").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     }
                 }
             }
@@ -947,8 +947,8 @@ struct FindPersonPopover: View {
                     HStack(spacing: 10) {
                         PersonBadge(person: p, size: 24)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                            if !p.subtitle.isEmpty { Text(p.subtitle).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1) }
+                            Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            if !p.subtitle.isEmpty { Text(p.subtitle).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1) }
                         }
                         Spacer()
                     }
@@ -957,7 +957,7 @@ struct FindPersonPopover: View {
                 .buttonStyle(.plain)
             }
             if !query.isEmpty && results.isEmpty {
-                Text("No one matches.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("No one matches.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             Button("Open People") {
                 navigator.personID = nil
@@ -965,7 +965,7 @@ struct FindPersonPopover: View {
                 navigator.findingPerson = false
             }
             .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .semibold))
+            .font(Theme.font(size: 12, weight: .semibold))
             .foregroundStyle(Theme.teal)
         }
         .padding(14)
@@ -1007,9 +1007,9 @@ struct PeoplePanel: View {
                     HStack(spacing: 10) {
                         PersonBadge(person: p, size: 26)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                             Text(([p.role] + p.tags).filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                         }
                         Spacer()
                     }
@@ -1020,7 +1020,7 @@ struct PeoplePanel: View {
             if case .project = target {
                 Button("Add someone") { adding = true }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.teal)
             }
         }

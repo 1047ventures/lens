@@ -38,7 +38,7 @@ struct DuplicatesView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "checkmark.circle").font(.system(size: 40)).foregroundColor(.green)
+            Image(systemName: "checkmark.circle").font(Theme.font(size: 40)).foregroundColor(.green)
             Text("No dead weight here — you're clean.").foregroundColor(.secondary)
             Spacer()
         }

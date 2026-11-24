@@ -39,7 +39,7 @@ struct MoneyView: View {
         }
         .overlay(alignment: .bottom) {
             if let toast {
-                Text(toast).font(.system(size: 13, weight: .semibold))
+                Text(toast).font(Theme.font(size: 13, weight: .semibold))
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(Theme.raised).clipShape(Capsule())
                     .overlay(Capsule().stroke(Theme.line))
@@ -62,8 +62,8 @@ struct MoneyView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Money").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.text)
-                Text(subtitle).font(.system(size: 14)).foregroundStyle(Theme.muted)
+                Text("Money").font(Theme.font(size: 30, weight: .bold)).foregroundStyle(Theme.text)
+                Text(subtitle).font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             }
             Spacer()
             Picker("", selection: $periodRaw) {
@@ -100,7 +100,7 @@ struct MoneyView: View {
         HStack(spacing: 12) {
             Image(systemName: "tray.full").foregroundStyle(Theme.amber)
             Text("\(money.unsortedCount) transaction\(money.unsortedCount == 1 ? "" : "s") need\(money.unsortedCount == 1 ? "s" : "") sorting. Pick a category once and Lens sorts the rest like it.")
-                .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
             Spacer()
             Button(onlyUnsorted ? "Show all" : "Sort them") { onlyUnsorted.toggle() }.buttonStyle(SecondaryButtonStyle())
         }
@@ -118,7 +118,7 @@ struct MoneyView: View {
             HStack {
                 ColorLabel("The books", Palette.lime)
                 Spacer()
-                Text(period.rawValue).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text(period.rawValue).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Button(openGroups.isEmpty ? "Show every line" : "Main numbers only") {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         openGroupsRaw = openGroups.isEmpty ? Self.allGroups.joined(separator: ",") : ""
@@ -139,7 +139,7 @@ struct MoneyView: View {
                 }
             }
             Text("Gear purchases show in cash flow and on the balance sheet at today's value, not as an expense. Card charges count when they happen; paying the card shows in cash flow.")
-                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .panel()
@@ -148,8 +148,8 @@ struct MoneyView: View {
 
     private func column<Content: View>(_ question: String, _ formal: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(question).font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-            Text(formal).font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.bottom, 8)
+            Text(question).font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+            Text(formal).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).padding(.bottom, 8)
             content()
         }
         .padding(16)
@@ -163,13 +163,13 @@ struct MoneyView: View {
     private func row(_ label: String, _ amount: Double, _ style: RowStyle = .item, pct: String? = nil, good: Bool? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: style == .item ? 13 : 13, weight: style == .item ? .regular : .semibold))
+                .font(Theme.font(size: style == .item ? 13 : 13, weight: style == .item ? .regular : .semibold))
                 .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
                 .padding(.leading, style == .item ? 10 : 0)
             Spacer(minLength: 8)
-            if let pct { Text(pct).font(.system(size: 11).italic()).foregroundStyle(Theme.muted) }
+            if let pct { Text(pct).font(Theme.font(size: 11).italic()).foregroundStyle(Theme.muted) }
             Text(signed(amount))
-                .font(.system(size: style == .total ? 15 : 13, weight: style == .item ? .regular : .semibold))
+                .font(Theme.font(size: style == .total ? 15 : 13, weight: style == .item ? .regular : .semibold))
                 .monospacedDigit()
                 .foregroundStyle(good == nil ? Theme.text2 : (good! ? Theme.teal : Theme.coral))
         }
@@ -195,12 +195,12 @@ struct MoneyView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(Theme.font(size: 8, weight: .bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.8)
+                Text(title.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8)
                 Spacer(minLength: 8)
                 if !open, let total {
-                    Text(signed(total)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                    Text(signed(total)).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
                 }
             }
             .foregroundStyle(Theme.muted)
@@ -223,7 +223,7 @@ struct MoneyView: View {
     private func incomeColumn(_ i: MoneyStore.Income, pct: @escaping (Double) -> String?) -> some View {
         column("Did I make money?", "Income statement") {
             group("Revenue") {
-                if i.revenue.isEmpty { Text("Nothing yet").font(.system(size: 12)).foregroundStyle(Theme.muted) }
+                if i.revenue.isEmpty { Text("Nothing yet").font(Theme.font(size: 12)).foregroundStyle(Theme.muted) }
                 ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
             }
             row("Total revenue", i.totalRevenue, .sub)
@@ -343,18 +343,18 @@ struct MoneyView: View {
             HStack {
                 ColorLabel("Numbers", Palette.violet)
                 Spacer()
-                Text(period.rawValue).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text(period.rawValue).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             ForEach(groups, id: \.0) { group in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(group.0.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(group.1)
+                    Text(group.0.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(group.1)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], alignment: .leading, spacing: 10) {
                         ForEach(group.2) { tile in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(tile.label).font(.system(size: 11)).foregroundStyle(Theme.muted)
-                                Text(tile.value).font(.system(size: 20, weight: .semibold)).monospacedDigit()
+                                Text(tile.label).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
+                                Text(tile.value).font(Theme.font(size: 20, weight: .semibold)).monospacedDigit()
                                     .foregroundStyle(tile.tone ?? Theme.text).lineLimit(1).minimumScaleFactor(0.6)
-                                Text(tile.sub).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(2)
+                                Text(tile.sub).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(2)
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
@@ -379,25 +379,25 @@ struct MoneyView: View {
             HStack {
                 ColorLabel("Coming in", Theme.amber)
                 Spacer()
-                Text(Money.string(open.reduce(0) { $0 + $1.amount })).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
+                Text(Money.string(open.reduce(0) { $0 + $1.amount })).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
             }
-            if open.isEmpty { Text("Nobody owes you anything right now.").font(.system(size: 13)).foregroundStyle(Theme.muted) }
+            if open.isEmpty { Text("Nobody owes you anything right now.").font(Theme.font(size: 13)).foregroundStyle(Theme.muted) }
             ForEach(open) { r in
                 HStack(spacing: 12) {
                     Text(r.due.formatted(.dateTime.month(.abbreviated).day()))
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(r.due < today ? Theme.coral : Theme.muted).frame(width: 52, alignment: .leading)
+                        .font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(r.due < today ? Theme.coral : Theme.muted).frame(width: 52, alignment: .leading)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(r.client).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(r.client).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                             if r.due < today {
-                                Text("Overdue").font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2)
+                                Text("Overdue").font(Theme.font(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(Theme.coral.opacity(0.2)).foregroundStyle(Theme.coral).clipShape(Capsule())
                             }
                         }
-                        Text(r.label).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text(r.label).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Text(Money.string(r.amount)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
+                    Text(Money.string(r.amount)).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
                     Button("Paid") { money.markPaid(r); show("Marked \(r.client) paid") }.buttonStyle(SecondaryButtonStyle())
                 }
                 .padding(.vertical, 4)
@@ -413,14 +413,14 @@ struct MoneyView: View {
             ColorLabel("Accounts", Palette.mint)
             ForEach(MoneyAccount.allCases.filter { a in money.txns.contains { $0.account == a } || money.data.openings[a.rawValue] != nil }) { a in
                 HStack {
-                    Text(a.label).font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    Text(a.label).font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                     Spacer()
-                    Text(signed(money.accountBalance(a, before: now))).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                    Text(signed(money.accountBalance(a, before: now))).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(a.isCash ? Theme.text2 : Theme.coral)
                 }
             }
             Text("Transactions come in through Update from bank. Lens only reads statements; it never moves money.")
-                .font(.system(size: 11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         }
         .panel()
         .accentBar(Palette.mint)
@@ -434,9 +434,9 @@ struct MoneyView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 ColorLabel("All transactions", Palette.blue)
-                Text("\(list.count) · \(period.rawValue.lowercased())").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("\(list.count) · \(period.rawValue.lowercased())").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Spacer()
-                Toggle("Only unsorted", isOn: $onlyUnsorted).toggleStyle(.checkbox).font(.system(size: 12))
+                Toggle("Only unsorted", isOn: $onlyUnsorted).toggleStyle(.checkbox).font(Theme.font(size: 12))
             }
             HStack {
                 Text("Date").frame(width: 64, alignment: .leading)
@@ -445,17 +445,17 @@ struct MoneyView: View {
                 Text("Category").frame(width: 190, alignment: .leading)
                 Text("Amount").frame(width: 96, alignment: .trailing)
             }
-            .font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(Theme.muted)
+            .font(Theme.font(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(Theme.muted)
             ForEach(list.prefix(300)) { t in
                 HStack(alignment: .center) {
-                    Text(t.date.formatted(.dateTime.month(.abbreviated).day())).font(.system(size: 12)).monospacedDigit()
+                    Text(t.date.formatted(.dateTime.month(.abbreviated).day())).font(Theme.font(size: 12)).monospacedDigit()
                         .foregroundStyle(Theme.muted).frame(width: 64, alignment: .leading)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(t.description).font(.system(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
+                        Text(t.description).font(Theme.font(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
                         projectTag(t)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(t.account.label).font(.system(size: 12)).foregroundStyle(Theme.text3).frame(width: 90, alignment: .leading)
+                    Text(t.account.label).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).frame(width: 90, alignment: .leading)
                     Menu {
                         ForEach(MoneyCategory.pickable) { cat in
                             Button(cat.label) {
@@ -464,12 +464,12 @@ struct MoneyView: View {
                             }
                         }
                     } label: {
-                        Text(t.category.label).font(.system(size: 12))
+                        Text(t.category.label).font(Theme.font(size: 12))
                             .foregroundStyle(t.category == .uncategorized ? Theme.amber : Theme.text2)
                     }
                     .menuStyle(.borderlessButton)
                     .frame(width: 190, alignment: .leading)
-                    Text(cents(t.amount)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                    Text(cents(t.amount)).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(t.amount > 0 ? Theme.teal : Theme.text2).frame(width: 96, alignment: .trailing)
                 }
                 .padding(.vertical, 5)
@@ -477,9 +477,9 @@ struct MoneyView: View {
             }
             if !list.isEmpty {
                 HStack {
-                    Text("Net").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("Net").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Spacer()
-                    Text(cents(total)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text)
+                    Text(cents(total)).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text)
                 }
                 .padding(.top, 4)
             }
@@ -504,7 +504,7 @@ struct MoneyView: View {
                 }
             } label: {
                 Text(projects.project(id: t.projectID)?.name ?? "Add to project")
-                    .font(.system(size: 11))
+                    .font(Theme.font(size: 11))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -512,7 +512,7 @@ struct MoneyView: View {
             if t.projectID == nil, let guess = MoneyStore.suggestedProject(for: t, in: open) {
                 Button("\(guess.name)?") { money.setProject(t, guess.id); show("Added to \(guess.name)") }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.font(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.teal)
                     .help("Looks like it's for \(guess.name). Click to add it.")
             }
@@ -546,7 +546,7 @@ private struct ImportSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Import \(url.lastPathComponent)").font(.system(size: 17, weight: .bold))
+            Text("Import \(url.lastPathComponent)").font(Theme.font(size: 17, weight: .bold))
             Picker("Which account is this?", selection: $account) {
                 ForEach(MoneyAccount.allCases) { Text($0.label).tag($0) }
             }
@@ -554,8 +554,8 @@ private struct ImportSheet: View {
                 Toggle("Charges show as positive numbers in this file", isOn: $chargesPositive).toggleStyle(.checkbox)
             }
             Text("Lens skips anything already in the books, and sorts what it recognizes. You'll sort the rest once; it learns from each one.")
-                .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral) }
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+            if let error { Text(error).font(Theme.font(size: 12)).foregroundStyle(Theme.coral) }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle())

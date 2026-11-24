@@ -216,7 +216,7 @@ struct BankLoginView: View {
                 Image(systemName: browser.secure ? "lock.fill" : "lock.open")
                     .foregroundStyle(browser.secure ? Theme.teal : Theme.amber)
                 Text(browser.host.isEmpty ? site.name : browser.host)
-                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.text2).lineLimit(1)
+                    .font(Theme.font(size: 13, design: .monospaced)).foregroundStyle(Theme.text2).lineLimit(1)
                 if browser.loading { ProgressView().controlSize(.small) }
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -242,9 +242,9 @@ struct BankLoginView: View {
 
     private var askWebsite: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Which bank?").font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Which bank?").font(Theme.font(size: 22, weight: .bold)).foregroundStyle(Theme.text)
             Text("Type the website you use for online banking. Lens opens it here so you can log in like normal.")
-                .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             TextField("e.g. chase.com", text: $website)
                 .textFieldStyle(.roundedBorder).frame(maxWidth: 360)
                 .onSubmit(saveWebsite)
@@ -290,7 +290,7 @@ struct BankLoginView: View {
 
     private func strip(_ text: String, color: Color, close: (() -> Void)?) -> some View {
         HStack(spacing: 10) {
-            Text(text).font(.system(size: 13, weight: .medium)).foregroundStyle(color)
+            Text(text).font(Theme.font(size: 13, weight: .medium)).foregroundStyle(color)
             if let close {
                 Button { close() } label: { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(Theme.muted)
             }
@@ -304,10 +304,10 @@ struct BankLoginView: View {
         let ext = file.pathExtension.lowercased()
         let readable = ["csv", "txt"].contains(ext)
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Got \(file.lastPathComponent)").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Got \(file.lastPathComponent)").font(Theme.font(size: 14, weight: .bold)).foregroundStyle(Theme.text)
             if !readable {
                 Text("That's a .\(ext) file, which Lens can't read yet. In the download options pick CSV (sometimes called Excel or spreadsheet) and download again.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
                 HStack { Spacer(); Button("OK") { browser.caught = nil }.buttonStyle(SecondaryButtonStyle()) }
             } else {
                 if site.accounts.count > 1 {

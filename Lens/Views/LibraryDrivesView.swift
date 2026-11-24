@@ -25,11 +25,11 @@ struct LibraryDrivesView: View {
 
     private func newDriveBanner(_ url: URL) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: "externaldrive.badge.plus").font(.system(size: 22)).foregroundStyle(Theme.teal)
+            Image(systemName: "externaldrive.badge.plus").font(Theme.font(size: 22)).foregroundStyle(Theme.teal)
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(url.lastPathComponent) is plugged in").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("\(url.lastPathComponent) is plugged in").font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("Add it and Lens will read what's on it. Nothing gets moved or deleted.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
             Spacer()
             Button("Not now") { catalog.dismissNewDrive() }.buttonStyle(SecondaryButtonStyle())
@@ -51,7 +51,7 @@ struct LibraryDrivesView: View {
             Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
             TextField("Find a shoot, client or file on any drive", text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(Theme.font(size: 15))
             if searching { ProgressView().controlSize(.small) }
             if !query.isEmpty {
                 Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
@@ -85,7 +85,7 @@ struct LibraryDrivesView: View {
             if hits.isEmpty && !searching {
                 Text(catalog.drives.isEmpty ? "Add a drive first, then everything on it is searchable."
                                             : "Nothing on any drive matches that.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted).padding(14)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted).padding(14)
             }
             ForEach(hits) { hit in
                 resultRow(hit)
@@ -115,20 +115,20 @@ struct LibraryDrivesView: View {
         HStack(spacing: 12) {
             Image(systemName: "folder.fill").foregroundStyle(Theme.text3)
             VStack(alignment: .leading, spacing: 2) {
-                Text(folderName).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(folderName).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                 Text("\(hit.files) file\(hit.files == 1 ? "" : "s") · \(ByteFormat.string(hit.bytes)) · \(hit.folder.isEmpty ? hit.sample : hit.folder)")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
             }
             Spacer(minLength: 12)
             if let drive {
                 if drive.isPhotos || catalog.location(of: hit.folder, on: drive) != nil {
-                    Text(drive.name).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                    Text(drive.name).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
                 } else {
                     Label("\(drive.name) · in the drawer", systemImage: "externaldrive")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
+                        .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
                 }
             }
-            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Image(systemName: "chevron.right").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .contentShape(Rectangle())
@@ -155,9 +155,9 @@ struct LibraryDrivesView: View {
             tile(mac)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Label("This Mac", systemImage: "laptopcomputer").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Label("This Mac", systemImage: "laptopcomputer").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("See how many photos and videos are sitting on your Mac's own drive.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 Button(catalog.macScanning ? "Looking…" : "Look") { catalog.scanMac() }
                     .buttonStyle(SecondaryButtonStyle()).disabled(catalog.macScanning)
             }
@@ -175,11 +175,11 @@ struct LibraryDrivesView: View {
             tile(photos)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Photos app", systemImage: "photo.on.rectangle").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Label("Photos app", systemImage: "photo.on.rectangle").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 Text(catalog.photosRefused
                      ? "Lens isn't allowed into Photos. Turn it on in System Settings, Privacy and Security, Photos."
                      : "See and search every photo and video in your Photos app. Lens only looks; it never changes anything there.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 if catalog.photosRefused {
                     Button("Open System Settings") {
                         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!)
@@ -213,11 +213,11 @@ struct LibraryDrivesView: View {
                 Image(systemName: drive.isMac ? "laptopcomputer" : drive.isPhotos ? "photo.on.rectangle" : drive.isWebsite ? "globe" : plugged ? "externaldrive.fill" : "externaldrive")
                     .foregroundStyle(plugged ? Theme.text : Theme.muted)
                 Text(drive.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(Theme.font(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                Image(systemName: "chevron.right").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -229,9 +229,9 @@ struct LibraryDrivesView: View {
             .opacity(drive.isPhotos || drive.isWebsite ? 0 : 1)
             Text(drive.isPhotos || drive.isWebsite ? "\(ByteFormat.string(drive.photoBytes + drive.videoBytes)) in all"
                                 : "\(Int((full * 100).rounded()))% full · \(ByteFormat.string(drive.free)) free")
-                .font(.system(size: 12)).foregroundStyle(!drive.isPhotos && !drive.isWebsite && full > 0.85 ? Theme.coral : Theme.text3)
-            Text(contents(drive)).font(.system(size: 12)).foregroundStyle(Theme.text2)
-            Text(status(drive, plugged: plugged)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 12)).foregroundStyle(!drive.isPhotos && !drive.isWebsite && full > 0.85 ? Theme.coral : Theme.text3)
+            Text(contents(drive)).font(Theme.font(size: 12)).foregroundStyle(Theme.text2)
+            Text(status(drive, plugged: plugged)).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -277,11 +277,11 @@ struct LibraryDrivesView: View {
 
     private func importTile(_ job: SiteImporter.Job) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(job.host, systemImage: "globe").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+            Label(job.host, systemImage: "globe").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
             ProgressView(value: Double(job.pagesDone), total: Double(max(job.pagesTotal, 1)))
-            Text("Bringing it in · \(job.saved) saved").font(.system(size: 12)).foregroundStyle(Theme.text2)
+            Text("Bringing it in · \(job.saved) saved").font(Theme.font(size: 12)).foregroundStyle(Theme.text2)
             Text(job.pagesTotal > 0 ? "Page \(job.pagesDone) of \(job.pagesTotal)" : "Finding every page…")
-                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)

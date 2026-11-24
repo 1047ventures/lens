@@ -26,17 +26,17 @@ struct GearPhotoImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Add gear from photos").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Add gear from photos").font(Theme.font(size: 18, weight: .bold)).foregroundStyle(Theme.text)
             if !GearIdentifier.hasKey {
                 Text("Lens needs your Claude key to recognise gear. Add it in Log-ins, then come back.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.amber)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.amber)
             } else if rows.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Pick one or more photos of your gear. Lens works out the brand, model and type, and a rough used price. You check everything before anything is added.")
-                        .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     Button("Choose photos") { choose() }.buttonStyle(PrimaryButtonStyle())
                     Text("Photos on your iPhone: in the chooser, use the Import from iPhone option in the bottom left of the window or the File menu, then pick the photo.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 .panel()
             } else {
@@ -79,15 +79,15 @@ struct GearPhotoImportView: View {
             if row.wrappedValue.loading {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Looking at this photo...").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("Looking at this photo...").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     if let e = row.wrappedValue.error {
-                        Text(e).font(.system(size: 12)).foregroundStyle(Theme.amber)
+                        Text(e).font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                     } else if !row.wrappedValue.sure {
-                        Text("Lens isn't sure about this one. Please check the name.").font(.system(size: 12)).foregroundStyle(Theme.amber)
+                        Text("Lens isn't sure about this one. Please check the name.").font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                     }
                     TextField("Name", text: row.name, prompt: Text("Brand and model, like Sony A7S III"))
                     HStack {
@@ -96,7 +96,7 @@ struct GearPhotoImportView: View {
                     }
                     HStack {
                         TextField("Used value", value: row.value, format: .currency(code: "USD").precision(.fractionLength(0)), prompt: Text("Rough price"))
-                        Text("A rough guess, not a receipt").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        Text("A rough guess, not a receipt").font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                     }
                 }
                 .textFieldStyle(.roundedBorder)

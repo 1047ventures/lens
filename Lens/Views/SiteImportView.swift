@@ -16,7 +16,7 @@ struct SiteImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Bring in a website").font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Bring in a website").font(Theme.font(size: 20, weight: .bold)).foregroundStyle(Theme.text)
             if let host, let job = importer.jobs[host] {
                 progress(job)
             } else {
@@ -34,23 +34,23 @@ struct SiteImportView: View {
     private var form: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Lens saves every photo on the site, one folder per page, and adds it to your Library. Nothing on the site changes.")
-                .font(.system(size: 13)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Website").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text("Website").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
                 TextField("yoursite.com", text: $address).textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Save the photos in").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text("Save the photos in").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
                 HStack {
                     Text(folder.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text2).lineLimit(1).truncationMode(.middle)
+                        .font(Theme.font(size: 12, design: .monospaced)).foregroundStyle(Theme.text2).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Button("Change") { pickFolder() }.buttonStyle(SecondaryButtonStyle())
                 }
             }
             HStack(spacing: 6) {
-                Text("Some pages need a password?").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                Button("Log in first") { loggingIn = true }.buttonStyle(.link).font(.system(size: 12)).disabled(site == nil)
+                Text("Some pages need a password?").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                Button("Log in first") { loggingIn = true }.buttonStyle(.link).font(Theme.font(size: 12)).disabled(site == nil)
             }
             HStack {
                 Spacer()
@@ -68,23 +68,23 @@ struct SiteImportView: View {
 
     private func progress(_ job: SiteImporter.Job) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(job.host).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(job.host).font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
             if job.pagesTotal > 0 {
                 ProgressView(value: Double(job.pagesDone), total: Double(max(job.pagesTotal, 1)))
             } else if !job.finished {
                 ProgressView().controlSize(.small)
             }
-            Text(statusLine(job)).font(.system(size: 13)).foregroundStyle(Theme.text2)
+            Text(statusLine(job)).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
             if !job.videoLinks.isEmpty {
                 Text("\(job.videoLinks.count) video\(job.videoLinks.count == 1 ? " is" : "s are") hosted on Vimeo or YouTube. Lens lists them in a note in the folder so you can grab them.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             if let problem = job.problem {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 if !job.finished {
-                    Text("You can close this. It keeps going.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text("You can close this. It keeps going.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     Spacer()
                     Button("Stop") { importer.cancel(job.host) }.buttonStyle(SecondaryButtonStyle())
                 } else {
@@ -128,13 +128,13 @@ private struct SiteLoginView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill").foregroundStyle(Theme.teal)
                     Text(browser.host.isEmpty ? (site.host ?? "") : browser.host)
-                        .font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.text2)
+                        .font(Theme.font(size: 13, design: .monospaced)).foregroundStyle(Theme.text2)
                     if browser.loading { ProgressView().controlSize(.small) }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: 7))
-                Text("Log in, then tap Done").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Log in, then tap Done").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Button("Done") { dismiss() }.buttonStyle(PrimaryButtonStyle())
             }
             .padding(12)

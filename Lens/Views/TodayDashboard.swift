@@ -101,7 +101,7 @@ struct DashCard<Content: View>: View {
                     Spacer()
                     if action != nil {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(Theme.font(size: 11, weight: .semibold))
                             .foregroundStyle(hover ? color : Theme.muted.opacity(0.6))
                     }
                 }
@@ -125,7 +125,7 @@ struct DashEmpty: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 13))
+            .font(Theme.font(size: 13))
             .foregroundStyle(Theme.muted)
             .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
             .multilineTextAlignment(.center)
@@ -150,12 +150,12 @@ struct StatTile: View {
                 HStack(spacing: 6) {
                     Circle().fill(color).frame(width: 7, height: 7)
                     Text(label.uppercased())
-                        .font(.system(size: 10.5, weight: .bold)).tracking(0.8)
+                        .font(Theme.font(size: 10.5, weight: .bold)).tracking(0.8)
                         .foregroundStyle(Theme.muted)
                 }
                 HStack(alignment: .bottom) {
                     Text(value)
-                        .font(.system(size: 28, weight: .light)).monospacedDigit()
+                        .font(Theme.font(size: 28, weight: .light)).monospacedDigit()
                         .foregroundStyle(Theme.text)
                         .lineLimit(1).minimumScaleFactor(0.6)
                     Spacer(minLength: 8)
@@ -164,7 +164,7 @@ struct StatTile: View {
                     }
                 }
                 Text(note)
-                    .font(.system(size: 12))
+                    .font(Theme.font(size: 12))
                     .foregroundStyle(noteColor)
                     .lineLimit(1)
             }
@@ -224,7 +224,7 @@ struct MoneyInChart: View {
                             .annotation(position: .top, spacing: 4) {
                                 if m.income > 0 {
                                     Text(Money.short(m.income))
-                                        .font(.system(size: 10.5, weight: isNow ? .bold : .regular)).monospacedDigit()
+                                        .font(Theme.font(size: 10.5, weight: isNow ? .bold : .regular)).monospacedDigit()
                                         .foregroundStyle(isNow ? Theme.text : Theme.muted)
                                 }
                             }
@@ -234,7 +234,7 @@ struct MoneyInChart: View {
                             .foregroundStyle(Theme.muted.opacity(0.7))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                             .annotation(position: .top, alignment: .leading, spacing: 2) {
-                                Text("Average").font(.system(size: 10)).foregroundStyle(Theme.muted)
+                                Text("Average").font(Theme.font(size: 10)).foregroundStyle(Theme.muted)
                             }
                     }
                 }
@@ -272,14 +272,14 @@ struct GoalRing: View {
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 0) {
                     Text("\(Int((fraction * 100).rounded()))%")
-                        .font(.system(size: 24, weight: .light)).monospacedDigit()
+                        .font(Theme.font(size: 24, weight: .light)).monospacedDigit()
                         .foregroundStyle(Theme.text)
-                    Text("of best").font(.system(size: 10.5)).foregroundStyle(Theme.muted)
+                    Text("of best").font(Theme.font(size: 10.5)).foregroundStyle(Theme.muted)
                 }
             }
             .frame(width: 104, height: 104)
             Text(best > 0 ? (now >= best ? "Best month yet" : "\(Money.short(best - now)) to beat it") : "This month")
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(Theme.font(size: 11.5, weight: .semibold))
                 .foregroundStyle(now >= best && best > 0 ? Palette.lime : Theme.text3)
         }
     }
@@ -299,7 +299,7 @@ struct StageFunnel: View {
                 ForEach(steps) { step in
                     HStack(spacing: 10) {
                         Text(step.stage.label)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(Theme.font(size: 12, weight: .semibold))
                             .foregroundStyle(step.count > 0 ? step.stage.color : Theme.muted)
                             .frame(width: 68, alignment: .leading)
                         GeometryReader { geo in
@@ -312,7 +312,7 @@ struct StageFunnel: View {
                                     .frame(width: w)
                                 if step.count > 0 {
                                     Text("\(step.count)")
-                                        .font(.system(size: 12, weight: .bold)).monospacedDigit()
+                                        .font(Theme.font(size: 12, weight: .bold)).monospacedDigit()
                                         .foregroundStyle(Theme.ground)
                                         .padding(.leading, 9)
                                 }
@@ -320,7 +320,7 @@ struct StageFunnel: View {
                         }
                         .frame(height: 22)
                         Text(step.value > 0 ? Money.short(step.value) : "")
-                            .font(.system(size: 12)).monospacedDigit()
+                            .font(Theme.font(size: 12)).monospacedDigit()
                             .foregroundStyle(Theme.text3)
                             .frame(width: 50, alignment: .trailing)
                     }
@@ -357,8 +357,8 @@ struct HoursDonut: View {
                     }
                     .chartLegend(.hidden)
                     VStack(spacing: 0) {
-                        Text(Hours.short(total)).font(.system(size: 20, weight: .light)).monospacedDigit().foregroundStyle(Theme.text)
-                        Text("this month").font(.system(size: 10.5)).foregroundStyle(Theme.muted)
+                        Text(Hours.short(total)).font(Theme.font(size: 20, weight: .light)).monospacedDigit().foregroundStyle(Theme.text)
+                        Text("this month").font(Theme.font(size: 10.5)).foregroundStyle(Theme.muted)
                     }
                 }
                 .frame(width: 124, height: 124)
@@ -366,9 +366,9 @@ struct HoursDonut: View {
                     ForEach(Array(shown.enumerated()), id: \.offset) { _, s in
                         HStack(spacing: 8) {
                             RoundedRectangle(cornerRadius: 2).fill(s.color).frame(width: 9, height: 9)
-                            Text(s.name).font(.system(size: 12.5)).foregroundStyle(Theme.text2).lineLimit(1)
+                            Text(s.name).font(Theme.font(size: 12.5)).foregroundStyle(Theme.text2).lineLimit(1)
                             Spacer(minLength: 6)
-                            Text(Hours.short(s.hours)).font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
+                            Text(Hours.short(s.hours)).font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
                         }
                     }
                 }
@@ -401,7 +401,7 @@ struct DayTimeline: View {
             if !allDay.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(allDay) { e in
-                        Text(e.title).font(.system(size: 11.5, weight: .semibold))
+                        Text(e.title).font(Theme.font(size: 11.5, weight: .semibold))
                             .padding(.horizontal, 9).padding(.vertical, 4)
                             .background(Palette.gold.opacity(0.18)).foregroundStyle(Palette.gold)
                             .clipShape(Capsule())
@@ -426,8 +426,8 @@ struct DayTimeline: View {
                         HStack(spacing: 0) {
                             Rectangle().fill(color).frame(width: 3)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(e.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
-                                Text(e.start.formatted(date: .omitted, time: .shortened)).font(.system(size: 10)).opacity(0.75)
+                                Text(e.title).font(Theme.font(size: 11.5, weight: .semibold)).lineLimit(1)
+                                Text(e.start.formatted(date: .omitted, time: .shortened)).font(Theme.font(size: 10)).opacity(0.75)
                             }
                             .foregroundStyle(Theme.text)
                             .padding(.horizontal, 6)
@@ -460,7 +460,7 @@ struct DayTimeline: View {
                 Spacer()
                 Text(r.end.formatted(date: .omitted, time: .shortened))
             }
-            .font(.system(size: 11))
+            .font(Theme.font(size: 11))
             .foregroundStyle(Theme.muted)
         }
     }
@@ -481,10 +481,10 @@ struct WeekStrip: View {
                 let shoots = projects.filter { $0.shootDate.map { cal.isDate($0, inSameDayAs: day) } ?? false }
                 VStack(spacing: 6) {
                     Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
-                        .font(.system(size: 10, weight: .bold)).tracking(0.6)
+                        .font(Theme.font(size: 10, weight: .bold)).tracking(0.6)
                         .foregroundStyle(offset == 0 ? Theme.teal : Theme.muted)
                     Text(day.formatted(.dateTime.day()))
-                        .font(.system(size: 17, weight: offset == 0 ? .bold : .light)).monospacedDigit()
+                        .font(Theme.font(size: 17, weight: offset == 0 ? .bold : .light)).monospacedDigit()
                         .foregroundStyle(offset == 0 ? Theme.text : Theme.text3)
                     VStack(spacing: 3) {
                         if shoots.isEmpty {
@@ -493,7 +493,7 @@ struct WeekStrip: View {
                         ForEach(shoots) { p in
                             Button { onOpen(p.id) } label: {
                                 Text(p.name)
-                                    .font(.system(size: 10, weight: .semibold)).lineLimit(2)
+                                    .font(Theme.font(size: 10, weight: .semibold)).lineLimit(2)
                                     .multilineTextAlignment(.center)
                                     .foregroundStyle(Theme.ground)
                                     .padding(.horizontal, 4).padding(.vertical, 4)

@@ -55,21 +55,21 @@ struct TourCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: stop.icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(Theme.font(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.onTeal)
                     .frame(width: 30, height: 30)
                     .background(Theme.teal)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(stop.title).font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.text)
+                Text(stop.title).font(Theme.font(size: 17, weight: .bold)).foregroundStyle(Theme.text)
                 Spacer()
                 Button { finish() } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.muted)
+                    Image(systemName: "xmark").font(Theme.font(size: 11, weight: .bold)).foregroundStyle(Theme.muted)
                 }
                 .buttonStyle(.plain)
                 .help("Close the tour")
             }
             Text(stop.body)
-                .font(.system(size: 13))
+                .font(Theme.font(size: 13))
                 .foregroundStyle(Theme.text2)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)

@@ -253,23 +253,23 @@ struct WhatsNewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("What's new in Lens").font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.text)
+                Text("What's new in Lens").font(Theme.font(size: 22, weight: .bold)).foregroundStyle(Theme.text)
                 Text("A few things got better since you last looked.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(items) { item in
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: item.icon)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(Theme.font(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.teal)
                                 .frame(width: 30, height: 30)
                                 .background(Theme.teal.opacity(0.14))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                                Text(item.detail).font(.system(size: 13)).foregroundStyle(Theme.text3)
+                                Text(item.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(item.detail).font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }

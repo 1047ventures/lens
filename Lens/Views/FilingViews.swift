@@ -20,7 +20,7 @@ struct WhichProjectMenu: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             Text("Which project is this for?")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text2)
+                .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text2)
             Menu {
                 let open = projects.active
                 if let guess, let p = open.first(where: { $0.id == guess }) {
@@ -116,7 +116,7 @@ struct AutoFiledPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 ColorLabel("Filed automatically · \(items.count)", Palette.violet)
                 Text("Lens put these here by itself. If one is wrong, move it or take it off.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(items) { item in row(item) }
             }
@@ -128,12 +128,12 @@ struct AutoFiledPanel: View {
     private func row(_ item: AutoFiled) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: AutoFiledRow.icon(item.kind)).font(.system(size: 11)).foregroundStyle(Palette.violet)
-                Text(item.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Image(systemName: AutoFiledRow.icon(item.kind)).font(Theme.font(size: 11)).foregroundStyle(Palette.violet)
+                Text(item.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     .lineLimit(2)
             }
             Text("\(item.source) · \(item.date.formatted(.dateTime.month(.abbreviated).day()))")
-                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             HStack(spacing: 14) {
                 let others = projects.active.filter { $0.id != project.id }
                 if !others.isEmpty {
@@ -142,11 +142,11 @@ struct AutoFiledPanel: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-                    .font(.system(size: 12))
+                    .font(Theme.font(size: 12))
                     .help("Put this on another project. Lens remembers for next time.")
                 }
                 Button("Not this project") { notThis(item) }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     .help(item.kind == .person ? "Take this person off. Lens won't add them here again."
                                                : "Take this off. Lens will ask you where it goes.")
             }
@@ -189,13 +189,13 @@ struct AutoFiledToday: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(recent, id: \.item.id) { entry in
                         HStack(spacing: 12) {
-                            Image(systemName: AutoFiledRow.icon(entry.item.kind)).font(.system(size: 12)).foregroundStyle(Palette.violet)
+                            Image(systemName: AutoFiledRow.icon(entry.item.kind)).font(Theme.font(size: 12)).foregroundStyle(Palette.violet)
                                 .frame(width: 16)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.item.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(entry.item.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                     .lineLimit(1)
                                 Text("\(entry.item.source) · on \(entry.project.name) · \(entry.item.date.formatted(.dateTime.month(.abbreviated).day()))")
-                                    .font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                             }
                             Spacer(minLength: 8)
                             Button("Open project") { navigator.openProject(entry.project.id) }

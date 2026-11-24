@@ -35,6 +35,8 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 @MainActor
 final class Navigator: ObservableObject {
     @Published var section: SidebarSection? = .today
+    /// "Style and detail" is open.
+    @Published var choosingStyle = false
     @Published var projectID: UUID?
     @Published var dealID: UUID?
     /// The person whose page is open in People.
@@ -103,11 +105,14 @@ struct ContentView: View {
     @StateObject private var history = EmailHistory()
     @StateObject private var freshbooks = FreshBooksSync()
     @State private var whatsNew: [WhatsNew.Item] = []
+    @ObservedObject private var appearance = Appearance.shared
 
     var body: some View {
         NavigationSplitView {
             Sidebar()
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
+                // The sidebar is deep teal on Daylight too, so it always draws as dark.
+                .environment(\.colorScheme, .dark)
         } detail: {
             Group {
                 switch navigator.section ?? .today {
@@ -136,7 +141,7 @@ struct ContentView: View {
                     Button {
                         navigator.findingPerson.toggle()
                     } label: {
-                        Label("Find a person", systemImage: "person.crop.circle.badge.magnifyingglass")
+                        Label("Find a person", systemImage: "magnifyingglass")
                     }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                     .help("Find a person (⇧⌘P)")
@@ -155,7 +160,7 @@ struct ContentView: View {
                             Image(systemName: "sparkles")
                             Text("Ask Lens").fontWeight(.semibold)
                         }
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
                         .background(Palette.violet.opacity(navigator.askOpen ? 0.35 : 0.2))
@@ -182,6 +187,13 @@ struct ContentView: View {
                     .environmentObject(money)
             }
         }
+        // A new look redraws the window with its colours (the stores and their data stay as they are).
+        .id(appearance.look)
+        // Outside the part that redraws, so the picker stays open while the look changes.
+        .sheet(isPresented: $navigator.choosingStyle) { StylePickerView() }
+        .preferredColorScheme(appearance.look.isDark ? .dark : .light)
+        .tint(Theme.teal)
+        .environmentObject(appearance)
         .environmentObject(viewModel)
         .environmentObject(projects)
         .environmentObject(deals)
@@ -301,8 +313,8 @@ struct Sidebar: View {
                     .resizable()
                     .frame(width: 26, height: 26)
                 Text("Lens")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Theme.text)
+                    .font(Theme.isStudio ? Theme.font(size: 17, weight: .bold) : Theme.display(size: 21))
+                    .foregroundStyle(Theme.sideText)
             }
             .padding(.vertical, 6)
             .selectionDisabled()
@@ -326,14 +338,14 @@ struct Sidebar: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Text(project.name)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(Theme.font(size: 12, weight: .semibold))
                                         .lineLimit(1)
                                     Spacer(minLength: 6)
                                     Text(project.stage.label)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Theme.text3)
+                                        .font(Theme.font(size: 11))
+                                        .foregroundStyle(Theme.sideMuted)
                                 }
-                                StageBar(stage: project.stage)
+                                StageBar(stage: project.stage, onSidebar: true)
                             }
                             .padding(.vertical, 3)
                             .contentShape(Rectangle())
@@ -349,15 +361,28 @@ struct Sidebar: View {
                 RunningTimerBadge()
                 UpdateBanner()
                 Button {
-                    navigator.open(.settings)
+                    navigator.choosingStyle = true
                 } label: {
-                    Label("Settings", systemImage: SidebarSection.settings.systemImage)
-                        .font(.system(size: 13, weight: navigator.section == .settings ? .semibold : .regular))
-                        .foregroundStyle(navigator.section == .settings ? Theme.text : Theme.text3)
+                    Label("Style and detail", systemImage: "paintpalette")
+                        .font(Theme.font(size: 13))
+                        .foregroundStyle(Theme.sideMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
-                        .background(navigator.section == .settings ? Theme.raised : .clear)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Choose how Lens looks and how much each screen shows")
+                Button {
+                    navigator.open(.settings)
+                } label: {
+                    Label("Settings", systemImage: SidebarSection.settings.systemImage)
+                        .font(Theme.font(size: 13, weight: navigator.section == .settings ? .semibold : .regular))
+                        .foregroundStyle(navigator.section == .settings ? Theme.sideText : Theme.sideMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(navigator.section == .settings ? Theme.sideText.opacity(0.12) : .clear)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .contentShape(Rectangle())
                 }
@@ -368,8 +393,8 @@ struct Sidebar: View {
                     Task { await Updater.shared.check() }
                 } label: {
                     Text("Lens \(Updater.shared.currentVersion)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 11))
+                        .foregroundStyle(Theme.sideMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, 4)
                 }
@@ -378,17 +403,19 @@ struct Sidebar: View {
                 .overlay(alignment: .trailing) {
                     Button("Take the tour") { navigator.startTour() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.teal)
+                        .font(Theme.font(size: 11))
+                        .foregroundStyle(Theme.current.sideAccent)
                         .padding(.trailing, 4)
                 }
             }
             .padding(12)
             .background(Theme.sidebar)
-            .overlay(alignment: .top) { Divider().overlay(Theme.line) }
+            .overlay(alignment: .top) { Divider().overlay(Theme.current.sideTrack) }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.sidebar)
+        // The highlight on the chosen section: the look's teal rather than the Mac's own accent colour.
+        .tint(Theme.isStudio ? Theme.tealDim : Color(hex: 0x1E6B5E))
         .navigationTitle("Lens")
     }
 }
@@ -432,7 +459,7 @@ struct StorageMeter: View {
                     Text("Add one in Library").foregroundStyle(Theme.muted)
                 }
             }
-            .font(.system(size: 11))
+            .font(Theme.font(size: 11))
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.panel)
@@ -455,10 +482,10 @@ struct ComingSoonView: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.system(size: 30, weight: .bold))
+                        .font(Theme.font(size: 30, weight: .bold))
                         .foregroundStyle(Theme.text)
                     Text(summary)
-                        .font(.system(size: 15))
+                        .font(Theme.font(size: 15))
                         .foregroundStyle(Theme.muted)
                 }
                 VStack(alignment: .leading, spacing: 12) {
@@ -467,7 +494,7 @@ struct ComingSoonView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Circle().fill(Theme.tealDim).frame(width: 6, height: 6)
                             Text(point)
-                                .font(.system(size: 14))
+                                .font(Theme.font(size: 14))
                                 .foregroundStyle(Theme.text2)
                         }
                     }
@@ -492,15 +519,16 @@ struct UpdateBanner: View {
                 Task { await updater.install() }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle.fill").font(.system(size: 18))
+                    Image(systemName: "arrow.down.circle.fill").font(Theme.font(size: 18))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Lens \(release.version) is ready").font(.system(size: 12, weight: .semibold))
-                        Text(phaseText ?? "Install and restart").font(.system(size: 11)).opacity(0.8)
+                        Text("Lens \(release.version) is ready").font(Theme.font(size: 12, weight: .semibold))
+                        Text(phaseText ?? "Install and restart").font(Theme.font(size: 11)).opacity(0.8)
                     }
                     Spacer()
                 }
                 .padding(10)
                 .background(Theme.teal.opacity(0.2))
+                .background(Theme.panel)
                 .foregroundStyle(Theme.text)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .contentShape(Rectangle())
@@ -509,7 +537,7 @@ struct UpdateBanner: View {
             .disabled(updater.phase == .downloading || updater.phase == .installing)
             .help(release.notes)
         } else if let text = phaseText {
-            Text(text).font(.system(size: 11)).foregroundStyle(Theme.muted)
+            Text(text).font(Theme.font(size: 11)).foregroundStyle(Theme.sideMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

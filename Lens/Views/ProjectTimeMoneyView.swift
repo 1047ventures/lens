@@ -51,11 +51,11 @@ struct ProjectTimePanel: View {
                 Circle().fill(Theme.coral).frame(width: 9, height: 9)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(Hours.clock(context.date.timeIntervalSince(started)))
-                        .font(.system(size: 22, weight: .light)).monospacedDigit()
+                        .font(Theme.font(size: 22, weight: .light)).monospacedDigit()
                         .foregroundStyle(Theme.text)
                 }
                 Text((project.timerKind ?? timerKind).label)
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 Spacer()
                 Button("Stop") { projects.stopTimer(project.id) }
                     .buttonStyle(PrimaryButtonStyle())
@@ -65,7 +65,7 @@ struct ProjectTimePanel: View {
                 Menu {
                     ForEach(TimeKind.allCases) { k in Button(k.label) { kind = k } }
                 } label: {
-                    Text(timerKind.label).font(.system(size: 13))
+                    Text(timerKind.label).font(Theme.font(size: 13))
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -87,14 +87,14 @@ struct ProjectTimePanel: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     HeadlineNumber(text: Hours.short(books.hours), size: 30)
                     Text("in total · \(Hours.short(project.hoursThisWeek)) this week")
-                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                 }
                 let byKind = project.hoursByKind
                 if !byKind.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(byKind, id: \.kind) { item in
                             Text("\(item.kind.label) \(Hours.short(item.hours))")
-                                .font(.system(size: 12))
+                                .font(Theme.font(size: 12))
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Theme.raised)
                                 .foregroundStyle(Theme.text2)
@@ -104,12 +104,12 @@ struct ProjectTimePanel: View {
                 }
                 if let perHour = books.perHour {
                     Text("About \(Money.string(perHour)) per hour so far, after expenses.")
-                        .font(.system(size: 13)).foregroundStyle(perHour >= 0 ? Theme.teal : Theme.coral)
+                        .font(Theme.font(size: 13)).foregroundStyle(perHour >= 0 ? Theme.teal : Theme.coral)
                 }
             }
         } else {
             Text("No time logged yet. Start the timer when you sit down to work, or add time by hand.")
-                .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -142,13 +142,13 @@ struct ProjectTimePanel: View {
         let list = suggestions
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Count these as time?").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("Count these as time?").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 ForEach(list) { s in
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(s.title).font(.system(size: 13)).foregroundStyle(Theme.text2).lineLimit(1)
+                            Text(s.title).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).lineLimit(1)
                             Text("\(s.from) · \(s.date.formatted(date: .abbreviated, time: .shortened)) · \(Hours.short(s.hours))")
-                                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                         }
                         Spacer()
                         Button("Add") {
@@ -157,7 +157,7 @@ struct ProjectTimePanel: View {
                         }
                         .buttonStyle(SecondaryButtonStyle())
                         Button("Skip") { projects.skipTimeSource(s.id, on: project.id) }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                 }
             }
@@ -176,17 +176,17 @@ struct ProjectTimePanel: View {
                 ForEach(showAll ? all : Array(all.prefix(6))) { entry in
                     HStack(spacing: 12) {
                         Text(entry.date.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
                             .frame(width: 52, alignment: .leading)
-                        Text(entry.kind.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                        Text(entry.kind.label).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
                             .frame(width: 70, alignment: .leading)
-                        Text(entry.note ?? "").font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                        Text(entry.note ?? "").font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                         Spacer()
-                        Text(Hours.short(entry.hours)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                        Text(Hours.short(entry.hours)).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
                         Button {
                             projects.deleteTime(entry.id, from: project.id)
                         } label: {
-                            Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                            Image(systemName: "trash").font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                         }
                         .buttonStyle(.plain)
                         .help("Delete this time")
@@ -198,7 +198,7 @@ struct ProjectTimePanel: View {
                 }
                 if all.count > 6 {
                     Button(showAll ? "Show less" : "Show all \(all.count)") { showAll.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.teal)
+                        .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.teal)
                         .padding(.top, 8)
                 }
             }
@@ -259,7 +259,7 @@ struct TimeEntrySheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(draft.isNew ? "Add time" : "Change time").font(.system(size: 20, weight: .bold))
+            Text(draft.isNew ? "Add time" : "Change time").font(Theme.font(size: 20, weight: .bold))
             Form {
                 DatePicker("Date", selection: $date, displayedComponents: .date)
                 TextField("Hours", text: $hoursText, prompt: Text("1.5"))
@@ -341,14 +341,14 @@ struct ProjectMoneyPanel: View {
             if let keep = books.keep {
                 Divider().overlay(Theme.lineSoft).padding(.vertical, 2)
                 HStack(alignment: .firstTextBaseline) {
-                    Text("What you keep").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("What you keep").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                     Spacer()
-                    Text(Money.string(keep)).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+                    Text(Money.string(keep)).font(Theme.font(size: 22, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(keep >= 0 ? Theme.teal : Theme.coral)
                 }
             } else {
                 Text("Add a price in Edit details to see what you keep.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
     }
@@ -359,36 +359,36 @@ struct ProjectMoneyPanel: View {
             Spacer()
             Text(value).monospacedDigit().foregroundStyle(Theme.text2)
         }
-        .font(.system(size: 13))
+        .font(Theme.font(size: 13))
     }
 
     @ViewBuilder private var expenseList: some View {
         if books.expenses.isEmpty {
             Text("No expenses on this project yet. Add one here, or tag a transaction to it in Money.")
-                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Expenses · \(books.expenses.count)").font(.system(size: 11, weight: .bold)).tracking(0.6)
+                Text("Expenses · \(books.expenses.count)").font(Theme.font(size: 11, weight: .bold)).tracking(0.6)
                     .foregroundStyle(Theme.muted).padding(.bottom, 4)
                 ForEach(books.expenses) { t in
                     HStack(spacing: 10) {
                         Text(t.date.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
                             .frame(width: 48, alignment: .leading)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(t.description).font(.system(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
-                            Text(t.category.label).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                            Text(t.description).font(Theme.font(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
+                            Text(t.category.label).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                         }
                         Spacer(minLength: 6)
                         if let url = MoneyStore.receiptURL(t) {
                             Button { NSWorkspace.shared.open(url) } label: {
-                                Image(systemName: "paperclip").font(.system(size: 12)).foregroundStyle(Theme.teal)
+                                Image(systemName: "paperclip").font(Theme.font(size: 12)).foregroundStyle(Theme.teal)
                             }
                             .buttonStyle(.plain)
                             .help("Open the receipt")
                         }
-                        Text(Money.string(-t.amount)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        Text(Money.string(-t.amount)).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
                             .foregroundStyle(Theme.text2)
                         Menu {
                             Button("Take off this project") { money.setProject(t, nil) }
@@ -432,7 +432,7 @@ struct ExpenseSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Add expense").font(.system(size: 20, weight: .bold))
+            Text("Add expense").font(Theme.font(size: 20, weight: .bold))
             Form {
                 TextField("Amount", text: $amountText, prompt: Text("$120"))
                 DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -452,7 +452,7 @@ struct ExpenseSheet: View {
             }
             .formStyle(.grouped)
             Text("Already on a bank or card statement? Find it in Money and add it to the project there instead, so it isn't counted twice.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(Theme.font(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
@@ -502,10 +502,10 @@ struct RunningTimerBadge: View {
                     HStack(spacing: 8) {
                         Circle().fill(Theme.coral).frame(width: 8, height: 8)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(project.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                            Text(project.name).font(Theme.font(size: 12, weight: .semibold)).lineLimit(1)
                             TimelineView(.periodic(from: .now, by: 1)) { context in
                                 Text(Hours.clock(context.date.timeIntervalSince(started)))
-                                    .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.text3)
+                                    .font(Theme.font(size: 11)).monospacedDigit().foregroundStyle(Theme.text3)
                             }
                         }
                         Spacer(minLength: 0)
@@ -516,11 +516,12 @@ struct RunningTimerBadge: View {
                 .help("Timer running. Click to open the project.")
                 Button("Stop") { projects.stopTimer(project.id) }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.teal)
             }
             .padding(10)
             .background(Theme.coral.opacity(0.14))
+            .background(Theme.panel)
             .foregroundStyle(Theme.text)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.coral.opacity(0.4)))

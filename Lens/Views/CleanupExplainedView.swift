@@ -35,7 +35,7 @@ struct CleanupExplainedView: View {
                 header(all)
                 if all.isEmpty {
                     Text("Nothing to clean up right now.")
-                        .font(.system(size: 14)).foregroundStyle(Theme.text3).panel(padding: 22)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text3).panel(padding: 22)
                 } else {
                     ForEach(all) { bundle in bundlePanel(bundle) }
                 }
@@ -50,9 +50,9 @@ struct CleanupExplainedView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("What Lens would clean up")
-                    .font(.system(size: 26, weight: .bold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 26, weight: .bold)).foregroundStyle(Theme.text)
                 Text("This is the full list behind the suggestions. Nothing is moved or deleted from this page.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             }
             Spacer()
             if !all.isEmpty {
@@ -65,14 +65,14 @@ struct CleanupExplainedView: View {
     private func bundlePanel(_ bundle: Bundle) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bundle.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(bundle.title).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("\(bundle.lines.count) item\(bundle.lines.count == 1 ? "" : "s") · \(ByteFormat.string(bundle.bytes))")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 Spacer()
                 Button("Ask Lens about this") { ask(bundleQuestion(bundle)) }
                     .buttonStyle(SecondaryButtonStyle())
             }
-            Text(bundle.blurb).font(.system(size: 13)).foregroundStyle(Theme.muted)
+            Text(bundle.blurb).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: 0) {
                 let shown = Array(bundle.lines.sorted { $0.bytes > $1.bytes }.prefix(Self.showLimit))
@@ -83,7 +83,7 @@ struct CleanupExplainedView: View {
                 if bundle.lines.count > Self.showLimit {
                     Divider().overlay(Theme.lineSoft)
                     Text("and \(bundle.lines.count - Self.showLimit) more, smaller ones")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted).padding(12)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).padding(12)
                 }
             }
             .background(Theme.panel)
@@ -95,18 +95,18 @@ struct CleanupExplainedView: View {
     private func lineRow(_ line: Line) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(line.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(line.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                 Text("On \(line.drive) · \(line.why)")
-                    .font(.system(size: 12)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
-                Text(line.path).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                Text(line.path).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
             }
             Spacer(minLength: 12)
-            Text(ByteFormat.string(line.bytes)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(ByteFormat.string(line.bytes)).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
             Button("What is this?") {
                 ask("What is \"\(line.name)\" on \(line.drive) (\(ByteFormat.string(line.bytes)))? Lens suggests cleaning it up because: \(line.why). Is it safe to remove?")
             }
-            .buttonStyle(.link).font(.system(size: 12))
+            .buttonStyle(.link).font(Theme.font(size: 12))
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }

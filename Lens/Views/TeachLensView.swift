@@ -21,7 +21,7 @@ struct TeachLensView: View {
         VStack(alignment: .leading, spacing: 18) {
             header
             if let problem {
-                Text(problem).font(.system(size: 13)).foregroundStyle(Theme.amber)
+                Text(problem).font(Theme.font(size: 13)).foregroundStyle(Theme.amber)
                 Spacer()
             } else if index < cards.count {
                 card(cards[index])
@@ -29,7 +29,7 @@ struct TeachLensView: View {
                 Spacer()
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Finding the emails Lens thought were work…").font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    Text("Finding the emails Lens thought were work…").font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 }
                 .frame(maxWidth: .infinity)
                 Spacer()
@@ -47,14 +47,14 @@ struct TeachLensView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Teach Lens what matters").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("Teach Lens what matters").font(Theme.font(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("These are the emails Lens thought were work. Tell it when it got one right, and fix it when it didn't.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
             }
             Spacer()
             if index < cards.count {
                 Text("\(index + 1) of \(cards.count)\(loading ? "+" : "")")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             Button("Close") { dismiss() }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
         }
@@ -66,19 +66,19 @@ struct TeachLensView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(c.senderName.isEmpty ? c.senderEmail : c.senderName)
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("\(c.senderEmail) · \(c.thread.lastDate.formatted(.dateTime.month(.abbreviated).day()))")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Text(c.thread.subject.isEmpty ? "(no subject)" : c.thread.subject)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text2)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text2)
                     .padding(.top, 4)
                     .fixedSize(horizontal: false, vertical: true)
                 if !c.thread.snippet.isEmpty {
-                    Text(c.thread.snippet).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(4)
+                    Text(c.thread.snippet).font(Theme.font(size: 13)).foregroundStyle(Theme.text3).lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let url = URL(string: c.thread.link) {
-                    Link("Open the email ↗", destination: url).font(.system(size: 12))
+                    Link("Open the email ↗", destination: url).font(Theme.font(size: 12))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,7 +86,7 @@ struct TeachLensView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ColorLabel("What Lens did", takeColor(c.take))
-                Text(takeText(c.take)).font(.system(size: 14)).foregroundStyle(Theme.text)
+                Text(takeText(c.take)).font(Theme.font(size: 14)).foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -172,15 +172,15 @@ struct TeachLensView: View {
         VStack(alignment: .leading, spacing: 14) {
             Spacer()
             if cards.isEmpty {
-                Text("Nothing new to go through.").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("Nothing new to go through.").font(Theme.font(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
                 Text("Lens hasn't treated any new emails from the last month as work. Come back after more comes in.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
             } else {
-                Text("Thanks, that's all of them.").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
-                Text(summary).font(.system(size: 14)).foregroundStyle(Theme.text3)
+                Text("Thanks, that's all of them.").font(Theme.font(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(summary).font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Lens sorts your email by these answers from now on. Anything you said is work is waiting for you in Pipeline or Projects.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()

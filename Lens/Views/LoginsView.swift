@@ -32,7 +32,7 @@ struct LoginsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             ColorLabel(group.id, group.color)
-                            Text(group.note).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text(group.note).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                         }
                         ForEach(group.items) { id in
                             card(id, color: group.color)
@@ -40,7 +40,7 @@ struct LoginsView: View {
                     }
                 }
                 Text("Access can be removed any time, here or from each service's own security settings.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .padding(40)
             .frame(maxWidth: 980, alignment: .leading)
@@ -69,15 +69,15 @@ struct LoginsView: View {
     private var header: some View {
         let p = logins.progress
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Log-ins").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Log-ins").font(Theme.font(size: 30, weight: .bold)).foregroundStyle(Theme.text)
             Text("Everything Lens needs to see the whole business. Lens never sees or stores passwords: each one opens the service's own sign-in, or uses something you already have.")
-                .font(.system(size: 15)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Text("Your Google account").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text("Your Google account").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
                 TextField("Filled in when you sign in with Google", text: Binding(get: { logins.field("ownerEmail") }, set: { logins.setField("ownerEmail", $0) }))
                     .textFieldStyle(.roundedBorder).frame(width: 260)
-                Text("Lens ignores any other account on this Mac.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Lens ignores any other account on this Mac.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             HStack(spacing: 14) {
                 GeometryReader { geo in
@@ -87,21 +87,21 @@ struct LoginsView: View {
                     }
                 }
                 .frame(width: 240, height: 6)
-                Text("\(p.done) of \(p.total) connected").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                Text("\(p.done) of \(p.total) connected").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
             }
             if let next = nextUp, let info = Self.info[next] {
                 HStack(spacing: 12) {
                     Image(systemName: "arrow.right.circle.fill").foregroundStyle(Theme.amber)
-                    Text("Next: \(info.name)").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("Next: \(info.name)").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Text(next == .google ? "This one unlocks email, Calendar and project folders." : info.covers)
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                     Button("Open") { expanded.insert(next) }.buttonStyle(SecondaryButtonStyle())
                 }
                 .padding(12)
                 .background(Theme.amber.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             } else {
-                Text("Everything that can be connected is connected.").font(.system(size: 13)).foregroundStyle(Theme.teal)
+                Text("Everything that can be connected is connected.").font(Theme.font(size: 13)).foregroundStyle(Theme.teal)
             }
         }
     }
@@ -118,22 +118,22 @@ struct LoginsView: View {
             } label: {
                 HStack(spacing: 14) {
                     Image(systemName: info.icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(Theme.font(size: 16, weight: .semibold))
                         .foregroundStyle(color)
                         .frame(width: 36, height: 36)
                         .background(color.opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 9))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(info.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
-                        Text(info.covers).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text(info.name).font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text(info.covers).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 12)
                     VStack(alignment: .trailing, spacing: 3) {
                         pill(status)
-                        Text(status.detail).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                        Text(status.detail).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                     }
                     Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
                 }
                 .padding(16)
                 .contentShape(Rectangle())
@@ -144,25 +144,25 @@ struct LoginsView: View {
                 Divider().overlay(Theme.line)
                 HStack(alignment: .top, spacing: 28) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("LENS GETS").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
+                        Text("LENS GETS").font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
                         ForEach(info.gets, id: \.self) { line in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Circle().fill(color).frame(width: 5, height: 5)
-                                Text(line).font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                                Text(line).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         if !info.never.isEmpty {
-                            Text("NEVER").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted).padding(.top, 6)
-                            Text(info.never).font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                            Text("NEVER").font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted).padding(.top, 6)
+                            Text(info.never).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .frame(width: 280, alignment: .leading)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("YOU DO").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
+                        Text("YOU DO").font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
                         ForEach(Array(info.steps.enumerated()), id: \.offset) { i, step in
                             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text("\(i + 1)").font(.system(size: 12, weight: .bold)).foregroundStyle(color).frame(width: 14)
-                                Text(.init(step)).font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                                Text("\(i + 1)").font(Theme.font(size: 12, weight: .bold)).foregroundStyle(color).frame(width: 14)
+                                Text(.init(step)).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         controls(id).padding(.top, 6)
@@ -185,7 +185,7 @@ struct LoginsView: View {
         case .later: tone = Theme.muted
         }
         return Text(status.label)
-            .font(.system(size: 11, weight: .bold))
+            .font(Theme.font(size: 11, weight: .bold))
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(tone.opacity(0.18))
             .foregroundStyle(tone)
@@ -219,7 +219,7 @@ struct LoginsView: View {
 
     private func confirm(_ key: String, _ text: String) -> some View {
         Toggle(isOn: Binding(get: { logins.isConfirmed(key) }, set: { logins.setConfirmed(key, $0) })) {
-            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text)
+            Text(text).font(Theme.font(size: 13)).foregroundStyle(Theme.text)
         }
         .toggleStyle(.checkbox)
     }
@@ -228,10 +228,10 @@ struct LoginsView: View {
     private var calendarControls: some View {
         if logins.googleCalendarReady {
             Text(logins.googleCalendarNames.prefix(6).joined(separator: " · ") + (logins.googleCalendarNames.count > 6 ? " …" : ""))
-                .font(.system(size: 12)).foregroundStyle(Theme.text3)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
         } else if logins.googleNeedsNewSignIn {
             Text("Sign in with Google again (above) to add your Calendar.")
-                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
         } else {
             macCalendarControls
         }
@@ -242,7 +242,7 @@ struct LoginsView: View {
         switch logins.calendarAccess {
         case .fullAccess:
             Text(logins.calendarNames.prefix(6).joined(separator: " · ") + (logins.calendarNames.count > 6 ? " …" : ""))
-                .font(.system(size: 12)).foregroundStyle(Theme.text3)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
         case .denied, .restricted:
             Button("Open Privacy settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
@@ -261,7 +261,7 @@ struct LoginsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if !logins.otherDriveAccounts.isEmpty {
                     Text("Ignoring \(logins.otherDriveAccounts.joined(separator: ", ")): not your account. Sign Drive for desktop in as \(logins.ownerEmail) on this Mac.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 Button("Download Google Drive for desktop") {
                     NSWorkspace.shared.open(URL(string: "https://www.google.com/drive/download/")!)
@@ -272,12 +272,12 @@ struct LoginsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(accounts, id: \.email) { account in
                     HStack {
-                        Text(account.email).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text(account.email).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                         Button("Show in Finder") { NSWorkspace.shared.open(account.url) }.buttonStyle(SecondaryButtonStyle())
                     }
                 }
                 Text("Project folders are created here and shared from Drive.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
     }
@@ -294,14 +294,14 @@ struct LoginsView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 if let last = logins.lastImport(id) {
-                    Text("Last updated \(last.formatted(.dateTime.month().day()))").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text("Last updated \(last.formatted(.dateTime.month().day()))").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
             }
             HStack(spacing: 8) {
-                Text("Keep copies of statements in:").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Keep copies of statements in:").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Text((logins.state.statementsFolder ?? BankSite.defaultFolder.path).replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text3).lineLimit(1).truncationMode(.middle)
-                Button("Change") { logins.chooseStatementsFolder() }.buttonStyle(.link).font(.system(size: 12))
+                    .font(Theme.font(size: 12, design: .monospaced)).foregroundStyle(Theme.text3).lineLimit(1).truncationMode(.middle)
+                Button("Change") { logins.chooseStatementsFolder() }.buttonStyle(.link).font(Theme.font(size: 12))
             }
         }
     }
@@ -455,18 +455,18 @@ private struct ZoomControls: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
                     Text("Connected · \(logins.zoomReport ?? "Reading your summaries")")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                        .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 }
                 if let email = logins.state.zoomEmail {
-                    Text(email).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(email).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if zoom.myNotesCount > 0 {
                     Text("\(zoom.myNotesCount) call\(zoom.myNotesCount == 1 ? "" : "s") from My Notes read")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if let problem = zoom.myNotesProblem {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                        Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
                         Button("Get help") { ask("Lens showed: \"\(problem)\". How do I add the My Notes permissions to my Lens app in Zoom?") }
                             .buttonStyle(SecondaryButtonStyle())
                     }
@@ -474,11 +474,11 @@ private struct ZoomControls: View {
                 if let progress = zoom.progress {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text(progress).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text(progress).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                 } else if !zoom.backfillDone && zoom.zoomCount > 0 {
                     Text("Older summaries are still on their way. Lens keeps going in the background.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 HStack(spacing: 10) {
                     Button("Check now") { Task { await zoom.check() } }
@@ -490,7 +490,7 @@ private struct ZoomControls: View {
                 }
                 if let problem = zoom.problem {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                        Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
                         Button("Get help") { ask("Lens is connected to Zoom but showed: \"\(problem)\". What should I do?") }
                             .buttonStyle(SecondaryButtonStyle())
                     }
@@ -507,7 +507,7 @@ private struct ZoomControls: View {
                     }
                 } else {
                     Text("Connecting Zoom isn't set up on this Mac yet. Ask Claude to set up Zoom for Lens.")
-                        .font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 10) {
                         Button("Get help") { ask("Connecting Zoom isn't set up on this Mac yet. How do I set up Zoom for Lens?") }
                             .buttonStyle(SecondaryButtonStyle())
@@ -516,12 +516,12 @@ private struct ZoomControls: View {
                 }
                 if let error = logins.zoomError {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                        Text(error).font(Theme.font(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
                         Button("Get help") { ask(logins.zoomHelpQuestion) }.buttonStyle(SecondaryButtonStyle())
                     }
                 }
                 Text("Until Zoom is connected, Lens reads the summary emails Zoom sends to your Gmail.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).padding(.top, 4)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).padding(.top, 4)
                 ZoomCheck()
             }
         }
@@ -535,7 +535,7 @@ private struct ZoomControls: View {
         Link(destination: URL(string: "https://zoom.us/profile/setting?tab=zoomai")!) {
             Label("Zoom's AI summary setting", systemImage: "arrow.up.right.square")
         }
-        .font(.system(size: 12))
+        .font(Theme.font(size: 12))
     }
 
     private func ask(_ question: String) {
@@ -556,36 +556,36 @@ private struct GoogleControls: View {
                 HStack(spacing: 14) {
                     ForEach(logins.googleCovers, id: \.name) { item in
                         Text("\(item.name) \(item.on ? "✓" : "–")")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(Theme.font(size: 13, weight: .semibold))
                             .foregroundStyle(item.on ? Theme.teal : Theme.muted)
                     }
                 }
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
-                    Text(logins.state.googleEmail ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(logins.state.googleEmail ?? "").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Button("Disconnect") { Task { await logins.disconnectGoogle() } }.buttonStyle(SecondaryButtonStyle())
                     Button("Start Google over") { Task { await logins.startGoogleOver() } }
                         .buttonStyle(.link)
-                        .font(.system(size: 12))
+                        .font(Theme.font(size: 12))
                         .help("Forgets Lens's saved Google setup and sign-in, so a new Google file can be used.")
                 }
                 if let progress = history.progress {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text(progress).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text(progress).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                 } else if history.workCount > 0 {
                     Text("\(history.workCount) work conversations summarized" + (history.done ? "" : ", more on the way"))
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if logins.googleNeedsNewSignIn {
                     Text("Lens now also reads Google Calendar. Sign in once more to allow it.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.amber)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                     signInButton("Sign in with Google again")
                 }
             } else if logins.hasGoogleClient {
                 Text("Google will warn that it hasn't checked Lens. Click Advanced, then Go to Lens.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 HStack(spacing: 10) {
                     signInButton("Sign in with Google")
                     Button("Start Google over") { Task { await logins.startGoogleOver() } }
@@ -594,13 +594,13 @@ private struct GoogleControls: View {
                 }
             } else {
                 Text("Google sign-in isn't set up on this Mac yet. Ask Claude to set up Google for Lens.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                 Button("Get help") { ask("Google sign-in isn't set up on this Mac yet. Please set up Google for Lens.") }
                     .buttonStyle(SecondaryButtonStyle())
             }
             if let error = logins.googleError {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                    Text(error).font(Theme.font(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
                     Button("Get help") { ask(logins.googleHelpQuestion) }.buttonStyle(SecondaryButtonStyle())
                 }
             }
@@ -646,7 +646,7 @@ private struct ClaudeControls: View {
                 .buttonStyle(PrimaryButtonStyle()).disabled(!ai.hasKey || testing)
             }
             if let result {
-                Text(result).font(.system(size: 12)).foregroundStyle(result.hasPrefix("Works") ? Theme.teal : Theme.coral)
+                Text(result).font(Theme.font(size: 12)).foregroundStyle(result.hasPrefix("Works") ? Theme.teal : Theme.coral)
             }
         }
     }
@@ -680,10 +680,10 @@ private struct FreshBooksControls: View {
             if freshbooks.isConnected {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
-                    Text("Connected · \(freshbooks.businessName ?? "FreshBooks")").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("Connected · \(freshbooks.businessName ?? "FreshBooks")").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 }
                 if let report = freshbooks.report {
-                    Text(report).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(report).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 HStack(spacing: 10) {
                     Button(freshbooks.busy ? "Checking…" : "Check now") { Task { await freshbooks.sync() } }
@@ -712,7 +712,7 @@ private struct FreshBooksControls: View {
                 }
                 if waitingForAddress {
                     Text("After you press Allow, the page won't load. Copy its address from the top of the browser and paste it here:")
-                        .font(.system(size: 12)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         TextField("https://localhost:8765/freshbooks?code=…", text: $pasted).textFieldStyle(.roundedBorder).frame(maxWidth: 420)
                         Button(freshbooks.busy ? "Connecting…" : "Finish") {
@@ -724,7 +724,7 @@ private struct FreshBooksControls: View {
                 }
             }
             if let problem = freshbooks.problem {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -745,9 +745,9 @@ private struct SocialControls: View {
                 // One Page code covers both when Instagram is linked to the Page.
                 row(.facebook)
                 Text("Instagram DMs come in through your Facebook Page, as long as your Instagram is linked to it.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 if let why = UserDefaults.standard.string(forKey: "meta.instagramProblem") {
-                    Text(why).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                    Text(why).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
             } else {
@@ -767,9 +767,9 @@ private struct SocialControls: View {
                 .buttonStyle(SecondaryButtonStyle())
             }
             if let problem = gmail.socialProblem {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             } else if let checked = gmail.socialChecked {
-                Text("Last checked \(checked.formatted(date: .omitted, time: .shortened))").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Last checked \(checked.formatted(date: .omitted, time: .shortened))").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
         .id(refresh)
@@ -781,9 +781,9 @@ private struct SocialControls: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.teal)
                 Text("\(site.rawValue) connected" + (MetaMessages.accountName(site).map { " · \($0)" } ?? ""))
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 Button("Disconnect") { MetaMessages.disconnect(site); refresh += 1 }
-                    .buttonStyle(.link).font(.system(size: 12))
+                    .buttonStyle(.link).font(Theme.font(size: 12))
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
@@ -798,7 +798,7 @@ private struct SocialControls: View {
                     .disabled(busy != nil || (drafts[site.rawValue] ?? "").isEmpty)
                 }
                 if let error = errors[site.rawValue] {
-                    Text(error).font(.system(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
+                    Text(error).font(Theme.font(size: 12)).foregroundStyle(Theme.coral).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -832,24 +832,24 @@ private struct DirectoryControls: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(found.isEmpty ? "No leads from these sites yet. They'll show up on Pipeline as soon as one emails you."
                                : "Leads found from: " + found.joined(separator: ", "))
-                .font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
             if gmail.reviews.isEmpty {
                 Text("No Google review emails yet. Turn on review emails in your Google Business Profile (steps on the left).")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Your Google reviews").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text("Your Google reviews").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
                 ForEach(gmail.reviews.prefix(5)) { r in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(r.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                            Text(r.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                             Spacer()
-                            Text(r.date.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text(r.date.formatted(date: .abbreviated, time: .omitted)).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                         }
                         if !r.snippet.isEmpty {
-                            Text(r.snippet).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
+                            Text(r.snippet).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
                         }
                         if let url = URL(string: r.link) {
-                            Link("Open ↗", destination: url).font(.system(size: 12))
+                            Link("Open ↗", destination: url).font(Theme.font(size: 12))
                         }
                     }
                 }

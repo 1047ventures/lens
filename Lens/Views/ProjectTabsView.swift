@@ -44,10 +44,10 @@ struct ProjectPeopleTab: View {
             VStack(alignment: .leading, spacing: 14) {
                 SectionLabel("People · \(people.count)")
                 Text("Only emails and calls with the people listed here go on this project. Take someone off with the x and their emails come off too.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 if people.isEmpty {
                     Text("No one yet. Add the people you're working with, or pick from the suggestions below.")
-                        .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
                 }
                 ForEach(people) { person in row(person) }
                 addForm
@@ -57,23 +57,23 @@ struct ProjectPeopleTab: View {
             let found = suggestions
             if !found.isEmpty && !showSuggestions {
                 Button("Show \(found.count) other \(found.count == 1 ? "person" : "people") from this project's emails") { showSuggestions = true }
-                    .buttonStyle(.link).font(.system(size: 12))
+                    .buttonStyle(.link).font(Theme.font(size: 12))
             }
             if !found.isEmpty && showSuggestions {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         ColorLabel("Maybe on this project · \(found.count)", Palette.violet)
                         Spacer()
-                        Button("Hide all") { dismiss(found.map(\.email)) }.buttonStyle(.link).font(.system(size: 12))
+                        Button("Hide all") { dismiss(found.map(\.email)) }.buttonStyle(.link).font(Theme.font(size: 12))
                     }
                     Text("People in this project's emails and calls. Add the ones who belong, hide the rest.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(found, id: \.email) { s in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(s.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(s.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                                 Text("\(s.email) · in \(s.count) conversation\(s.count == 1 ? "" : "s")")
-                                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                             }
                             Spacer()
                             Menu {
@@ -88,7 +88,7 @@ struct ProjectPeopleTab: View {
                             .menuStyle(.borderedButton)
                             .fixedSize()
                             Button { dismiss([s.email]) } label: {
-                                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                                Image(systemName: "xmark").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
                             }
                             .buttonStyle(.plain)
                             .help("Not on this project. Lens won't suggest them here again.")
@@ -109,15 +109,15 @@ struct ProjectPeopleTab: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let entry = peopleStore.person(for: person) {
                     Button { navigator.openPerson(entry.id) } label: {
-                        Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text(person.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                     }
                     .buttonStyle(.plain)
                     .help("Open \(person.name) in People")
                 } else {
-                    Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(person.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 }
                 Text(person.email.isEmpty ? "No email" : person.email)
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     .textSelection(.enabled)
             }
             Spacer()
@@ -133,7 +133,7 @@ struct ProjectPeopleTab: View {
             Button {
                 projects.removePerson(person, from: project.id)
             } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                Image(systemName: "xmark").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             }
             .buttonStyle(.plain)
             .help("Take \(person.name) off this project, with emails that only had them in it")
@@ -240,15 +240,15 @@ struct ProjectNotesTab: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ColorLabel("Might be for this project · \(waiting.count)", Palette.violet)
                     Text("Zoom calls that might be about \(project.name). Lens wasn't sure, so it's asking.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(waiting) { note in
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(note.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(note.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                                 Text(note.date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                                 if !note.summary.isEmpty {
-                                    Text(note.summary).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
+                                    Text(note.summary).font(Theme.font(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
@@ -277,7 +277,7 @@ struct ProjectNotesTab: View {
                     Text(search.isEmpty
                          ? "No Zoom notes yet. Calls with the people on this project, or that mention it, show up here."
                          : "No notes mention \"\(search)\".")
-                        .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
                 } else {
                     MeetingNotesList(notes: notes, projectID: project.id)
                 }
@@ -316,7 +316,7 @@ struct ProjectEmailsTab: View {
                 Text(search.isEmpty
                      ? "No emails yet. Conversations with the people on this project show up here."
                      : "No emails mention \"\(search)\".")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             } else {
                 EmailThreadsList(threads: threads)
             }
@@ -358,7 +358,7 @@ struct ProjectProposalTab: View {
             if let deal, let option = deal.chosenOption ?? deal.options.first {
                 // The booked option, editable here: rates, hours, price and what you keep.
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("What you're doing and the price").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                    Text("What you're doing and the price").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
                     OptionColumn(dealID: deal.id, optionID: option.id, isSelected: true, isChosen: true,
                                  canRemove: false, onSelect: {})
                 }
@@ -366,10 +366,10 @@ struct ProjectProposalTab: View {
             if let deal {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(deal.story.headline.isEmpty ? deal.title : deal.story.headline)
-                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
+                        .font(Theme.font(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
                     HStack(spacing: 18) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Price").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                            Text("Price").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
                             // The real price: typing it here sets the deal's chosen option and the project.
                             TextField(deals.valueText(of: deal), text: Binding(
                                 get: { (deals.value(of: deal) ?? project.price).map { String(Int($0.rounded())) } ?? "" },
@@ -398,14 +398,14 @@ struct ProjectProposalTab: View {
             } else {
                 if let q = quotes.uploadedProposal(dealID: nil, projectID: project.id) {
                     HStack(spacing: 10) {
-                        Text(q.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
-                        if let a = q.amount { Text(Money.string(a)).font(.system(size: 14)).foregroundStyle(Theme.text2) }
+                        Text(q.title).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+                        if let a = q.amount { Text(Money.string(a)).font(Theme.font(size: 14)).foregroundStyle(Theme.text2) }
                     }
                     Button("Open your proposal") { NSWorkspace.shared.open(URL(fileURLWithPath: q.location)) }
                         .buttonStyle(PrimaryButtonStyle())
                 } else {
                     Text("This project doesn't have a proposal yet. Upload yours below, or build one here and Lens works out the price from your rates.")
-                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 10) {
                         Button("Build a quote") { buildQuote() }
@@ -465,8 +465,8 @@ struct ProjectProposalTab: View {
 
     private func fact(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
-            Text(value).font(.system(size: 14)).foregroundStyle(Theme.text2)
+            Text(label).font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Text(value).font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
         }
     }
 
@@ -481,7 +481,7 @@ struct ProjectProposalTab: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionLabel("Files · \(files.count)")
             Text("Contracts, treatments, call sheets and anything else, from Google Drive or your Mac. The files stay where they are.")
-                .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(files) { file in fileRow(file) }
             if addingLink {
@@ -522,9 +522,9 @@ struct ProjectProposalTab: View {
             Image(systemName: file.isWebLink ? "link" : "doc")
                 .foregroundStyle(Theme.muted).frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(file.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(file.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                 Text(missing ? "\(file.kind) · Lens can't find this file anymore" : "\(file.kind) · added \(file.added.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.system(size: 12)).foregroundStyle(missing ? Theme.amber : Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(missing ? Theme.amber : Theme.muted)
             }
             Spacer()
             Menu {
@@ -548,7 +548,7 @@ struct ProjectProposalTab: View {
             Button {
                 projects.edit(project.id) { p in p.documents = (p.documents ?? []).filter { $0.id != file.id } }
             } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                Image(systemName: "xmark").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             }
             .buttonStyle(.plain)
             .help("Take this off the project. The file itself isn't touched.")
@@ -611,30 +611,30 @@ struct ProjectHoursTab: View {
                let option = deal.chosenOption ?? deal.options.first {
                 let e = deals.estimate(option)
                 Text("Planned in the proposal (\(option.name), \(option.tagline)).")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     HeadlineNumber(text: Estimate.range(e.teamHoursLow, e.teamHoursHigh), size: 30)
                     Text("hours in all · about \(Int(e.emmaHours.rounded())) of them yours")
-                        .font(.system(size: 14)).foregroundStyle(Theme.text3)
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(e.workload) { row in
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(row.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                                Text(row.label).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
                                 if !row.detail.isEmpty {
-                                    Text(row.detail).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                                    Text(row.detail).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                                 }
                             }
                             Spacer()
-                            Text("\(row.hoursText) hours").font(.system(size: 13)).foregroundStyle(Theme.text2)
+                            Text("\(row.hoursText) hours").font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                         }
                     }
                 }
                 .padding(.top, 4)
             } else {
                 Text("Planned hours show up here once this project has a proposal with options.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             }
         }
         .panel(padding: 22)
@@ -667,7 +667,7 @@ struct ProjectMoneyTab: View {
             }
             if !owed.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Still owed").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                    Text("Still owed").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
                     ForEach(owed) { r in
                         HStack {
                             Text(r.label).foregroundStyle(Theme.text2)
@@ -675,13 +675,13 @@ struct ProjectMoneyTab: View {
                             Text("\(Money.string(r.amount)) · due \(r.due.formatted(date: .abbreviated, time: .omitted))")
                                 .foregroundStyle(r.due < Date() ? Theme.amber : Theme.muted)
                         }
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                     }
                 }
             }
             if txns.isEmpty {
                 Text("Nothing in Money is linked to this project yet. In Money, pick this project on a payment or expense to see it here.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -695,7 +695,7 @@ struct ProjectMoneyTab: View {
                             Text(Money.string(t.amount)).foregroundStyle(t.amount > 0 ? Theme.teal : Theme.text2)
                                 .frame(width: 90, alignment: .trailing)
                         }
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                     }
                 }
             }
@@ -707,7 +707,7 @@ struct ProjectMoneyTab: View {
 
     private func figure(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Text(label).font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             HeadlineNumber(text: value, size: 24)
         }
     }

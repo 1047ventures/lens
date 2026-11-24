@@ -23,7 +23,7 @@ struct QuotesPanel: View {
             SectionLabel("Proposals and quotes · \(list.count)")
             if list.isEmpty {
                 Text("Upload the proposal or quote you sent. Lens keeps the file here, reads the price and what it covered, and remembers it for pricing future jobs.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(list) { q in QuoteRow(quote: q) }
             HStack(spacing: 10) {
@@ -33,11 +33,11 @@ struct QuotesPanel: View {
                 .buttonStyle(PrimaryButtonStyle())
                 if let reading = quotes.reading {
                     ProgressView().controlSize(.small)
-                    Text(reading).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(reading).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
             }
             if let problem = quotes.problem {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
         }
         .panel(padding: 22)
@@ -64,13 +64,13 @@ struct QuoteRow: View {
                             Image(systemName: quote.chosen == p.name ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(quote.chosen == p.name ? Theme.teal : Theme.muted)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                                Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
                                 if !p.includes.isEmpty {
-                                    Text(p.includes).font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                                    Text(p.includes).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                             Spacer()
-                            Text(p.amount.map { Money.string($0) } ?? "").font(.system(size: 13)).foregroundStyle(Theme.text2)
+                            Text(p.amount.map { Money.string($0) } ?? "").font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                         }
                     }
                     if quote.packages.count > 1 {
@@ -98,13 +98,13 @@ struct QuoteRow: View {
                 .foregroundStyle(Theme.muted).frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
                 Text(showClient && !quote.client.isEmpty ? "\(quote.client) · \(quote.title)" : quote.title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                Text(details).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(2)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(details).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(2)
             }
             Spacer()
             if quote.source == "Lens proposal" {
                 Text(quote.amount.map { Money.string($0) } ?? "")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
             } else {
                 // Emma can type the price herself, or correct what Lens read.
                 TextField("Price", text: Binding(
@@ -128,7 +128,7 @@ struct QuoteRow: View {
                 Button {
                     if confirmRemove { quotes.remove(quote) } else { confirmRemove = true }
                 } label: {
-                    if confirmRemove { Text("Remove?").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.coral) }
+                    if confirmRemove { Text("Remove?").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.coral) }
                     else { Image(systemName: "trash").foregroundStyle(Theme.muted) }
                 }
                 .buttonStyle(.plain)
@@ -147,7 +147,7 @@ struct QuoteRow: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             } else if !quote.status.isEmpty {
-                Text(quote.status).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                Text(quote.status).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
             }
         }
         .padding(.vertical, 4)
@@ -185,7 +185,7 @@ struct QuoteHistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Past quotes").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("Past quotes").font(Theme.font(size: 22, weight: .semibold)).foregroundStyle(Theme.text)
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(SecondaryButtonStyle())
             }
@@ -195,7 +195,7 @@ struct QuoteHistoryView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if list.isEmpty {
                         Text("No quotes yet. Upload past proposals on a project or deal, and Lens also finds the ones you sent by email.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(list) { q in QuoteRow(quote: q, showClient: true) }
                 }
@@ -207,7 +207,7 @@ struct QuoteHistoryView: View {
                     navigator.askOpen = true
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                Text("Ask Lens compares it with what you charged before.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Ask Lens compares it with what you charged before.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
         .padding(24)
@@ -235,8 +235,8 @@ struct QuoteHistoryView: View {
 
     private func figure(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
-            Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(label).font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Text(value).font(Theme.font(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
         }
     }
 }

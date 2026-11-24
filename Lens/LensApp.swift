@@ -2,13 +2,12 @@ import SwiftUI
 
 @main
 struct LensApp: App {
+    init() { Theme.registerFonts() }
 
     var body: some Scene {
         WindowGroup("Lens") {
             ContentView()
                 .frame(minWidth: 720, minHeight: 480)
-                .preferredColorScheme(.dark)
-                .tint(Theme.teal)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)

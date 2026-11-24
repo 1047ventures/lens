@@ -15,9 +15,9 @@ struct GearView: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Gear").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.text)
+                        Text("Gear").font(Theme.font(size: 30, weight: .bold)).foregroundStyle(Theme.text)
                         Text("Everything you own, what it's worth today, and when it was last looked after.")
-                            .font(.system(size: 14)).foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
                     Button("Add from photo") { fromPhoto = true }
@@ -39,7 +39,7 @@ struct GearView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "wrench.and.screwdriver").foregroundStyle(Theme.amber)
                         Text("\(first.name) \(first.lastService == nil ? "has never had a check-up" : "hasn't been looked after in over a year")\(first.shoots.map { " and has been on \($0) shoots" } ?? ""). Book one before the next big shoot?")
-                            .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                         Spacer()
                         Button("Log a check-up") {
                             var item = first
@@ -62,11 +62,11 @@ struct GearView: View {
                         Text("Last looked after").frame(minWidth: 70, maxWidth: 170, alignment: .leading).padding(.leading, 18)
                         Text("Shoots").frame(width: 60, alignment: .trailing)
                     }
-                    .font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(Theme.muted)
                     .padding(.bottom, 8)
                     if items.isEmpty {
                         Text("No gear yet. Add the cameras, lenses and drives you use; Lens works out what they're worth.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.muted).padding(.vertical, 12)
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.muted).padding(.vertical, 12)
                     }
                     ForEach(items) { item in
                         Button { editing = item } label: {
@@ -77,15 +77,15 @@ struct GearView: View {
                                     } else {
                                         Image(systemName: item.kind.icon).foregroundStyle(Palette.gold).frame(width: 28)
                                     }
-                                    Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                    Text(item.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(item.bought.formatted(.dateTime.month(.abbreviated).year())).font(.system(size: 12)).foregroundStyle(Theme.text3).frame(width: 84, alignment: .leading)
-                                Text((item.paidIsEstimate == true ? "~" : "") + Money.string(item.paid)).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 84, alignment: .trailing)
-                                Text(Money.string(item.value())).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 92, alignment: .trailing)
-                                Text(serviceText(item)).font(.system(size: 12)).foregroundStyle(item.needsService ? Theme.amber : Theme.text3)
+                                Text(item.bought.formatted(.dateTime.month(.abbreviated).year())).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).frame(width: 84, alignment: .leading)
+                                Text((item.paidIsEstimate == true ? "~" : "") + Money.string(item.paid)).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 84, alignment: .trailing)
+                                Text(Money.string(item.value())).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 92, alignment: .trailing)
+                                Text(serviceText(item)).font(Theme.font(size: 12)).foregroundStyle(item.needsService ? Theme.amber : Theme.text3)
                                     .lineLimit(1).frame(minWidth: 70, maxWidth: 170, alignment: .leading).padding(.leading, 18)
-                                Text(item.shoots.map(String.init) ?? "—").font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 60, alignment: .trailing)
+                                Text(item.shoots.map(String.init) ?? "—").font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text3).frame(width: 60, alignment: .trailing)
                             }
                             .padding(.vertical, 9)
                             .contentShape(Rectangle())
@@ -98,7 +98,7 @@ struct GearView: View {
                 .accentBar(Palette.gold)
 
                 Text("\"Worth now\" counts down from what you paid to a resale floor of 20% over each item's useful life, and feeds straight into What's it all worth? on Money.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .padding(36)
             .frame(maxWidth: 1100, alignment: .leading)
@@ -110,8 +110,8 @@ struct GearView: View {
 
     private func tile(_ label: String, _ value: String, _ tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 12)).foregroundStyle(Theme.muted)
-            Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit().foregroundStyle(tone)
+            Text(label).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+            Text(value).font(Theme.font(size: 22, weight: .semibold)).monospacedDigit().foregroundStyle(tone)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,14 +134,14 @@ private struct GearEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(item.name.isEmpty ? "Add gear" : item.name).font(.system(size: 18, weight: .bold))
+            Text(item.name.isEmpty ? "Add gear" : item.name).font(Theme.font(size: 18, weight: .bold))
             Form {
                 TextField("Name", text: $item.name, prompt: Text("Sony A7S III"))
                 Picker("Type", selection: $item.kind) { ForEach(GearItem.Kind.allCases) { Text($0.label).tag($0) } }
                 DatePicker("Bought", selection: $item.bought, displayedComponents: .date)
                 TextField("Paid", value: Binding(get: { item.paid }, set: { item.paid = $0; item.paidIsEstimate = nil }), format: .currency(code: "USD").precision(.fractionLength(0)))
                 if item.paidIsEstimate == true {
-                    Text("This is a rough used price from a photo. Type what you really paid if you know it.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text("This is a rough used price from a photo. Type what you really paid if you know it.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 Stepper("Useful life: \(Int(item.lifeYears)) years", value: $item.lifeYears, in: 1...15)
                 TextField("Serial number", text: Binding(get: { item.serial ?? "" }, set: { item.serial = $0.isEmpty ? nil : $0 }))

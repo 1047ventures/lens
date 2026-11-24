@@ -30,10 +30,10 @@ struct ProjectsView: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Projects")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(Theme.font(size: 30, weight: .bold))
                             .foregroundStyle(Theme.text)
                         Text("Every gig, from first inquiry to archived.")
-                            .font(.system(size: 15))
+                            .font(Theme.font(size: 15))
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer()
@@ -50,7 +50,7 @@ struct ProjectsView: View {
 
                 if let importMessage {
                     Text(importMessage)
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.text3)
                 }
 
@@ -61,12 +61,12 @@ struct ProjectsView: View {
                 if projects.projects.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No projects yet")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(Theme.font(size: 16, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text(viewModel.roots.isEmpty
                              ? "Create one, or add your drive in Library and import its folders as projects."
                              : "Create one, or turn the drive's folders into projects with “Import from drive folders”.")
-                            .font(.system(size: 14))
+                            .font(Theme.font(size: 14))
                             .foregroundStyle(Theme.muted)
                     }
                     .panel(padding: 22)
@@ -94,17 +94,17 @@ struct ProjectsView: View {
                         HStack(spacing: 16) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(project.name)
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(Theme.font(size: 15, weight: .semibold))
                                     .foregroundStyle(Theme.text)
                                 Text(subtitle(for: project))
-                                    .font(.system(size: 13))
+                                    .font(Theme.font(size: 13))
                                     .foregroundStyle(Theme.muted)
                             }
                             Spacer(minLength: 16)
                             glance(for: project)
                             VStack(alignment: .trailing, spacing: 6) {
                                 Text(project.stage.label)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(Theme.font(size: 12, weight: .semibold))
                                     .foregroundStyle(project.stage == .delivered ? Theme.coral : Theme.text3)
                                 StageBar(stage: project.stage).frame(width: 170)
                             }
@@ -130,16 +130,16 @@ struct ProjectsView: View {
                 HStack(spacing: 5) {
                     if project.isTiming { Circle().fill(Theme.coral).frame(width: 7, height: 7) }
                     Text(books.hours > 0 ? Hours.short(books.hours) : "No time yet")
-                        .font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        .font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(books.hours > 0 ? Theme.text2 : Theme.muted)
                 }
                 if let keep = books.keep {
                     Text(keep >= 0 ? "Keep \(Money.short(keep))" : "Over by \(Money.short(-keep))")
-                        .font(.system(size: 12)).monospacedDigit()
+                        .font(Theme.font(size: 12)).monospacedDigit()
                         .foregroundStyle(keep >= 0 ? Theme.teal : Theme.coral)
                 } else if books.spent > 0 {
                     Text("Spent \(Money.short(books.spent))")
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
                 }
             }
             .frame(width: 130, alignment: .trailing)
@@ -178,7 +178,7 @@ struct ProjectEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(initial == nil ? "New project" : "Edit project")
-                .font(.system(size: 20, weight: .bold))
+                .font(Theme.font(size: 20, weight: .bold))
             Form {
                 TextField("Name", text: $name, prompt: Text("Hartley wedding"))
                 TextField("Client", text: $client)
@@ -284,7 +284,7 @@ struct FoundWorkPanel: View {
             }
             if history.found.isEmpty {
                 Text("Lens reads your work email and call notes and adds your current and upcoming projects here by itself, with their people. Possible jobs go on Pipeline.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(history.found) { item in
                 HStack(alignment: .top, spacing: 12) {
@@ -294,9 +294,9 @@ struct FoundWorkPanel: View {
                             if item.isProject { navigator.openProject(item.id) } else { navigator.openDeal(item.id) }
                         }
                         .buttonStyle(.plain)
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                         Text((item.isProject ? "Added as a project" : "Added to Pipeline") + (item.why.isEmpty ? "" : " · " + item.why))
-                            .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                            .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     Button("Keep") { history.keep(item) }.buttonStyle(SecondaryButtonStyle())

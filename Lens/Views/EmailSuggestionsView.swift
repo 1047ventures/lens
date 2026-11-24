@@ -23,7 +23,7 @@ struct EmailSuggestionsPanel: View {
                 Image(systemName: "envelope").foregroundStyle(Palette.blue)
                 Text(place == .pipeline ? "Sign in with Google in Log-ins and Lens will bring new inquiries in from your email."
                                         : "Sign in with Google in Log-ins and Lens will spot booked work in your email.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 Spacer()
                 Button("Open Log-ins") { navigator.open(.logins) }.buttonStyle(SecondaryButtonStyle())
             }
@@ -33,7 +33,7 @@ struct EmailSuggestionsPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 12) {
                     ColorLabel(items.isEmpty ? "From your email" : "From your email · \(items.count)", Palette.blue)
-                    Text(statusText).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(statusText).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     Spacer()
                     if gmail.checking { ProgressView().controlSize(.small) }
                     Button("Teach Lens") { teaching = true }
@@ -44,13 +44,13 @@ struct EmailSuggestionsPanel: View {
                         .disabled(gmail.checking)
                 }
                 if let problem = gmail.problem {
-                    Text(problem).font(.system(size: 13)).foregroundStyle(Theme.amber)
+                    Text(problem).font(Theme.font(size: 13)).foregroundStyle(Theme.amber)
                 }
                 if !gmail.canSortWithClaude {
                     Text(place == .pipeline
                          ? "Lens is only picking up website form and directory emails for now. Connect Claude in Log-ins and it will read the rest too."
                          : "Connect Claude in Log-ins and Lens can spot booked projects in your email.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(items) { item in
@@ -86,22 +86,22 @@ private struct SuggestionRow: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(badge)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(Theme.font(size: 10, weight: .semibold))
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Palette.blue.opacity(0.18))
                     .foregroundStyle(Palette.blue)
                     .clipShape(Capsule())
                 Text(item.kind == .attach ? item.thread.subject : item.displayTitle)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(byline).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text(byline).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 let text = item.kind == .attach || item.wants.isEmpty ? item.thread.snippet : item.wants
                 if !text.isEmpty {
-                    Text(text).font(.system(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
+                    Text(text).font(Theme.font(size: 13)).foregroundStyle(Theme.text3).lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let url = URL(string: item.thread.link) {
-                    Link("Open the email ↗", destination: url).font(.system(size: 12))
+                    Link("Open the email ↗", destination: url).font(Theme.font(size: 12))
                 }
             }
             Spacer(minLength: 8)
@@ -172,26 +172,26 @@ struct EmailThreadsList: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(thread.subject.isEmpty ? "(no subject)" : thread.subject)
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                             .lineLimit(2)
                         Spacer()
                         Text(thread.lastDate.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                     Text("\(thread.from) · \(thread.messageCount) message\(thread.messageCount == 1 ? "" : "s")")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     if let s = history.summary(for: thread.id) {
-                        Text(s.summary).font(.system(size: 12)).foregroundStyle(Theme.text2)
+                        Text(s.summary).font(Theme.font(size: 12)).foregroundStyle(Theme.text2)
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(s.decisions.prefix(6), id: \.self) { d in
-                            Text("• " + d).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                            Text("• " + d).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else if !thread.snippet.isEmpty {
-                        Text(thread.snippet).font(.system(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
+                        Text(thread.snippet).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).lineLimit(2)
                     }
                     if let url = URL(string: thread.link) {
-                        Link("Open in Gmail ↗", destination: url).font(.system(size: 12))
+                        Link("Open in Gmail ↗", destination: url).font(Theme.font(size: 12))
                     }
                 }
             }

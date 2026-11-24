@@ -26,7 +26,7 @@ struct LibraryFolderView: View {
             Divider().overlay(Theme.line)
             if items.isEmpty {
                 Text("No photos or videos in this folder.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted).padding(40)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted).padding(40)
                 Spacer()
             } else {
                 ScrollView {
@@ -54,13 +54,13 @@ struct LibraryFolderView: View {
     private var header: some View {
         HStack(alignment: .bottom, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.text)
-                Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                Text(title).font(Theme.font(size: 24, weight: .bold)).foregroundStyle(Theme.text)
+                Text(subtitle).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
             Spacer()
             if folderURL != nil {
                 Text("Drag any file into Premiere, Lightroom or an email")
-                    .font(.system(size: 12)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
                 if let item = items.first(where: { $0.id == selected }), item.url != nil {
                     Button("Preview") { previewing = item }.buttonStyle(SecondaryButtonStyle())
                     Button("Open") { if let url = item.url { NSWorkspace.shared.open(url) } }
@@ -72,7 +72,7 @@ struct LibraryFolderView: View {
                 }
             } else if let drive {
                 Label("Plug in \(drive.name) to see and open these", systemImage: "externaldrive")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.amber)
+                    .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.amber)
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
@@ -99,13 +99,13 @@ struct LibraryFolderView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .bottomLeading) {
                     if item.kind == .video {
-                        Image(systemName: "play.fill").font(.system(size: 10)).padding(5)
+                        Image(systemName: "play.fill").font(Theme.font(size: 10)).padding(5)
                             .background(.black.opacity(0.55)).clipShape(Circle()).padding(6).foregroundStyle(.white)
                     }
                 }
-            Text(item.name).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
+            Text(item.name).font(Theme.font(size: 12, weight: .medium)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
             Text("\(ByteFormat.string(item.size)) · \(item.modified.formatted(.dateTime.month().day().year()))")
-                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
         }
         .padding(8)
         .background(isSelected ? Theme.teal.opacity(0.18) : .clear)
@@ -169,7 +169,7 @@ private struct Thumbnail: View {
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
-                Image(systemName: kind == .video ? "film" : "photo").font(.system(size: 24)).foregroundStyle(Theme.muted)
+                Image(systemName: kind == .video ? "film" : "photo").font(Theme.font(size: 24)).foregroundStyle(Theme.muted)
             }
         }
         .clipped()
@@ -209,8 +209,8 @@ private struct PreviewSheet: View {
                 Button { index = min(items.count - 1, index + 1) } label: { Image(systemName: "chevron.right") }
                     .buttonStyle(SecondaryButtonStyle()).disabled(index >= items.count - 1).keyboardShortcut(.rightArrow, modifiers: [])
                 Text(items.indices.contains(index) ? items[index].name : "")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                Text("\(index + 1) of \(items.count)").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text("\(index + 1) of \(items.count)").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Spacer()
                 if items.indices.contains(index), let url = items[index].url {
                     Button("Open") { NSWorkspace.shared.open(url) }.buttonStyle(SecondaryButtonStyle())

@@ -48,7 +48,7 @@ struct LibraryDriveView: View {
                 Spacer()
             } else if shown.isEmpty {
                 Text(folders.isEmpty ? "Lens hasn't read this drive yet." : "Nothing here matches.")
-                    .font(.system(size: 14)).foregroundStyle(Theme.muted).padding(40)
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted).padding(40)
                 Spacer()
             } else {
                 ScrollView {
@@ -77,11 +77,11 @@ struct LibraryDriveView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if let drive, !drive.isMac, !drive.isPhotos {
                         TextField("Name", text: Binding(get: { drive.name }, set: { catalog.rename(drive.id, to: $0) }))
-                            .textFieldStyle(.plain).font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.text)
+                            .textFieldStyle(.plain).font(Theme.font(size: 24, weight: .bold)).foregroundStyle(Theme.text)
                     } else {
-                        Text(drive?.name ?? "Drive").font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.text)
+                        Text(drive?.name ?? "Drive").font(Theme.font(size: 24, weight: .bold)).foregroundStyle(Theme.text)
                     }
-                    Text(summary).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text(summary).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
                 Spacer()
             }
@@ -91,7 +91,7 @@ struct LibraryDriveView: View {
                 Picker("", selection: $order) { ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 240)
                 Spacer()
-                Text("\(shown.count) folder\(shown.count == 1 ? "" : "s")").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("\(shown.count) folder\(shown.count == 1 ? "" : "s")").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
@@ -111,11 +111,11 @@ struct LibraryDriveView: View {
         let biggest = max(folders.map(bytes).max() ?? 1, 1)
         return HStack(spacing: 14) {
             Image(systemName: folder.videos > 0 ? "film" : "photo.on.rectangle")
-                .font(.system(size: 16)).foregroundStyle(Theme.text3).frame(width: 22)
+                .font(Theme.font(size: 16)).foregroundStyle(Theme.text3).frame(width: 22)
             VStack(alignment: .leading, spacing: 3) {
-                Text(folder.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(folder.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                 Text(folder.parent.isEmpty ? " " : folder.parent)
-                    .font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
+                    .font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
             }
             .frame(minWidth: 220, alignment: .leading)
             // How big this folder is next to the biggest one, at a glance.
@@ -125,11 +125,11 @@ struct LibraryDriveView: View {
             }
             .frame(height: 6)
             VStack(alignment: .trailing, spacing: 3) {
-                Text(ByteFormat.string(total)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
-                Text(counts(folder)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text(ByteFormat.string(total)).font(Theme.font(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text2)
+                Text(counts(folder)).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
             }
             .frame(width: 150, alignment: .trailing)
-            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            Image(systemName: "chevron.right").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
         }
         .padding(.vertical, 10)
         .contentShape(Rectangle())

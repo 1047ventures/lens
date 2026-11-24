@@ -39,7 +39,7 @@ struct OrganizeView: View {
             if viewModel.organizeProposals.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
-                    Image(systemName: "checkmark.circle").font(.system(size: 40)).foregroundColor(.green)
+                    Image(systemName: "checkmark.circle").font(Theme.font(size: 40)).foregroundColor(.green)
                     Text("Nothing loose left to wrangle.").foregroundColor(.secondary)
                     Spacer()
                 }

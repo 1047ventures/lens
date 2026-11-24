@@ -21,19 +21,19 @@ struct RecentlyAddedPanel: View {
                     Spacer()
                     Button("Keep all") { people.keepAll() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(Theme.font(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.teal)
                 }
                 Text("People Lens added by itself in the last two weeks. They stay unless you remove them.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 ForEach(shown) { p in
                     HStack(alignment: .center, spacing: 12) {
                         Button { navigator.personID = p.id } label: {
                             HStack(spacing: 10) {
                                 PersonBadge(person: p, size: 28)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                                    Text(detail(p)).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                                    Text(p.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                    Text(detail(p)).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                                 }
                             }
                             .contentShape(Rectangle())
@@ -48,7 +48,7 @@ struct RecentlyAddedPanel: View {
                 if recent.count > 5 {
                     Button(showAll ? "Show fewer" : "Show all \(recent.count)") { showAll.toggle() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(Theme.font(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.teal)
                 }
             }
@@ -105,13 +105,13 @@ struct CardScanView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Scan business cards").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Scan business cards").font(Theme.font(size: 18, weight: .bold)).foregroundStyle(Theme.text)
             if !CardReader.hasKey {
                 Text("Lens needs your Claude key to read cards. Add it in Log-ins, then come back.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.amber)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.amber)
             } else {
                 Text("Take a photo of a card with your iPhone, or pick or drop in photos. Several cards at once is fine, even in one photo. Lens adds each person to People, tagged Met at networking.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {
                     Button("Take a photo with your iPhone") { camera.show() }
@@ -121,7 +121,7 @@ struct CardScanView: View {
                     Spacer()
                     DatePicker("Met on", selection: $metOn, displayedComponents: .date)
                         .fixedSize()
-                        .font(.system(size: 12))
+                        .font(Theme.font(size: 12))
                 }
                 ScrollView {
                     VStack(spacing: 10) {
@@ -133,7 +133,7 @@ struct CardScanView: View {
             }
             HStack {
                 if !rows.isEmpty {
-                    Text(summary).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text(summary).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 Spacer()
                 Button("Done") { dismiss() }
@@ -162,9 +162,9 @@ struct CardScanView: View {
     private var dropZone: some View {
         VStack(spacing: 8) {
             Image(systemName: "person.crop.rectangle.stack")
-                .font(.system(size: 28)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 28)).foregroundStyle(Theme.muted)
             Text("Or drop photos of cards here")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
         }
         .frame(maxWidth: .infinity, minHeight: 200)
         .background(dropping ? Theme.teal.opacity(0.1) : Theme.panel)
@@ -186,30 +186,30 @@ struct CardScanView: View {
             if r.loading {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Reading this card...").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("Reading this card...").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let e = r.error {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(e).font(.system(size: 12)).foregroundStyle(Theme.amber)
+                    Text(e).font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                     Button("Remove") { rows.removeAll { $0.id == r.id } }.buttonStyle(SecondaryButtonStyle())
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let id = r.addedID {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(r.card.name.isEmpty ? r.card.email : r.card.name)
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                     Text([r.card.title, r.card.company].filter { !$0.isEmpty }.joined(separator: " at "))
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.mint)
-                        Text("Added to People").font(.system(size: 12)).foregroundStyle(Theme.text2)
+                        Text("Added to People").font(Theme.font(size: 12)).foregroundStyle(Theme.text2)
                         Button("Open") {
                             navigator.openPerson(id)
                             dismiss()
                         }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(Theme.font(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.teal)
                     }
                 }
@@ -217,7 +217,7 @@ struct CardScanView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Lens isn't sure about everything on this card. Check the highlighted parts, then tap Add.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.amber)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                         .fixedSize(horizontal: false, vertical: true)
                     field("Name", row.card.name, unsure: r.card.unsure.contains("name"))
                     field("Company", row.card.company, unsure: r.card.unsure.contains("company"))
@@ -243,7 +243,7 @@ struct CardScanView: View {
 
     private func field(_ label: String, _ text: Binding<String>, unsure: Bool) -> some View {
         HStack {
-            Text(label).font(.system(size: 12)).foregroundStyle(unsure ? Theme.amber : Theme.muted).frame(width: 70, alignment: .leading)
+            Text(label).font(Theme.font(size: 12)).foregroundStyle(unsure ? Theme.amber : Theme.muted).frame(width: 70, alignment: .leading)
             TextField(label, text: text)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(unsure ? Theme.amber : .clear))
         }
@@ -408,14 +408,14 @@ struct BringInSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(kind.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.text)
-            Text(intro).font(.system(size: 13)).foregroundStyle(Theme.muted)
+            Text(kind.title).font(Theme.font(size: 20, weight: .bold)).foregroundStyle(Theme.text)
+            Text(intro).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 12) {
                 step(1, stepOne)
                 step(2, "Download it from that email. Then tap Find it in Downloads, or Choose the file if you saved it somewhere else. The zip file is fine, no need to open it.")
                 Link(kind == .linkedIn ? "Open LinkedIn's download page" : "Open Meta's download page", destination: pageURL)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .padding(.leading, 30)
             }
             .panel()
@@ -427,16 +427,16 @@ struct BringInSheet: View {
             if working {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Reading your download...").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("Reading your download...").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
             }
             if let result {
                 Label(result, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 13)).foregroundStyle(Palette.mint)
+                    .font(Theme.font(size: 13)).foregroundStyle(Palette.mint)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let problem {
-                Text(problem).font(.system(size: 13)).foregroundStyle(Theme.amber)
+                Text(problem).font(Theme.font(size: 13)).foregroundStyle(Theme.amber)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
@@ -477,12 +477,12 @@ struct BringInSheet: View {
     private func step(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text("\(n)")
-                .font(.system(size: 12, weight: .bold))
+                .font(Theme.font(size: 12, weight: .bold))
                 .frame(width: 20, height: 20)
                 .background(Theme.teal.opacity(0.18))
                 .foregroundStyle(Theme.teal)
                 .clipShape(Circle())
-            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text2)
+            Text(text).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

@@ -42,7 +42,7 @@ struct ArchiveCandidatesView: View {
             if viewModel.archiveCandidates.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
-                    Image(systemName: "checkmark.circle").font(.system(size: 40)).foregroundColor(.green)
+                    Image(systemName: "checkmark.circle").font(Theme.font(size: 40)).foregroundColor(.green)
                     Text("Nothing's collecting dust yet.").foregroundColor(.secondary)
                     Spacer()
                 }

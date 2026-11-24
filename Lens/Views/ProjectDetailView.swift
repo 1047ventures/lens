@@ -26,7 +26,7 @@ struct ProjectDetailView: View {
                     navigator.projectID = nil
                 } label: {
                     Label("All projects", systemImage: "chevron.left")
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
                 .buttonStyle(.plain)
@@ -104,14 +104,14 @@ struct ProjectDetailView: View {
                             Text(label)
                             if waiting > 0 {
                                 Text("\(waiting) new")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(Theme.font(size: 11, weight: .bold))
                                     .padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(Palette.violet.opacity(0.25))
                                     .foregroundStyle(Palette.violet)
                                     .clipShape(Capsule())
                             }
                         }
-                        .font(.system(size: 13, weight: tab == t ? .semibold : .medium))
+                        .font(Theme.font(size: 13, weight: tab == t ? .semibold : .medium))
                         .foregroundStyle(tab == t ? Theme.text : Theme.muted)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -140,9 +140,9 @@ struct ProjectDetailView: View {
                         Text(t.rawValue).foregroundStyle(Theme.text2)
                         Spacer()
                         Text("\(count(t) ?? 0)").foregroundStyle(Theme.muted)
-                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
+                        Image(systemName: "chevron.right").font(Theme.font(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
                     }
-                    .font(.system(size: 13))
+                    .font(Theme.font(size: 13))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -156,14 +156,14 @@ struct ProjectDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(project.name)
-                .font(.system(size: 30, weight: .bold))
+                .font(Theme.font(size: 30, weight: .bold))
                 .foregroundStyle(Theme.text)
             let meta = [project.client,
                         project.shootDate?.formatted(date: .complete, time: .shortened) ?? "",
                         project.location].filter { !$0.isEmpty }
             if !meta.isEmpty {
                 Text(meta.joined(separator: " · "))
-                    .font(.system(size: 14))
+                    .font(Theme.font(size: 14))
                     .foregroundStyle(Theme.text3)
             }
         }
@@ -179,7 +179,7 @@ struct ProjectDetailView: View {
                                   : step == project.stage ? Theme.text : Theme.track)
                             .frame(height: 6)
                         Text(step.label)
-                            .font(.system(size: 12, weight: step == project.stage ? .bold : .medium))
+                            .font(Theme.font(size: 12, weight: step == project.stage ? .bold : .medium))
                             .foregroundStyle(step.rawValue <= project.stage.rawValue ? Theme.text2 : Theme.muted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,11 +217,11 @@ struct ProjectDetailView: View {
             SectionLabel("Footage")
             if project.isOnServer {
                 Text("On the server")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(Theme.font(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 if let path = project.archivedPath {
                     Text(path)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(Theme.font(size: 12, design: .monospaced))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1).truncationMode(.middle)
                     Button("Show in Finder") {
@@ -234,7 +234,7 @@ struct ProjectDetailView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         HeadlineNumber(text: "\(files.count)", size: 30)
                         Text("clip\(files.count == 1 ? "" : "s") · \(ByteFormat.string(files.reduce(0) { $0 + $1.sizeBytes }))")
-                            .font(.system(size: 14))
+                            .font(Theme.font(size: 14))
                             .foregroundStyle(Theme.text3)
                     }
                     if !files.isEmpty {
@@ -246,11 +246,11 @@ struct ProjectDetailView: View {
                     }
                 } else {
                     Text("Read the drive in Library to see this project's clips.")
-                        .font(.system(size: 14))
+                        .font(Theme.font(size: 14))
                         .foregroundStyle(Theme.text3)
                 }
                 Text(folder.path)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(Theme.font(size: 12, design: .monospaced))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
                 HStack(spacing: 10) {
@@ -263,7 +263,7 @@ struct ProjectDetailView: View {
                 }
             } else {
                 Text("No footage folder yet. Pick the folder this project's clips live in.")
-                    .font(.system(size: 14))
+                    .font(Theme.font(size: 14))
                     .foregroundStyle(Theme.text3)
                 Button("Choose folder…") { chooseFolder() }
                     .buttonStyle(SecondaryButtonStyle())
@@ -282,7 +282,7 @@ struct ProjectDetailView: View {
                     let isLatest = index == project.events.count - 1
                     HStack(alignment: .top, spacing: 12) {
                         Text(event.date.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.system(size: 12))
+                            .font(Theme.font(size: 12))
                             .foregroundStyle(Theme.muted)
                             .frame(width: 52, alignment: .leading)
                         Circle()
@@ -290,7 +290,7 @@ struct ProjectDetailView: View {
                             .frame(width: 9, height: 9)
                             .padding(.top, 4)
                         Text(event.text)
-                            .font(.system(size: 14, weight: isLatest ? .semibold : .regular))
+                            .font(Theme.font(size: 14, weight: isLatest ? .semibold : .regular))
                             .foregroundStyle(isLatest ? Theme.text : Theme.text2)
                     }
                     .padding(.bottom, 14)
@@ -324,7 +324,7 @@ struct ProjectDetailView: View {
             Spacer()
             Text(value.isEmpty ? "—" : value).foregroundStyle(Theme.text2)
         }
-        .font(.system(size: 13))
+        .font(Theme.font(size: 13))
     }
 
     // MARK: - Actions

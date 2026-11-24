@@ -28,7 +28,7 @@ struct FootageView: View {
                     drives
                     if viewModel.hasScanned && !pluggedRoots {
                         Text("Plug in a drive to tidy it up. Everything on your drives is still searchable above.")
-                            .font(.system(size: 14))
+                            .font(Theme.font(size: 14))
                             .foregroundStyle(Theme.text3)
                             .panel(padding: 22)
                     } else if viewModel.hasScanned {
@@ -38,7 +38,7 @@ struct FootageView: View {
                         loose
                     } else if !viewModel.pluggedRoots.isEmpty {
                         Text("Scan the drive to see where its space is going.")
-                            .font(.system(size: 14))
+                            .font(Theme.font(size: 14))
                             .foregroundStyle(Theme.text3)
                             .panel(padding: 22)
                     }
@@ -78,10 +78,10 @@ struct FootageView: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Library")
-                    .font(.system(size: 30, weight: .bold))
+                    .font(Theme.font(size: 30, weight: .bold))
                     .foregroundStyle(Theme.text)
                 Text("Every photo and video, on every drive. Plug one in to tidy it up.")
-                    .font(.system(size: 15))
+                    .font(Theme.font(size: 15))
                     .foregroundStyle(Theme.muted)
             }
             Spacer()
@@ -112,7 +112,7 @@ struct FootageView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "externaldrive").foregroundStyle(Theme.text3)
                         Text(root.path)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(Theme.font(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.text2)
                             .lineLimit(1).truncationMode(.middle)
                         Spacer()
@@ -127,13 +127,13 @@ struct FootageView: View {
                 }
                 if !viewModel.scanStatusText.isEmpty {
                     Text(viewModel.scanStatusText)
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
                 if let summary = viewModel.lastAutoRunSummary {
                     HStack {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.teal)
-                        Text(summary).font(.system(size: 13)).foregroundStyle(Theme.text2)
+                        Text(summary).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                         Spacer()
                         Button("Undo") { viewModel.undoLastBatch() }
                             .buttonStyle(SecondaryButtonStyle())
@@ -185,13 +185,13 @@ struct FootageView: View {
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 Text(capacity?.name ?? "Drive")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(Theme.font(size: 17, weight: .bold))
                     .foregroundStyle(Theme.text)
                 Spacer()
                 if let capacity {
                     HeadlineNumber(text: ByteFormat.string(capacity.used), size: 22)
                     Text("of \(ByteFormat.string(capacity.total)) used · \(ByteFormat.string(capacity.free)) free")
-                        .font(.system(size: 14))
+                        .font(Theme.font(size: 14))
                         .foregroundStyle(Theme.text3)
                 }
             }
@@ -219,7 +219,7 @@ struct FootageView: View {
                         Text(segment.label).foregroundStyle(Theme.text3)
                         Text(ByteFormat.string(segment.bytes)).fontWeight(.semibold).foregroundStyle(Theme.text)
                     }
-                    .font(.system(size: 12))
+                    .font(Theme.font(size: 12))
                 }
             }
 
@@ -228,7 +228,7 @@ struct FootageView: View {
                 HStack {
                     Text("Server folder").foregroundStyle(Theme.muted)
                     Text(server)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(Theme.font(size: 12, design: .monospaced))
                         .foregroundStyle(Theme.text3)
                         .lineLimit(1).truncationMode(.middle)
                     if let serverCapacity = DriveInfo.capacity(for: URL(fileURLWithPath: server)) {
@@ -236,7 +236,7 @@ struct FootageView: View {
                         Text("\(ByteFormat.string(serverCapacity.free)) free").foregroundStyle(Theme.text2)
                     }
                 }
-                .font(.system(size: 13))
+                .font(Theme.font(size: 13))
             }
         }
         .panel(padding: 24)
@@ -253,12 +253,12 @@ struct FootageView: View {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel("Get space back")
                 Button("See exactly what's included") { path.append(.cleanupList) }
-                    .buttonStyle(.link).font(.system(size: 13))
+                    .buttonStyle(.link).font(Theme.font(size: 13))
                 Spacer()
                 if total > 0, let capacity = viewModel.roots.first.flatMap(DriveInfo.capacity(for:)) {
                     let after = Double(max(0, capacity.used - total)) / Double(max(capacity.total, 1))
                     Text("All three: \(ByteFormat.string(total)) back, drive drops to \(Int((after * 100).rounded()))% full")
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.text3)
                 }
             }
@@ -284,11 +284,11 @@ struct FootageView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 10, height: 10)
-                Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
             }
             HeadlineNumber(text: ByteFormat.string(bytes), size: 28)
             Text(detail)
-                .font(.system(size: 13))
+                .font(Theme.font(size: 13))
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -313,12 +313,12 @@ struct FootageView: View {
                         projects.importProjects(fromFoldersIn: root)
                     }
                     .buttonStyle(.link)
-                    .font(.system(size: 13))
+                    .font(Theme.font(size: 13))
                 }
             }
             if onDriveProjects.isEmpty {
                 Text("No projects point at folders on this drive yet. Import the drive's folders, or set a footage folder on a project.")
-                    .font(.system(size: 14))
+                    .font(Theme.font(size: 14))
                     .foregroundStyle(Theme.text3)
                     .panel(padding: 20)
             } else {
@@ -352,17 +352,17 @@ struct FootageView: View {
                 HStack(spacing: 8) {
                     Button(project.name) { navigator.openProject(project.id) }
                         .buttonStyle(.plain)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Theme.font(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Text(project.stage.label)
-                        .font(.system(size: 12))
+                        .font(Theme.font(size: 12))
                         .foregroundStyle(project.stage == .paid ? Theme.chartReady : Theme.text3)
                 }
                 StageBar(stage: project.stage).frame(maxWidth: 180)
             }
             Spacer()
             Text(files.isEmpty ? "No footage yet" : "\(files.count) clips · \(ByteFormat.string(files.reduce(0) { $0 + $1.sizeBytes }))")
-                .font(.system(size: 13))
+                .font(Theme.font(size: 13))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text3)
         }
@@ -384,10 +384,10 @@ struct FootageView: View {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(files.isEmpty ? "Every clip belongs to a project" : "\(files.count) loose clip\(files.count == 1 ? "" : "s") · \(ByteFormat.string(files.reduce(0) { $0 + $1.sizeBytes }))")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Theme.font(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Text("Sort them into folders by date, camera, location or clip length.")
-                        .font(.system(size: 13))
+                        .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer()
@@ -401,10 +401,10 @@ struct FootageView: View {
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("\(viewModel.archiveCandidates.count) old clip\(viewModel.archiveCandidates.count == 1 ? "" : "s") nobody's touched in a while")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(Theme.font(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text("Not linked to any Premiere project. Could move to the server too.")
-                            .font(.system(size: 13))
+                            .font(Theme.font(size: 13))
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer()

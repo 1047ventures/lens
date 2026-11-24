@@ -43,11 +43,11 @@ struct AskLensView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles").foregroundStyle(Palette.violet)
-            Text("Ask Lens").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+            Text("Ask Lens").font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Theme.text)
             Spacer()
             Button(showLearned ? "Chat" : "Learned · \(ai.notes.count)") { showLearned.toggle() }
                 .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Theme.font(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.text3)
             Button {
                 ai.newConversation()
@@ -79,7 +79,7 @@ struct AskLensView: View {
                     if ai.busy {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text(ai.status ?? "Thinking…").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text(ai.status ?? "Thinking…").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                         }
                         .id("busy")
                     }
@@ -98,14 +98,14 @@ struct AskLensView: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Ask about anything in Lens, paste in a message, or tell it how you like to work. It asks before changing anything.")
-                .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(suggestions, id: \.self) { s in
                 Button {
                     if s.hasSuffix(": ") { draft = s; focused = true }
                     else { Task { await ai.send(s) } }
                 } label: {
-                    Text(s).font(.system(size: 12, weight: .semibold))
+                    Text(s).font(Theme.font(size: 12, weight: .semibold))
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Theme.panel)
@@ -125,14 +125,14 @@ struct AskLensView: View {
         case .user:
             HStack {
                 Spacer(minLength: 40)
-                Text(item.text).font(.system(size: 13)).foregroundStyle(Theme.text)
+                Text(item.text).font(Theme.font(size: 13)).foregroundStyle(Theme.text)
                     .padding(10)
                     .background(Palette.violet.opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .textSelection(.enabled)
             }
         case .assistant:
-            Text(markdown(item.text)).font(.system(size: 13)).foregroundStyle(Theme.text2)
+            Text(markdown(item.text)).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -141,17 +141,17 @@ struct AskLensView: View {
         case .draft:
             if let d = item.draft { draftCard(d) }
         case .info:
-            Text(item.text).font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Text(item.text).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
         case .error:
             Label(item.text, systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 12)).foregroundStyle(Theme.coral)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.coral)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func actionCard(_ action: LensAI.Action) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(action.summary).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(action.summary).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
             switch action.state {
             case .waiting:
@@ -160,9 +160,9 @@ struct AskLensView: View {
                     Button("Skip") { ai.decide(action.id, approve: false) }.buttonStyle(SecondaryButtonStyle())
                 }
             case .approved:
-                Label("Approved", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.teal)
+                Label("Approved", systemImage: "checkmark.circle.fill").font(Theme.font(size: 12)).foregroundStyle(Theme.teal)
             case .skipped:
-                Label("Skipped", systemImage: "xmark.circle").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Label("Skipped", systemImage: "xmark.circle").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
         }
         .padding(12)
@@ -178,9 +178,9 @@ struct AskLensView: View {
                 ColorLabel("Draft email", Palette.blue)
                 Spacer()
             }
-            if !d.to.isEmpty { Text("To: \(d.to)").font(.system(size: 12)).foregroundStyle(Theme.muted) }
-            Text(d.subject).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-            Text(d.body).font(.system(size: 13)).foregroundStyle(Theme.text2).textSelection(.enabled)
+            if !d.to.isEmpty { Text("To: \(d.to)").font(Theme.font(size: 12)).foregroundStyle(Theme.muted) }
+            Text(d.subject).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(d.body).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Copy") {
@@ -209,9 +209,9 @@ struct AskLensView: View {
 
     private func ignoredRow(_ text: String, remove: @escaping () -> Void) -> some View {
         HStack {
-            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text2)
+            Text(text).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
             Spacer()
-            Button("Remove", action: remove).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Button("Remove", action: remove).buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
         }
         .padding(10)
         .background(Theme.panel)
@@ -223,16 +223,16 @@ struct AskLensView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ColorLabel("What Lens has learned", Palette.violet)
                 Text("Lens follows these in every conversation. Tell it \"remember that…\" to add one, or edit and delete them here.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 if ai.notes.isEmpty {
-                    Text("Nothing yet.").font(.system(size: 13)).foregroundStyle(Theme.text3)
+                    Text("Nothing yet.").font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 }
                 ForEach(ai.notes) { note in
                     HStack(alignment: .top, spacing: 8) {
                         TextField("", text: Binding(get: { note.text }, set: { ai.editNote(note, text: $0) }), axis: .vertical)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13))
+                            .font(Theme.font(size: 13))
                             .foregroundStyle(Theme.text2)
                         Button { ai.forget(note) } label: { Image(systemName: "trash") }
                             .buttonStyle(.plain).foregroundStyle(Theme.muted).help("Forget this")
@@ -244,7 +244,7 @@ struct AskLensView: View {
                 if !gmail.blockedSenders.isEmpty || !gmail.blockedDomains.isEmpty {
                     ColorLabel("Lens ignores", Palette.violet).padding(.top, 10)
                     Text("Email and messages from these never show up as suggestions.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     ForEach(gmail.blockedDomains, id: \.self) { d in
                         ignoredRow("Everyone at \(d)") { gmail.unblockDomain(d) }
                     }
@@ -256,13 +256,13 @@ struct AskLensView: View {
                     ColorLabel("Change requests sent", Palette.gold).padding(.top, 10)
                     ForEach(ai.requests.reversed()) { r in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(r.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(r.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                             HStack {
-                                Text(r.created.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                Text(r.created.formatted(date: .abbreviated, time: .omitted)).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                                 if let link = r.link, let url = URL(string: link) {
-                                    Link("View on GitHub ↗", destination: url).font(.system(size: 11))
+                                    Link("View on GitHub ↗", destination: url).font(Theme.font(size: 11))
                                 } else {
-                                    Text("sent by email").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                    Text("sent by email").font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                                 }
                             }
                         }
@@ -283,7 +283,7 @@ struct AskLensView: View {
                     navigator.open(.logins)
                 } label: {
                     Label("Connect Claude in Log-ins to start", systemImage: "key.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(Theme.font(size: 12, weight: .semibold))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.amber)
@@ -293,10 +293,10 @@ struct AskLensView: View {
                     HStack(spacing: 6) {
                         ForEach(attached, id: \.self) { url in
                             HStack(spacing: 4) {
-                                Image(systemName: "paperclip").font(.system(size: 10))
-                                Text(url.lastPathComponent).font(.system(size: 11)).lineLimit(1)
+                                Image(systemName: "paperclip").font(Theme.font(size: 10))
+                                Text(url.lastPathComponent).font(Theme.font(size: 11)).lineLimit(1)
                                 Button { attached.removeAll { $0 == url } } label: {
-                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                    Image(systemName: "xmark").font(Theme.font(size: 9, weight: .bold))
                                 }.buttonStyle(.plain).help("Remove")
                             }
                             .foregroundStyle(Theme.text2)
@@ -308,14 +308,14 @@ struct AskLensView: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 Button { pickFiles() } label: {
-                    Image(systemName: "paperclip.circle.fill").font(.system(size: 24))
+                    Image(systemName: "paperclip.circle.fill").font(Theme.font(size: 24))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.text3)
                 .help("Attach photos, PDFs or files")
                 TextField("Ask Lens…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(Theme.font(size: 13))
                     .lineLimit(1...8)
                     .focused($focused)
                     .padding(10)
@@ -331,14 +331,14 @@ struct AskLensView: View {
                     if !voice.listening { voiceBase = draft.trimmingCharacters(in: .whitespacesAndNewlines) }
                     voice.toggle()
                 } label: {
-                    Image(systemName: voice.listening ? "stop.circle.fill" : "mic.circle.fill").font(.system(size: 24))
+                    Image(systemName: voice.listening ? "stop.circle.fill" : "mic.circle.fill").font(Theme.font(size: 24))
                         .symbolEffect(.pulse, isActive: voice.listening)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(voice.listening ? Theme.coral : Theme.text3)
                 .help(voice.listening ? "Stop listening" : "Talk instead of typing")
                 Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 24))
+                    Image(systemName: "arrow.up.circle.fill").font(Theme.font(size: 24))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(canSend ? Palette.violet : Theme.track)
@@ -347,12 +347,12 @@ struct AskLensView: View {
             }
             if voice.listening {
                 Text("Listening… tap stop when you're done, then send.")
-                    .font(.system(size: 11)).foregroundStyle(Theme.text2)
+                    .font(Theme.font(size: 11)).foregroundStyle(Theme.text2)
             } else if let problem = voice.problem {
-                Text(problem).font(.system(size: 11)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+                Text(problem).font(Theme.font(size: 11)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
             Text(ai.monthSpend > 0 ? "About \(String(format: "$%.2f", ai.monthSpend)) used this month" : "Uses Claude Opus 5.5 · charged to the connected Anthropic account")
-                .font(.system(size: 10)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 10)).foregroundStyle(Theme.muted)
         }
         .padding(12)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in

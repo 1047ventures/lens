@@ -177,18 +177,18 @@ struct ProposalBuilderView: View {
                 navigator.builderDealID = nil
             } label: {
                 Label("Back to the deal", systemImage: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.font(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.text3)
             }
             .buttonStyle(.plain)
             .padding(.bottom, 14)
 
             Text(deal.title)
-                .font(.system(size: 15, weight: .bold))
+                .font(Theme.font(size: 15, weight: .bold))
                 .foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Proposal · \(BuilderStep.progress(deal)) of \(BuilderStep.allCases.count) done")
-                .font(.system(size: 12))
+                .font(Theme.font(size: 12))
                 .foregroundStyle(Theme.muted)
                 .padding(.bottom, 14)
 
@@ -198,9 +198,9 @@ struct ProposalBuilderView: View {
                 } label: {
                     HStack(spacing: 10) {
                         icon(for: s.status(deal))
-                        Text("\(s.rawValue + 1)").font(.system(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(s.color).frame(width: 16, alignment: .trailing)
+                        Text("\(s.rawValue + 1)").font(Theme.font(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(s.color).frame(width: 16, alignment: .trailing)
                         Text(s.title)
-                            .font(.system(size: 13, weight: s == step ? .semibold : .regular))
+                            .font(Theme.font(size: 13, weight: s == step ? .semibold : .regular))
                             .foregroundStyle(s == step ? Theme.text : Theme.text3)
                         Spacer()
                     }
@@ -214,11 +214,11 @@ struct ProposalBuilderView: View {
             Spacer()
             if let due = deal.proposalDue, deal.stage == .inquiry {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(due < Date() ? "OVERDUE" : "SEND BY").font(.system(size: 10, weight: .bold)).tracking(0.8)
+                    Text(due < Date() ? "OVERDUE" : "SEND BY").font(Theme.font(size: 10, weight: .bold)).tracking(0.8)
                         .foregroundStyle(due < Date() ? Theme.coral : Theme.amber)
                     Text(due.formatted(.dateTime.weekday(.wide).hour().minute()))
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                    Text("48 hours after the discovery call").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("48 hours after the discovery call").font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -242,13 +242,13 @@ struct ProposalBuilderView: View {
         VStack(alignment: .leading, spacing: 10) {
             ColorLabel("Step \(step.rawValue + 1) of \(BuilderStep.allCases.count)", step.color)
             Text(step.title)
-                .font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.text)
+                .font(Theme.font(size: 28, weight: .bold)).foregroundStyle(Theme.text)
             Text(step.guidance)
-                .font(.system(size: 15)).foregroundStyle(Theme.text3)
+                .font(Theme.font(size: 15)).foregroundStyle(Theme.text3)
                 .fixedSize(horizontal: false, vertical: true)
             if let example = step.example {
                 Text(example)
-                    .font(.system(size: 13).italic()).foregroundStyle(Theme.text2)
+                    .font(Theme.font(size: 13).italic()).foregroundStyle(Theme.text2)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.raised)
@@ -329,7 +329,7 @@ struct ProposalBuilderView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("\(deal.disc.answered) of \(Discovery.questionCount) answered")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                    .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
                 Spacer()
                 Button("Fill in from the call recording") {}
                     .buttonStyle(SecondaryButtonStyle())
@@ -362,9 +362,9 @@ struct ProposalBuilderView: View {
             if !deal.disc.goal.isEmpty || !deal.disc.audience.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionLabel("What they told you")
-                    if !deal.disc.goal.isEmpty { Text("Goal: \(deal.disc.goal)").font(.system(size: 14)).foregroundStyle(Theme.text2) }
-                    if !deal.disc.audience.isEmpty { Text("Audience: \(deal.disc.audience)").font(.system(size: 13)).foregroundStyle(Theme.text3) }
-                    if !deal.disc.whereWatched.isEmpty { Text("Where: \(deal.disc.whereWatched)").font(.system(size: 13)).foregroundStyle(Theme.text3) }
+                    if !deal.disc.goal.isEmpty { Text("Goal: \(deal.disc.goal)").font(Theme.font(size: 14)).foregroundStyle(Theme.text2) }
+                    if !deal.disc.audience.isEmpty { Text("Audience: \(deal.disc.audience)").font(Theme.font(size: 13)).foregroundStyle(Theme.text3) }
+                    if !deal.disc.whereWatched.isEmpty { Text("Where: \(deal.disc.whereWatched)").font(Theme.font(size: 13)).foregroundStyle(Theme.text3) }
                 }
                 .panel(padding: 16)
             }
@@ -392,7 +392,7 @@ struct ProposalBuilderView: View {
                 }
                 .padding(.top, 10)
             } label: {
-                Text("Story pages (Full proposal only)").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
+                Text("Story pages (Full proposal only)").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text2)
             }
         }
     }
@@ -410,7 +410,7 @@ struct ProposalBuilderView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel("Not included")
                 Text("Name what's out of scope now, so it becomes an add-on later instead of a free favor.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 ChipToggles(options: Self.standardExclusions, selected: Binding(get: { deal.exclusions ?? [] }, set: { v in edit { $0.exclusions = v } }))
             }
             .panel()
@@ -421,7 +421,7 @@ struct ProposalBuilderView: View {
     private func optionsRow(offerThree: Bool) -> some View {
         if deal.options.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("No scope yet.").font(.system(size: 14)).foregroundStyle(Theme.text3)
+                Text("No scope yet.").font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                 Button("Start from a one-day shoot") { edit { $0.options = [.starter()] } }.buttonStyle(PrimaryButtonStyle())
             }
             .panel()
@@ -456,14 +456,14 @@ struct ProposalBuilderView: View {
     private var deliverablesStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             if deal.options.isEmpty {
-                Text("Set up the scope first.").font(.system(size: 14)).foregroundStyle(Theme.muted).panel()
+                Text("Set up the scope first.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted).panel()
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(deal.options) { option in
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(option.name).font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                            Text(option.tagline).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text(option.name).font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+                            Text(option.tagline).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                             Dial("Main film, minutes", optionBind(option.id, \.filmMinutes, fallback: 1), 1...60)
                             Divider().overlay(Theme.line)
                             ForEach(Extra.allCases) { extra in
@@ -475,7 +475,7 @@ struct ProposalBuilderView: View {
                                         d.options[i].extras = Extra.allCases.filter(d.options[i].extras.contains)
                                     }
                                 })) {
-                                    Text(extra.label).font(.system(size: 12)).foregroundStyle(Theme.text3)
+                                    Text(extra.label).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
                                 }
                                 .toggleStyle(.checkbox)
                                 if on && extra.hasQuantity {
@@ -512,15 +512,15 @@ struct ProposalBuilderView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(ProposalRenderer.approachBlocks(lead, owner: deals.rates.ownerName), id: \.title) { block in
                         HStack(alignment: .top, spacing: 16) {
-                            Text(block.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).frame(width: 140, alignment: .leading)
-                            Text(block.text).font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                            Text(block.title).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text).frame(width: 140, alignment: .leading)
+                            Text(block.text).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
                 .panel()
-                Text("This updates on its own as you change the scope.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("This updates on its own as you change the scope.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             } else {
-                Text("Set up the scope first.").font(.system(size: 14)).foregroundStyle(Theme.muted).panel()
+                Text("Set up the scope first.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted).panel()
             }
             BField("Anything to add (optional)", "We'll film the fellows' field trip in March as it happens.", text(\.approachNote), lines: 2...5)
         }
@@ -534,7 +534,7 @@ struct ProposalBuilderView: View {
                 OptionalDate("First shoot day", bind(\.shootStart),
                              fallback: Calendar.current.date(byAdding: .day, value: 21, to: Date()) ?? Date())
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Your turnaround (business days)").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                    Text("Your turnaround (business days)").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
                     Dial("Rough cut after filming", rate(\.roughCutBusinessDays), 1...30)
                     Dial("Their feedback window", rate(\.feedbackBusinessDays), 1...20)
                     Dial("Final after feedback", rate(\.finalBusinessDays), 1...20)
@@ -552,9 +552,9 @@ struct ProposalBuilderView: View {
                     }
                     ForEach(plan.milestones) { m in
                         HStack {
-                            Text(m.phase).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(m.phase).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                             Spacer()
-                            Text(m.when).font(.system(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                            Text(m.when).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
                         }
                     }
                     if let live = deal.disc.goLive, plan.finalDelivery > live {
@@ -562,7 +562,7 @@ struct ProposalBuilderView: View {
                     }
                     if lead.shootDays > 5 {
                         Text("Long shoots often spread over weeks: edit the filming dates below after using these.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                     }
                 }
                 .panel()
@@ -576,7 +576,7 @@ struct ProposalBuilderView: View {
                         .buttonStyle(SecondaryButtonStyle())
                 }
                 if deal.milestones.isEmpty {
-                    Text("No milestones yet.").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("No milestones yet.").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
                 ForEach(deal.milestones) { m in
                     HStack(spacing: 10) {
@@ -613,9 +613,9 @@ struct ProposalBuilderView: View {
                     let est = deals.estimate(option)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("\(option.name) is quoted \(Int((-est.difference * 100).rounded()))% under your rates.")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.amber)
+                            .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.amber)
                         Text("Protect the price, scale the scope. To make \(Money.string(est.quote)) pay your rates: \(suggestion.cuts.joined(separator: ", ")).")
-                            .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
                             Button("Make those cuts") {
@@ -624,7 +624,7 @@ struct ProposalBuilderView: View {
                                 }
                             }
                             .buttonStyle(SecondaryButtonStyle())
-                            Text("Or keep the discount on purpose.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            Text("Or keep the discount on purpose.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                         }
                     }
                     .panel(padding: 16)
@@ -634,7 +634,7 @@ struct ProposalBuilderView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel("Add-ons, priced separately")
                 Text("Extras are where scope creep gets paid for. Tick the ones to offer on this proposal.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 ForEach(deals.rates.addOnMenu) { item in
                     let offered = (deal.addOns ?? []).contains { $0.name == item.name }
                     HStack(spacing: 12) {
@@ -647,8 +647,8 @@ struct ProposalBuilderView: View {
                             }
                         })) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                                Text(item.note).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                                Text(item.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text(item.note).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                             }
                         }
                         .toggleStyle(.checkbox)
@@ -661,7 +661,7 @@ struct ProposalBuilderView: View {
                                 } }), format: .currency(code: "USD").precision(.fractionLength(0)))
                                 .textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing)
                         } else {
-                            Text(Money.string(item.price)).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                            Text(Money.string(item.price)).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                         }
                     }
                 }
@@ -675,7 +675,7 @@ struct ProposalBuilderView: View {
     private var termsStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             if deal.terms == nil {
-                Text("Filling in your usual terms…").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                Text("Filling in your usual terms…").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             } else {
                 let deposit = (lead.map { deals.estimate($0).total } ?? 0) * deal.termsValue.depositPercent / 100
                 HStack(alignment: .center, spacing: 16) {
@@ -683,16 +683,16 @@ struct ProposalBuilderView: View {
                                               set: { v in edit { $0.termsValue.depositPercent = Double(v) } }), 0...100, step: 5)
                         .frame(width: 240)
                     Text("\(Money.string(deposit)) on \(lead?.name ?? "the lead option") locks the date. No deposit, no booking.")
-                        .font(.system(size: 13)).foregroundStyle(Theme.text3)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 }
                 .panel(padding: 16)
                 BField("Payment schedule", "Deposit up front, balance before final files", bind(\.termsValue.paymentSchedule), lines: 2...4)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Revisions and turnaround").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                    Text("Revisions and turnaround").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
                     Text(deal.options.map { "\($0.name): \($0.revisionRounds) round\($0.revisionRounds == 1 ? "" : "s")" }.joined(separator: " · ") + " (set in Scope). Extra rounds are an add-on.")
-                        .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                     Text("Rough cut \(deals.rates.roughCutBusinessDays) business days after filming · their feedback within \(deals.rates.feedbackBusinessDays) · final \(deals.rates.finalBusinessDays) after that (set in Timeline).")
-                        .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                 }
                 .panel(padding: 16)
                 BField("Usage rights", "What they can do with it, and who keeps the copyright", bind(\.termsValue.usageRights), lines: 2...4)
@@ -733,7 +733,7 @@ struct ProposalBuilderView: View {
                     BField("Projects delivered", "120+", rate(\.projectsCompleted))
                     BField("Reviews", "5.0 on Google, 40 reviews", rate(\.reviewSummary))
                 }
-                Text("Saved for every proposal.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                Text("Saved for every proposal.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .panel()
 
@@ -743,7 +743,7 @@ struct ProposalBuilderView: View {
                     Spacer()
                 }
                 Text("Best matches first. A manufacturing client wants to see manufacturing.")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 ForEach(candidates) { project in
                     ProofRow(project: project, isPicked: picked.contains(project.id), canPick: picked.count < 3 || picked.contains(project.id)) {
                         edit { d in
@@ -797,7 +797,7 @@ struct ProposalBuilderView: View {
                 }
                 ForEach(Array(deal.nextSteps.enumerated()), id: \.element.id) { index, item in
                     HStack(spacing: 10) {
-                        Text("\(index + 1)").font(.system(size: 16)).foregroundStyle(Theme.teal).frame(width: 18)
+                        Text("\(index + 1)").font(Theme.font(size: 16)).foregroundStyle(Theme.teal).frame(width: 18)
                         TextField("Step", text: Binding(get: { item.text }, set: { v in
                             edit { d in if let i = d.nextSteps.firstIndex(where: { $0.id == item.id }) { d.nextSteps[i].text = v } }
                         })).textFieldStyle(.roundedBorder)
@@ -856,7 +856,7 @@ struct ProposalBuilderView: View {
                     HStack(spacing: 10) {
                         Image(systemName: check.ok ? "checkmark.circle.fill" : (check.warnOnly ? "exclamationmark.circle.fill" : "circle"))
                             .foregroundStyle(check.ok ? Theme.teal : (check.warnOnly ? Theme.amber : Theme.coral))
-                        Text(check.text).font(.system(size: 14)).foregroundStyle(check.ok ? Theme.text2 : Theme.text)
+                        Text(check.text).font(Theme.font(size: 14)).foregroundStyle(check.ok ? Theme.text2 : Theme.text)
                         Spacer()
                         if !check.ok {
                             Button("Fix") { step = check.fix }.buttonStyle(SecondaryButtonStyle())
@@ -864,7 +864,7 @@ struct ProposalBuilderView: View {
                     }
                 }
                 Toggle(isOn: Binding(get: { deal.nameChecked ?? false }, set: { v in edit { $0.nameChecked = v } })) {
-                    Text("I checked \"\(deal.client)\" against their website").font(.system(size: 14)).foregroundStyle(Theme.text)
+                    Text("I checked \"\(deal.client)\" against their website").font(Theme.font(size: 14)).foregroundStyle(Theme.text)
                 }
                 .toggleStyle(.checkbox)
                 .padding(.top, 4)
@@ -881,7 +881,7 @@ struct ProposalBuilderView: View {
                 .labelsHidden()
                 .frame(maxWidth: 460)
                 Text("Clients read short proposals and sign them. Use Full for bigger, story-led films.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .panel()
 
@@ -899,11 +899,11 @@ struct ProposalBuilderView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 if let due = deal.proposalDue, deal.stage == .inquiry {
                     Text(due < Date() ? "Was due \(due.formatted(.relative(presentation: .named)))" : "Due \(due.formatted(.relative(presentation: .named)))")
-                        .font(.system(size: 13)).foregroundStyle(due < Date() ? Theme.coral : Theme.amber)
+                        .font(Theme.font(size: 13)).foregroundStyle(due < Date() ? Theme.coral : Theme.amber)
                 }
             }
             Text("After it's sent, follow-up nudges appear on Today when they go quiet.")
-                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
         }
     }
 }
@@ -925,11 +925,11 @@ struct BField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+            Text(label).font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
             TextField(placeholder, text: $text, axis: .vertical)
                 .lineLimit(lines)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14))
+                .font(Theme.font(size: 14))
                 .padding(10)
                 .background(Theme.raised)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -956,7 +956,7 @@ struct OptionalDate: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+            Text(label).font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
             HStack {
                 Toggle("", isOn: Binding(get: { date != nil }, set: { date = $0 ? fallback : nil }))
                     .toggleStyle(.switch).labelsHidden().controlSize(.small)
@@ -965,11 +965,11 @@ struct OptionalDate: View {
                                displayedComponents: withTime ? [.date, .hourAndMinute] : [.date])
                         .labelsHidden()
                 } else {
-                    Text("Not set").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("Not set").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 }
             }
             if let caption, date != nil {
-                Text(caption).font(.system(size: 12)).foregroundStyle(Theme.amber)
+                Text(caption).font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -986,7 +986,7 @@ struct Warning: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(tone)
-            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1011,11 +1011,11 @@ struct ParagraphsField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
-                Text(hint).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text(label).font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.text3)
+                Text(hint).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
             }
             TextEditor(text: $text)
-                .font(.system(size: 13))
+                .font(Theme.font(size: 13))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 110)
                 .padding(8)
@@ -1067,8 +1067,8 @@ struct ChipToggles: View {
                         if on { selected.removeAll { $0 == item } } else { selected.append(item) }
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: on ? "checkmark" : "plus").font(.system(size: 9, weight: .bold))
-                            Text(item).font(.system(size: 12, weight: .semibold))
+                            Image(systemName: on ? "checkmark" : "plus").font(Theme.font(size: 9, weight: .bold))
+                            Text(item).font(Theme.font(size: 12, weight: .semibold))
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(on ? Theme.teal.opacity(0.22) : Theme.raised)
@@ -1145,15 +1145,15 @@ struct ProofRow: View {
             HStack(spacing: 10) {
                 Button(action: toggle) {
                     Image(systemName: isPicked ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 16))
+                        .font(Theme.font(size: 16))
                         .foregroundStyle(isPicked ? Theme.teal : (canPick ? Theme.text3 : Theme.track))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canPick)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(project.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(project.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
                     Text("\(project.client) · \(project.stage.label)\(project.location.isEmpty ? "" : " · \(project.location)")")
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 Spacer()
                 if let quote = project.testimonial, !quote.isEmpty {

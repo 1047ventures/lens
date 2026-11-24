@@ -22,10 +22,10 @@ struct PipelineView: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Pipeline")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(Theme.font(size: 30, weight: .bold))
                             .foregroundStyle(Theme.text)
                         Text(summary)
-                            .font(.system(size: 15))
+                            .font(Theme.font(size: 15))
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 16)
@@ -74,14 +74,14 @@ struct PipelineView: View {
                 Spacer()
                 if showTotal, !items.isEmpty {
                     Text(Money.short(items.compactMap { deals.value(of: $0) }.reduce(0, +)))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(Theme.font(size: 12, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(Theme.text3)
                 }
             }
             if items.isEmpty {
                 Text("Nothing here")
-                    .font(.system(size: 13))
+                    .font(Theme.font(size: 13))
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, minHeight: 60)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
@@ -107,22 +107,22 @@ struct DealCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 Text(deal.client)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.font(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                 Text(deal.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(Theme.font(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Text(deals.valueText(of: deal))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(Theme.font(size: 13, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(Theme.text2)
                     if deal.options.count > 1 && deal.chosenOption == nil {
                         Text("\(deal.options.count) options")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(Theme.font(size: 10, weight: .semibold))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Theme.raised)
                             .clipShape(Capsule())
@@ -131,7 +131,7 @@ struct DealCard: View {
                     Spacer()
                 }
                 Text(DealCard.nextMove(deal))
-                    .font(.system(size: 12))
+                    .font(Theme.font(size: 12))
                     .foregroundStyle(moveColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -198,9 +198,9 @@ struct NewDealSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("New inquiry")
-                .font(.system(size: 20, weight: .bold))
+                .font(Theme.font(size: 20, weight: .bold))
             Text("Once the home server is running, inquiries from email and the website land here on their own, already filled in.")
-                .font(.system(size: 12))
+                .font(Theme.font(size: 12))
                 .foregroundStyle(Theme.muted)
             Form {
                 TextField("Client", text: $client)
@@ -248,9 +248,9 @@ struct RateCardSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Rates & profile")
-                .font(.system(size: 20, weight: .bold))
+                .font(Theme.font(size: 20, weight: .bold))
             Text("Every proposal is calculated from these. The starting numbers were worked back from the CEJ options budgets.")
-                .font(.system(size: 12))
+                .font(Theme.font(size: 12))
                 .foregroundStyle(Theme.muted)
             Form {
                 Section("Proposals come from") {
