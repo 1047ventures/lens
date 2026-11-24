@@ -6,7 +6,10 @@ import SwiftUI
 struct LoginsView: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
     @State private var expanded: Set<LoginID> = []
+    /// Simple mode: the connection whose set-up window is open.
+    @State private var setupID: LoginID?
 
     private struct Group: Identifiable {
         let id: String
@@ -25,6 +28,86 @@ struct LoginsView: View {
     ]
 
     var body: some View {
+        SwiftUI.Group {
+            if appearance.simple { simpleBody } else { fullBody }
+        }
+        .onAppear {
+            logins.importGoogleClient()
+            logins.refreshCalendar()
+            if !appearance.simple, !logins.googleConnected || logins.googleNeedsNewSignIn { expanded.insert(.google) }
+            Task { await logins.refreshGoogleCalendars() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            logins.importGoogleClient()
+            logins.refreshCalendar()
+        }
+    }
+
+    // MARK: Simple
+
+    private var simpleBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Log-ins").font(Theme.display(size: 34)).foregroundStyle(Theme.text)
+                    Text("The accounts Lens reads so it can see the whole business. Lens never sees your passwords.")
+                        .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+                }
+                ForEach(groups.filter { !$0.items.allSatisfy { logins.status($0).isLater } }) { group in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(group.id).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                            ForEach(group.items.filter { !logins.status($0).isLater }) { simpleCard($0) }
+                        }
+                    }
+                }
+            }
+            .padding(40)
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(item: $setupID) { id in
+            VStack(alignment: .leading, spacing: 16) {
+                card(id, color: groups.first { $0.items.contains(id) }?.color ?? Theme.teal)
+                HStack { Spacer(); Button("Done") { setupID = nil }.buttonStyle(PrimaryButtonStyle()) }
+            }
+            .padding(24)
+            .frame(width: 640)
+            .frame(minHeight: 260)
+        }
+    }
+
+    private func simpleCard(_ id: LoginID) -> some View {
+        let info = Self.info[id]!
+        let status = logins.status(id)
+        let needsAgain = !status.isConnected && (status.label == "Almost" || (id == .google && logins.googleNeedsNewSignIn))
+        let words = status.isConnected ? "Connected" : needsAgain ? "Needs you to sign in again" : "Not set up"
+        let dot = status.isConnected ? Theme.teal : needsAgain ? Theme.amber : Theme.muted
+        let button = status.isConnected ? "Open" : needsAgain ? "Reconnect" : "Connect"
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: info.icon).foregroundStyle(Theme.text2)
+                Text(info.name).font(Theme.display(size: 18)).foregroundStyle(Theme.text)
+            }
+            Text(info.covers).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Circle().fill(dot).frame(width: 8, height: 8)
+                Text(words).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
+                Spacer()
+                if status.isConnected {
+                    Button(button) { expanded.insert(id); setupID = id }.buttonStyle(SecondaryButtonStyle())
+                } else {
+                    Button(button) { expanded.insert(id); setupID = id }.buttonStyle(PrimaryButtonStyle())
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        .panel()
+    }
+
+    private var fullBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 header
@@ -45,16 +128,6 @@ struct LoginsView: View {
             .padding(40)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .onAppear {
-            logins.importGoogleClient()
-            logins.refreshCalendar()
-            if !logins.googleConnected || logins.googleNeedsNewSignIn { expanded.insert(.google) }
-            Task { await logins.refreshGoogleCalendars() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            logins.importGoogleClient()
-            logins.refreshCalendar()
         }
     }
 

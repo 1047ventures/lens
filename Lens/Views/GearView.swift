@@ -5,9 +5,87 @@ import SwiftUI
 struct GearView: View {
     @EnvironmentObject private var money: MoneyStore
     @State private var editing: GearItem?
+    @EnvironmentObject private var appearance: Appearance
     @State private var fromPhoto = false
 
     var body: some View {
+        if appearance.simple { simpleBody } else { fullBody }
+    }
+
+    // MARK: Simple
+
+    private var simpleBody: some View {
+        let items = money.gear.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let worth = items.reduce(0) { $0 + $1.value() }
+        let kinds = GearItem.Kind.allCases.filter { k in items.contains { $0.kind == k } }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Gear").font(Theme.display(size: 34)).foregroundStyle(Theme.text)
+                        Text(items.isEmpty ? "The cameras, lenses and drives you work with."
+                             : "Your kit is worth about \(Money.string(worth)).")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Button("Add from photo") { fromPhoto = true }.buttonStyle(SecondaryButtonStyle())
+                    Button("Add gear") {
+                        editing = GearItem(name: "", kind: .camera, bought: Date(), paid: 0, lifeYears: 5)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                if items.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No gear yet").font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        Text("Add your cameras, lenses and drives, or snap a photo and Lens will fill in the details.")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                    .panel(padding: 22)
+                }
+                ForEach(kinds) { kind in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(kind.label).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                            ForEach(items.filter { $0.kind == kind }) { simpleCard($0) }
+                        }
+                    }
+                }
+            }
+            .padding(40)
+            .frame(maxWidth: 1000, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(item: $editing) { item in GearEditor(item: item) }
+        .sheet(isPresented: $fromPhoto) { GearPhotoImportView() }
+    }
+
+    private func simpleCard(_ item: GearItem) -> some View {
+        var line = "Bought " + item.bought.formatted(.dateTime.month(.abbreviated).year())
+        if item.paid > 0 { line += " · " + (item.paidIsEstimate == true ? "about " : "") + Money.string(item.paid) }
+        return Button { editing = item } label: {
+            HStack(alignment: .top, spacing: 12) {
+                if let f = item.photoFile, let img = NSImage(contentsOf: GearIdentifier.photoURL(f)) {
+                    Image(nsImage: img).resizable().scaledToFill().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    Image(systemName: item.kind.icon).font(Theme.font(size: 18)).foregroundStyle(Theme.text2).frame(width: 40, height: 40)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.name.isEmpty ? "Untitled" : item.name).font(Theme.display(size: 17)).foregroundStyle(Theme.text).lineLimit(2)
+                    Text(line).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                    if item.needsService {
+                        Text("Due for a check-up").font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .panel()
+    }
+
+    private var fullBody: some View {
         let items = money.gear.sorted { $0.value() > $1.value() }
         let worth = items.reduce(0) { $0 + $1.value() }, paid = items.reduce(0) { $0 + $1.paid }
         let service = items.filter(\.needsService).sorted { ($0.shoots ?? 0) > ($1.shoots ?? 0) }

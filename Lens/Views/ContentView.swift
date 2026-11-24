@@ -29,6 +29,9 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     }
 
     static var main: [SidebarSection] { [.today, .pipeline, .people, .projects, .footage, .gear, .money, .logins] }
+    /// Simple mode keeps the list short: Gear and Log-ins live under "More".
+    static var simpleMain: [SidebarSection] { [.today, .pipeline, .people, .projects, .footage, .money] }
+    static var simpleMore: [SidebarSection] { [.gear, .logins] }
 }
 
 /// Shared navigation state, so any screen can jump to a section or open a project.
@@ -305,6 +308,16 @@ struct Sidebar: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
+    @AppStorage("sidebarMoreOpen") private var moreOpen = false
+
+    private func row(_ section: SidebarSection) -> some View {
+        Label(section == .pipeline && appearance.simple ? "Inquiries" : section.rawValue, systemImage: section.systemImage)
+            .badge(section == .pipeline ? deals.open.filter(\.isStale).count
+                   : section == .people ? people.followUpsDue.count
+                   : section == .logins ? logins.progress.total - logins.progress.done : 0)
+            .tag(section)
+    }
 
     var body: some View {
         List(selection: $navigator.section) {
@@ -320,12 +333,27 @@ struct Sidebar: View {
             .selectionDisabled()
             .accessibilityElement(children: .combine)
             Section {
-                ForEach(SidebarSection.main) { section in
-                    Label(section == .pipeline && Appearance.shared.simple ? "Inquiries" : section.rawValue, systemImage: section.systemImage)
-                        .badge(section == .pipeline ? deals.open.filter(\.isStale).count
-                               : section == .people ? people.followUpsDue.count
-                               : section == .logins ? logins.progress.total - logins.progress.done : 0)
-                        .tag(section)
+                if appearance.simple {
+                    ForEach(SidebarSection.simpleMain) { row($0) }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { moreOpen.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("More").font(Theme.font(size: 12, weight: .semibold))
+                            Image(systemName: moreOpen ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold))
+                            Spacer()
+                        }
+                        .foregroundStyle(Theme.sideMuted)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .selectionDisabled()
+                    // Stays showing while one of its screens is open, so the highlight never disappears.
+                    if moreOpen || SidebarSection.simpleMore.contains(where: { $0 == navigator.section }) {
+                        ForEach(SidebarSection.simpleMore) { row($0) }
+                    }
+                } else {
+                    ForEach(SidebarSection.main) { row($0) }
                 }
             }
 

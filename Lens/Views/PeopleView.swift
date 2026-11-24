@@ -7,6 +7,7 @@ struct PeopleView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
     @State private var query = ""
     @State private var tag: String?
     @State private var onID: UUID?
@@ -18,6 +19,8 @@ struct PeopleView: View {
         Group {
             if let person = people.person(id: navigator.personID) {
                 PersonDetailView(person: person)
+            } else if appearance.simple {
+                simpleList
             } else {
                 list
             }
@@ -27,6 +30,125 @@ struct PeopleView: View {
         }
         .sheet(isPresented: $scanning) { CardScanView() }
         .sheet(item: $bringing) { BringInSheet(kind: $0) }
+    }
+
+    // MARK: Simple
+
+    /// Real people only: someone Lens made from an automatic email address stays out of sight.
+    private func isRobot(_ p: Person) -> Bool {
+        p.automatic && p.dealIDs.isEmpty && p.projectIDs.isEmpty && !p.emails.isEmpty && p.emails.allSatisfy(PeopleStore.isAutomated)
+    }
+
+    private struct Standing {
+        var working: Bool
+        var latest: String?
+    }
+
+    private func standing(_ p: Person) -> Standing {
+        let theirProjects = people.projects(for: p)
+        let theirDeals = people.deals(for: p)
+        if let proj = theirProjects.first(where: { $0.stage != .archived }) {
+            return Standing(working: true, latest: "On \(proj.name)")
+        }
+        if let deal = theirDeals.first(where: { $0.stage.isOpen }) {
+            return Standing(working: true, latest: "Asked about \(deal.title.isEmpty ? "a project" : deal.title)")
+        }
+        if let proj = theirProjects.first { return Standing(working: false, latest: "Worked on \(proj.name)") }
+        if let deal = theirDeals.first { return Standing(working: false, latest: deal.title.isEmpty ? nil : "Asked about \(deal.title)") }
+        return Standing(working: false, latest: nil)
+    }
+
+    private func heardText(_ p: Person) -> String? {
+        guard let last = people.lastInTouch(p) else { return nil }
+        let days = max(0, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: last), to: Calendar.current.startOfDay(for: Date())).day ?? 0)
+        switch days {
+        case 0: return "In touch today"
+        case 1: return "In touch yesterday"
+        case 2..<14: return "In touch \(days) days ago"
+        case 14..<60: return "In touch \(days / 7) weeks ago"
+        default: return days < 730 ? "In touch \(days / 30) months ago" : "In touch over a year ago"
+        }
+    }
+
+    private var simpleList: some View {
+        let visible = people.search(query).filter { !isRobot($0) }
+        let stands = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, standing($0)) })
+        let now = visible.filter { stands[$0.id]?.working == true }
+        let rest = visible.filter { stands[$0.id]?.working != true }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("People").font(Theme.display(size: 34)).foregroundStyle(Theme.text)
+                        Text("Find someone and see who they are to you.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Button("Add a person") { creating = true }.buttonStyle(PrimaryButtonStyle())
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                    TextField("Search by name, company or email", text: $query).textFieldStyle(.plain)
+                        .font(Theme.font(size: 14))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(Theme.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+
+                if people.people.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No one here yet").font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        Text("People show up here by themselves when they ask about work, join a project or come to a call. You can also add someone with Add a person.")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                    .panel(padding: 22)
+                } else if visible.isEmpty {
+                    Text("No one matches that.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted).panel()
+                }
+                if !now.isEmpty { simpleGroup("Working with now", now, stands) }
+                if !rest.isEmpty { simpleGroup(now.isEmpty ? "Everyone" : "Everyone else", rest, stands) }
+            }
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: 1000, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func simpleGroup(_ title: String, _ list: [Person], _ stands: [UUID: Standing]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                ForEach(list) { simpleCard($0, stands[$0.id]) }
+            }
+        }
+    }
+
+    private func simpleCard(_ p: Person, _ stand: Standing?) -> some View {
+        let sub = p.subtitle
+        let line = [stand?.latest, heardText(p)].compactMap { $0 }.joined(separator: ". ")
+        return Button { navigator.personID = p.id } label: {
+            HStack(alignment: .top, spacing: 12) {
+                PersonBadge(person: p, size: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(p.name).font(Theme.display(size: 17)).foregroundStyle(Theme.text).lineLimit(1)
+                    if !sub.isEmpty {
+                        Text(sub).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).lineLimit(1)
+                    }
+                    if !line.isEmpty {
+                        Text(line)
+                            .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .panel()
     }
 
     private var filtered: [Person] {
