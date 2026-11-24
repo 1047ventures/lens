@@ -101,6 +101,13 @@ struct PipelineView: View {
         return days == 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
     }
 
+    /// The price line for a card: the quoted amount, else "Budget: <what they said>", else nothing.
+    private func simplePrice(_ deal: Deal) -> String? {
+        if !deal.options.isEmpty || deal.chosenOption != nil { return deals.valueText(of: deal) }
+        let hint = deal.budgetHint.trimmingCharacters(in: .whitespaces)
+        return hint.isEmpty ? nil : "Budget: \(hint)"
+    }
+
     private func simpleCard(_ deal: Deal, _ kind: SimpleKind) -> some View {
         let days = deal.daysSinceTouch()
         let nudge = kind == .waiting && days >= 7
@@ -132,8 +139,8 @@ struct PipelineView: View {
                             .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
                             .lineLimit(1)
                     }
-                    if kind != .lost, deals.valueText(of: deal) != "Didn't say" {
-                        Text(deals.valueText(of: deal))
+                    if kind != .lost, let price = simplePrice(deal) {
+                        Text(price)
                             .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     }
                     Text(heard)
