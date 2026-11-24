@@ -11,6 +11,9 @@ on:
       notes:
         description: "What changed, in plain words for Emma"
         required: false
+      version:
+        description: "Only to start a new series, like 2.0.0. Leave empty to count up from the last release."
+        required: false
 
 concurrency: release
 
@@ -59,10 +62,16 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           MANUAL_NOTES: ${{ github.event.inputs.notes }}
+          MANUAL_VERSION: ${{ github.event.inputs.version }}
         run: |
-          LAST=$(gh release view --repo 1047ventures/lens-releases --json tagName -q .tagName 2>/dev/null || echo "v1.0.0")
-          IFS=. read -r MA MI PA <<< "${LAST#v}"
-          echo "version=$MA.$MI.$((PA + 1))" >> "$GITHUB_OUTPUT"
+          if [ -n "$MANUAL_VERSION" ]; then
+            [[ "$MANUAL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Version must look like 2.0.0"; exit 1; }
+            echo "version=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            LAST=$(gh release view --repo 1047ventures/lens-releases --json tagName -q .tagName 2>/dev/null || echo "v1.0.0")
+            IFS=. read -r MA MI PA <<< "${LAST#v}"
+            echo "version=$MA.$MI.$((PA + 1))" >> "$GITHUB_OUTPUT"
+          fi
           NOTES=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Release note:[[:space:]]*//p' | head -1)
           [ -z "$NOTES" ] && NOTES="$MANUAL_NOTES"
           [ -z "$NOTES" ] && NOTES="$PR_TITLE"
