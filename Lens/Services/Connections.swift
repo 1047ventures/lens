@@ -8,7 +8,12 @@ import CryptoKit
 
 /// Secrets (Google sign-in tokens, the OAuth client) live in the Mac's Keychain, never in Lens's JSON files.
 enum Keychain {
-    private static let service = "Lens"
+    /// The real app uses "Lens". Test copies (any other bundle id) get their own separate store,
+    /// so they never read the real app's saved log-ins and the Mac never asks for a password.
+    private static let service: String = {
+        let id = Bundle.main.bundleIdentifier ?? "com.1047ventures.lens"
+        return id == "com.1047ventures.lens" ? "Lens" : "Lens test (\(id))"
+    }()
     /// Each saved key is read from the Mac's password store once per launch, then remembered,
     /// so the Mac asks at most once (and never again after "Always Allow").
     private static var cache: [String: String?] = [:]
