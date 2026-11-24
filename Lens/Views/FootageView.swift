@@ -29,7 +29,7 @@ struct FootageView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     header
                     LibraryDrivesView(part: .search, query: $query)
-                    LibraryShootsView(query: query)
+                    LibraryShootsView(query: query) { path.append($0) }
                     drivesSection
                 }
                 .padding(.horizontal, 48)

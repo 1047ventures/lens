@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreLocation
 
 // MARK: - A shoot, as the Library shows it
 
@@ -17,6 +18,8 @@ struct Shoot: Identifiable {
     var sample: [Int] = []
     var price: Double?
     var paid = false
+    /// Where it goes on the map: where most of its photos were taken, or else the project's place.
+    var spot: CLLocationCoordinate2D?
 
     var id: UUID { project.id }
     var date: Date? { project.shootDate ?? first }
@@ -84,6 +87,8 @@ struct ShootSection: Identifiable {
 /// aren't part of any shoot yet, with Lens's best guess for each. Everything adds a list of every file.
 struct LibraryShootsView: View {
     let query: String
+    /// Opens a shoot or folder in the Library (pins on the map can't hold a navigation link).
+    let open: (FootageRoute) -> Void
 
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var money: MoneyStore
@@ -93,6 +98,8 @@ struct LibraryShootsView: View {
     @ObservedObject private var links = LibraryLinks.shared
     @ObservedObject private var catalog = DriveCatalog.shared
     @AppStorage("library.sort") private var sortRaw = LibrarySort.date.rawValue
+    /// "map" (the default) or "list".
+    @AppStorage("library.view") private var viewRaw = "map"
     @State private var showAllLoose = false
     /// Goes up when the map service names a project's place, so the cards redraw.
     @State private var placesFound = 0
@@ -106,8 +113,14 @@ struct LibraryShootsView: View {
         let _ = placesFound
         VStack(alignment: .leading, spacing: 28) {
             VStack(alignment: .leading, spacing: 16) {
-                sortBar
-                if index.loading && index.items.isEmpty {
+                HStack(spacing: 14) {
+                    viewSwitch
+                    if viewRaw != "map" { sortBar }
+                }
+                if viewRaw == "map" && !(index.loading && index.items.isEmpty) {
+                    LibraryMapView(pins: mapPins(shown, shelf), open: open)
+                    noPlaceStrip(shown)
+                } else if index.loading && index.items.isEmpty {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Reading your drives…") }
                         .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                 } else if shoots.isEmpty {
@@ -127,16 +140,88 @@ struct LibraryShootsView: View {
         .task(id: projects.projects.map(\.location).joined(separator: "|")) { await lookUpPlaces() }
     }
 
-    /// Looks up the town and state for projects whose place is typed without a state.
+    /// Looks up each project's typed place once (town, state and where it is on the map) and
+    /// remembers it on disk, so the map never waits on the map service at launch.
     private func lookUpPlaces() async {
         var found = false
         for p in projects.projects {
             let text = p.location.trimmingCharacters(in: .whitespaces)
-            guard !text.isEmpty, PlaceName.parse(text)?.state == nil, !PlaceBook.shared.known(text: text) else { continue }
+            guard !text.isEmpty, PlaceBook.shared.needsLookup(text: text) else { continue }
             if await PlaceBook.shared.label(text: text) != nil { found = true }
             if Task.isCancelled { return }
         }
         if found { placesFound += 1 }
+    }
+
+    // MARK: Map or list
+
+    private var viewSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach([("map", "Map", "map"), ("list", "List", "square.grid.2x2")], id: \.0) { key, title, icon in
+                let on = (viewRaw == "map") == (key == "map")
+                Button { viewRaw = key } label: {
+                    Label(title, systemImage: icon)
+                        .font(Theme.font(size: 13, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? Theme.onTeal : Theme.text2)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(on ? Theme.teal : Color.clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Theme.panel))
+        .overlay(Capsule().stroke(Theme.line))
+    }
+
+    /// Shoots where they happened, plus loose folders whose photos say where they were taken.
+    private func mapPins(_ shoots: [Shoot], _ shelf: Shelf) -> [MapPin] {
+        var pins: [MapPin] = shoots.compactMap { s in
+            guard let spot = s.spot else { return nil }
+            return MapPin(id: s.id.uuidString, coordinate: spot, title: s.project.name, sample: s.sample.first,
+                          route: .shoot(s.id), isShoot: true)
+        }
+        for i in shelf.unsorted where index.folders.indices.contains(i) {
+            let f = index.folders[i]
+            guard matchesQuery(f) else { continue }
+            let items = f.items.compactMap { index.items.indices.contains($0) ? index.items[$0] : nil }
+            guard let spot = MapSpot.common(items) else { continue }
+            let sample = f.items.first { index.items.indices.contains($0) && index.items[$0].kind == .photo } ?? f.items.first
+            pins.append(MapPin(id: f.id, coordinate: spot, title: f.name, sample: sample,
+                               route: f.isPhotosDay ? .unsorted(driveID: f.driveID, folder: f.folder)
+                                                    : .folder(driveID: f.driveID, path: f.folder),
+                               isShoot: false))
+        }
+        return pins
+    }
+
+    /// Shoots Lens can't place yet, so they aren't missing from the map without a word.
+    @ViewBuilder
+    private func noPlaceStrip(_ shoots: [Shoot]) -> some View {
+        let unplaced = shoots.filter { $0.spot == nil }.sorted(by: newestFirst)
+        if !unplaced.isEmpty {
+            HStack(alignment: .center, spacing: 10) {
+                Text("No place yet").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(unplaced) { s in
+                            Button { open(.shoot(s.id)) } label: {
+                                Text(s.project.name)
+                                    .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(Capsule().fill(Theme.panel))
+                                    .overlay(Capsule().stroke(Theme.line))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Add a place to this project, or photos with GPS, and it shows on the map")
+                        }
+                    }
+                    .padding(1)
+                }
+            }
+        }
     }
 
     // MARK: Sort bar
@@ -224,6 +309,10 @@ struct LibraryShootsView: View {
                 }
             }
             s.sample = Array((photoSample + videoSample).prefix(3))
+            let items = folderIDs.flatMap { fi in index.folders.indices.contains(fi) ? index.folders[fi].items : [] }
+                .compactMap { index.items.indices.contains($0) ? index.items[$0] : nil }
+            s.spot = MapSpot.common(items)
+                ?? PlaceBook.shared.position(text: project.location).map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
             s.price = ProjectBooks.make(project, money: money, deals: deals).price
             let bills = money.receivables.filter { $0.projectID == project.id }
             s.paid = project.stage == .paid || project.stage == .archived

@@ -318,18 +318,39 @@ final class PlaceBook: @unchecked Sendable {
 
     func known(text: String) -> Bool { lock.withLock { places[Self.textKey(text)] != nil } }
 
+    /// Where a typed place is on the map, if Lens has looked it up. Kept so the Library map can
+    /// place a shoot whose photos have no GPS without asking the map service at every launch.
+    func position(text: String) -> (lat: Double, lon: Double)? {
+        lock.withLock {
+            guard let raw = places["pos:" + Self.textKey(text)] else { return nil }
+            let parts = raw.split(separator: ",").compactMap { Double($0) }
+            return parts.count == 2 ? (parts[0], parts[1]) : nil
+        }
+    }
+
+    /// True when the typed place still needs looking up (never asked, or asked before positions were kept).
+    func needsLookup(text: String) -> Bool {
+        lock.withLock {
+            let key = Self.textKey(text)
+            guard let label = places[key] else { return true }
+            return !label.isEmpty && places["pos:" + key] == nil
+        }
+    }
+
     /// Looks up a typed place on Apple's map service to find its town and state. Remembered on disk.
     func label(text: String) async -> String? {
-        if let p = cached(text: text) { return p }
-        if known(text: text) { return nil }
+        if !needsLookup(text: text) { return cached(text: text) }
         return await gate.run { [self] in
-            if let p = cached(text: text) { return p }
-            if known(text: text) || isPaused() { return nil }
-            let result = await Self.geocode(text)
+            if !needsLookup(text: text) { return cached(text: text) }
+            if isPaused() { return nil }
+            var spot: CLLocationCoordinate2D?
+            let result = await Self.geocode(text) { spot = $0 }
             let key = Self.textKey(text)
             let snapshot: [String: String]? = lock.withLock {
                 switch result {
-                case .found(let label): places[key] = label
+                case .found(let label):
+                    places[key] = label
+                    if let spot { places["pos:" + key] = String(format: "%.5f,%.5f", spot.latitude, spot.longitude) }
                 case .nowhere: places[key] = ""
                 case .turnedAway: pausedUntil = Date().addingTimeInterval(180); return nil
                 case .failed: return nil
@@ -343,11 +364,13 @@ final class PlaceBook: @unchecked Sendable {
     }
 
     @MainActor
-    private static func geocode(_ text: String, timeout: TimeInterval = 5) async -> Answer {
+    private static func geocode(_ text: String, timeout: TimeInterval = 5,
+                                at spot: @escaping (CLLocationCoordinate2D) -> Void) async -> Answer {
         let geocoder = CLGeocoder()
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { geocoder.cancelGeocode() }
         return await withCheckedContinuation { continuation in
             geocoder.geocodeAddressString(text) { placemarks, error in
+                if let c = placemarks?.first?.location?.coordinate { spot(c) }
                 continuation.resume(returning: answer(placemarks, error))
             }
         }

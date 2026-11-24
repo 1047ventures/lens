@@ -78,6 +78,7 @@ FILES = [
     (f"{APP_NAME}/Views/LibraryFolderView.swift",         f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/LibraryDriveView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/LibraryShootsView.swift",         f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/LibraryMapView.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Services/LibraryIndex.swift",           f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/FileFacts.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/SiteImportView.swift",            f"{APP_NAME}/Views"),

@@ -17,6 +17,8 @@ struct LibraryItem: Identifiable, Hashable {
     let camera: String?
     let taken: Date?
     let place: String?
+    let lat: Double?
+    let lon: Double?
 
     var id: String { driveID + "|" + path + "|" + (assetID ?? "") }
     var name: String { (path as NSString).lastPathComponent }
@@ -105,7 +107,8 @@ final class LibraryIndex: ObservableObject {
                         : (row.path as NSString).deletingLastPathComponent
                     let item = LibraryItem(driveID: drive.id, path: row.path, folder: folder, size: row.size,
                                            modified: modified, kind: row.kind, assetID: row.assetID,
-                                           camera: fact?.camera, taken: taken, place: place)
+                                           camera: fact?.camera, taken: taken, place: place,
+                                           lat: fact?.lat, lon: fact?.lon)
                     let key = drive.id + "|" + folder
                     var f = byKey[key] ?? LibraryFolder(driveID: drive.id, folder: folder)
                     f.items.append(items.count)
