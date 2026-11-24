@@ -23,6 +23,9 @@ struct CatalogDrive: Codable, Identifiable, Hashable {
     var source: String? = nil
     /// For a website brought in: the folder its photos were saved to.
     var basePath: String? = nil
+    /// Where the drive was last plugged in ("/Volumes/Footage SSD"), so a project's footage folder
+    /// can be matched to it while it sits in the drawer. Optional so older saved lists still load.
+    var mountPath: String? = nil
 
     var isPhotos: Bool { source == "photos" }
     var isWebsite: Bool { source == "web" }
@@ -37,6 +40,18 @@ struct CatalogHit: Identifiable {
     let bytes: Int64
     let sample: String          // one matching file name
     var id: String { driveID + "|" + folder }
+}
+
+/// One line of a drive's file list.
+struct CatalogRow {
+    /// The file's path on the drive (relative to the top of the drive).
+    let path: String
+    let size: Int64
+    /// Modified time, in seconds. For the Photos app, when the photo was taken.
+    let modified: Int
+    let kind: CatalogKind
+    /// The Photos app's own id for the item.
+    let assetID: String?
 }
 
 enum CatalogKind: String {
@@ -188,7 +203,16 @@ final class DriveCatalog: ObservableObject {
         guard !photosReading else { return }
         photosReading = true
         Task {
-            if let drive = await PhotosLibrary.read() { merge([drive]) } else { photosRefused = true }
+            if let drive = await PhotosLibrary.read() {
+                merge([drive])
+                Task.detached(priority: .utility) {
+                    var facts = FileFacts.load(drive.id)
+                    if await FileFacts.namePlaces(&facts) {
+                        FileFacts.save(facts, driveID: drive.id)
+                        await LibraryIndex.shared.factsChanged()
+                    }
+                }
+            } else { photosRefused = true }
             photosReading = false
         }
     }
@@ -206,6 +230,7 @@ final class DriveCatalog: ObservableObject {
                 drives[i].free = info.drive.free
                 drives[i].total = info.drive.total
                 drives[i].lastSeen = Date()
+                drives[i].mountPath = url.path
             } else if Self.looksLikeHerDrive(url) {
                 unknown = url
             }
@@ -236,7 +261,9 @@ final class DriveCatalog: ObservableObject {
     func forget(_ id: String) {
         drives.removeAll { $0.id == id }
         try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent("\(id).tsv"))
+        FileFacts.forget(id)
         save()
+        LibraryIndex.shared.catalogChanged()
     }
 
     /// Takes in the summaries a scan produced. A drive's name is kept if the user already set one.
@@ -244,6 +271,7 @@ final class DriveCatalog: ObservableObject {
         for var drive in updated {
             if let i = drives.firstIndex(where: { $0.id == drive.id }) {
                 drive.name = drives[i].name
+                if drive.mountPath == nil { drive.mountPath = drives[i].mountPath }
                 drives[i] = drive
             } else {
                 drives.append(drive)
@@ -251,6 +279,25 @@ final class DriveCatalog: ObservableObject {
         }
         refreshMounted()
         save()
+        LibraryIndex.shared.catalogChanged()
+    }
+
+    /// Reads camera, date and place for each drive's photos and videos in the background, so the
+    /// Library can sort by them. `known` holds videos a scan already read, by full path.
+    func readFacts(for updated: [CatalogDrive], known: [String: MediaFile] = [:]) {
+        for drive in updated {
+            guard let base = base(of: drive) else { continue }
+            Task.detached(priority: .utility) { await FileFacts.update(drive: drive, base: base, known: known) }
+        }
+    }
+
+    /// The full path a drive's file list is relative to, if Lens knows it. For a drive in the drawer
+    /// this is where it was last plugged in.
+    func base(of drive: CatalogDrive) -> String? {
+        if let base = drive.basePath { return base }
+        if drive.isMac { return "/" }
+        if drive.isPhotos { return nil }
+        return mounted[drive.id]?.path ?? drive.mountPath ?? "/Volumes/\(drive.name)"
     }
 
     // MARK: Her Mac
@@ -267,6 +314,7 @@ final class DriveCatalog: ObservableObject {
             await MainActor.run {
                 DriveCatalog.shared.merge(updated)
                 DriveCatalog.shared.macScanning = false
+                DriveCatalog.shared.readFacts(for: updated)
             }
         }
     }
@@ -311,6 +359,19 @@ final class DriveCatalog: ObservableObject {
             byPath[path] = f
         }
         return Array(byPath.values)
+    }
+
+    /// Every line of a drive's file list.
+    nonisolated static func rows(on drive: CatalogDrive) -> [CatalogRow] {
+        guard let text = try? String(contentsOf: folder.appendingPathComponent("\(drive.id).tsv"), encoding: .utf8) else { return [] }
+        var rows: [CatalogRow] = []
+        text.enumerateLines { line, _ in
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count >= 4, let kind = CatalogKind(rawValue: String(parts[3])) else { return }
+            rows.append(CatalogRow(path: String(parts[0]), size: Int64(parts[1]) ?? 0, modified: Int(parts[2]) ?? 0,
+                                   kind: kind, assetID: parts.count >= 5 ? String(parts[4]) : nil))
+        }
+        return rows
     }
 
     // MARK: Search
@@ -361,7 +422,8 @@ final class DriveCatalog: ObservableObject {
             id: id, name: isMac ? "This Mac" : (v.volumeName ?? "Drive"), isMac: isMac,
             total: Int64(v.volumeTotalCapacity ?? 0), free: v.volumeAvailableCapacityForImportantUsage ?? 0,
             lastSeen: Date(), lastScanned: nil,
-            videoCount: 0, videoBytes: 0, photoCount: 0, photoBytes: 0, projectCount: 0)
+            videoCount: 0, videoBytes: 0, photoCount: 0, photoBytes: 0, projectCount: 0,
+            mountPath: isMac ? "/" : root.path)
         return (drive, root.path)
     }
 

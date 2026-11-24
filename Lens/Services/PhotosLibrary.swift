@@ -35,6 +35,10 @@ enum PhotosLibrary {
         var photos = 0, videos = 0
         var photoBytes: Int64 = 0, videoBytes: Int64 = 0
         let month = DateFormatter(); month.dateFormat = "yyyy/MMMM yyyy"
+        // When and where each one was taken, kept next to the list so Library can sort by it.
+        // Place names are filled in afterwards, a few at a time.
+        let saved = FileFacts.load(driveID)
+        var facts: [String: FileFact] = [:]
 
         let assets = PHAsset.fetchAssets(with: nil)
         assets.enumerateObjects { asset, _, _ in
@@ -49,6 +53,14 @@ enum PhotosLibrary {
                 if isVideo { videos += 1; videoBytes += size } else { photos += 1; photoBytes += size }
                 let path = "Photos/\(month.string(from: date))/\(name)"
                 let kind = isVideo ? CatalogKind.video : CatalogKind.photo
+                let stamp = Int(date.timeIntervalSince1970)
+                var fact = FileFact(taken: asset.creationDate, stamp: stamp)
+                if let loc = asset.location {
+                    fact.lat = loc.coordinate.latitude
+                    fact.lon = loc.coordinate.longitude
+                    if let old = saved[path], old.lat == fact.lat, old.lon == fact.lon { fact.place = old.place }
+                }
+                facts[path] = fact
                 buffer.append(Data("\(path)\t\(size)\t\(Int(date.timeIntervalSince1970))\t\(kind.rawValue)\t\(asset.localIdentifier)\n".utf8))
                 if buffer.count > 256 * 1024 { try? handle?.write(contentsOf: buffer); buffer.removeAll(keepingCapacity: true) }
             }
@@ -57,6 +69,7 @@ enum PhotosLibrary {
         try? handle?.close()
         _ = try? FileManager.default.replaceItemAt(final, withItemAt: temp)
         if !FileManager.default.fileExists(atPath: final.path) { try? FileManager.default.moveItem(at: temp, to: final) }
+        FileFacts.save(facts, driveID: driveID)
 
         return CatalogDrive(id: driveID, name: "Photos app", isMac: false, total: 0, free: 0,
                             lastSeen: Date(), lastScanned: Date(),

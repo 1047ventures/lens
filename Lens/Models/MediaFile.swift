@@ -22,6 +22,8 @@ struct MediaFile: Identifiable, Codable, Hashable {
     var gpsLatitude: Double?
     var gpsLongitude: Double?
     var locationLabel: String?
+    /// When the camera says it was recorded. Optional so older saved files still load.
+    var captureDate: Date?
 
     init(path: String, sizeBytes: Int64, modificationDate: Date, creationDate: Date? = nil) {
         self.id = UUID()

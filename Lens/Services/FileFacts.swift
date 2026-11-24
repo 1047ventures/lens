@@ -1,0 +1,421 @@
+import Foundation
+import ImageIO
+import AVFoundation
+import CoreLocation
+
+/// What Lens knows about one photo or video beyond its size: the camera, when it was taken, and
+/// where. Saved per drive next to the drive's file list (`Catalog/<drive>.facts.tsv`), so a drive
+/// in the drawer can still be sorted by camera, date or place. The file list itself is untouched,
+/// so older versions of Lens keep reading it.
+struct FileFact: Hashable {
+    var camera: String?
+    var taken: Date?
+    var lat: Double?
+    var lon: Double?
+    var place: String?
+    /// The file's modified time when these were read, so a changed file is read again.
+    var stamp: Int = 0
+
+    var hasGPS: Bool { lat != nil && lon != nil }
+}
+
+enum FileFacts {
+    static func url(for driveID: String) -> URL {
+        DriveCatalog.folder.appendingPathComponent("\(driveID).facts.tsv")
+    }
+
+    // MARK: Saved facts
+
+    /// Every saved fact for a drive, by the file's path on that drive.
+    static func load(_ driveID: String) -> [String: FileFact] {
+        guard let text = try? String(contentsOf: url(for: driveID), encoding: .utf8) else { return [:] }
+        var out: [String: FileFact] = [:]
+        text.enumerateLines { line, _ in
+            let p = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard p.count >= 7 else { return }
+            out[p[0]] = FileFact(camera: p[1].isEmpty ? nil : p[1],
+                                 taken: Double(p[2]).map { Date(timeIntervalSince1970: $0) },
+                                 lat: Double(p[3]), lon: Double(p[4]),
+                                 place: p[5].isEmpty ? nil : p[5],
+                                 stamp: Int(p[6]) ?? 0)
+        }
+        return out
+    }
+
+    static func save(_ facts: [String: FileFact], driveID: String) {
+        try? FileManager.default.createDirectory(at: DriveCatalog.folder, withIntermediateDirectories: true)
+        var text = ""
+        text.reserveCapacity(facts.count * 80)
+        func clean(_ s: String?) -> String {
+            (s ?? "").replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+        }
+        for (path, f) in facts {
+            text += clean(path) + "\t" + clean(f.camera) + "\t"
+            text += (f.taken.map { String(Int($0.timeIntervalSince1970)) } ?? "") + "\t"
+            text += (f.lat.map { String(format: "%.5f", $0) } ?? "") + "\t"
+            text += (f.lon.map { String(format: "%.5f", $0) } ?? "") + "\t"
+            text += clean(f.place) + "\t" + String(f.stamp) + "\n"
+        }
+        try? text.write(to: url(for: driveID), atomically: true, encoding: .utf8)
+    }
+
+    static func forget(_ driveID: String) {
+        try? FileManager.default.removeItem(at: url(for: driveID))
+    }
+
+    // MARK: Bringing them up to date
+
+    private static let running = RunningSet()
+
+    /// Reads camera, date taken and GPS for every photo and video on a drive that Lens hasn't read
+    /// yet (or that changed), names the places, and saves it all. `known` holds videos the scan just
+    /// read in full, by full path, so they aren't opened twice. Runs in the background; a drive that
+    /// is already being read is skipped.
+    static func update(drive: CatalogDrive, base: String, known: [String: MediaFile] = [:]) async {
+        guard await running.start(drive.id) else { return }
+        defer { Task { await running.finish(drive.id) } }
+
+        let rows = DriveCatalog.rows(on: drive)
+        var facts = load(drive.id)
+        let listed = Set(rows.map(\.path))
+        // Files no longer on the drive drop out.
+        facts = facts.filter { listed.contains($0.key) }
+
+        var fresh = 0
+        for row in rows where row.kind != .project {
+            if let f = facts[row.path], f.stamp == row.modified { continue }
+            let full = base.hasSuffix("/") ? base + row.path : base + "/" + row.path
+            var fact: FileFact
+            if let m = known[full] {
+                fact = FileFact(camera: m.cameraModel, taken: m.captureDate, lat: m.gpsLatitude, lon: m.gpsLongitude,
+                                place: m.locationLabel)
+            } else if row.kind == .photo {
+                fact = autoreleasepool { readPhoto(URL(fileURLWithPath: full)) }
+            } else {
+                fact = await readVideo(URL(fileURLWithPath: full))
+            }
+            fact.stamp = row.modified
+            facts[row.path] = fact
+            fresh += 1
+            // Save as it goes, so a big drive shows its details bit by bit.
+            if fresh % 2000 == 0 {
+                save(facts, driveID: drive.id)
+                await LibraryIndex.shared.factsChanged()
+            }
+        }
+        if fresh > 0 { save(facts, driveID: drive.id) }
+        let named = await namePlaces(&facts)
+        if named { save(facts, driveID: drive.id) }
+        if fresh > 0 || named { await LibraryIndex.shared.factsChanged() }
+    }
+
+    /// Fills in place names for files that have GPS but no place yet. Asks Apple's map service a
+    /// little at a time (it limits how often apps can ask) and remembers every answer on disk.
+    static func namePlaces(_ facts: inout [String: FileFact], limit: Int = 150) async -> Bool {
+        var changed = false
+        var asked = 0
+        for (path, f) in facts where f.place == nil && f.hasGPS {
+            guard let lat = f.lat, let lon = f.lon else { continue }
+            if let label = PlaceBook.shared.cached(lat, lon) {
+                facts[path]?.place = label
+                changed = true
+                continue
+            }
+            if PlaceBook.shared.known(lat, lon) { continue }
+            guard asked < limit else { continue }
+            asked += 1
+            if let label = await PlaceBook.shared.label(lat, lon) {
+                facts[path]?.place = label
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    // MARK: Reading one file
+
+    /// Camera, date taken and GPS from a photo's EXIF (RAW files included). Reads only the header.
+    static func readPhoto(_ url: URL) -> FileFact {
+        var fact = FileFact()
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) as? [CFString: Any]
+        else { return fact }
+
+        if let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            fact.camera = cameraName(make: tiff[kCGImagePropertyTIFFMake] as? String,
+                                     model: tiff[kCGImagePropertyTIFFModel] as? String)
+        }
+        if let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+            let raw = (exif[kCGImagePropertyExifDateTimeOriginal] as? String)
+                ?? (exif[kCGImagePropertyExifDateTimeDigitized] as? String)
+            fact.taken = raw.flatMap(exifDate)
+        }
+        if fact.taken == nil, let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            fact.taken = (tiff[kCGImagePropertyTIFFDateTime] as? String).flatMap(exifDate)
+        }
+        if let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+           let lat = gps[kCGImagePropertyGPSLatitude] as? Double,
+           let lon = gps[kCGImagePropertyGPSLongitude] as? Double {
+            let latRef = gps[kCGImagePropertyGPSLatitudeRef] as? String
+            let lonRef = gps[kCGImagePropertyGPSLongitudeRef] as? String
+            let la = latRef == "S" ? -abs(lat) : lat
+            let lo = lonRef == "W" ? -abs(lon) : lon
+            if !(la == 0 && lo == 0) { fact.lat = la; fact.lon = lo }
+        }
+        return fact
+    }
+
+    /// Camera, date taken and GPS from a video's own notes, without reading its picture.
+    static func readVideo(_ url: URL) async -> FileFact {
+        var fact = FileFact()
+        let asset = AVURLAsset(url: url)
+        if let created = try? await asset.load(.creationDate), let date = try? await created.load(.dateValue) {
+            fact.taken = date
+        }
+        guard let metadata = try? await asset.load(.metadata) else { return fact }
+        var make: String?, model: String?
+        for item in metadata {
+            if item.commonKey == .commonKeyMake { make = try? await item.load(.stringValue) }
+            if item.commonKey == .commonKeyModel { model = try? await item.load(.stringValue) }
+            if VideoMetadataService.isLocation(item), let value = try? await item.load(.stringValue),
+               let coords = VideoMetadataService.parseISO6709(value) {
+                fact.lat = coords.lat
+                fact.lon = coords.lon
+            }
+        }
+        fact.camera = cameraName(make: make, model: model)
+        if fact.camera == nil || fact.taken == nil {
+            let note = cameraNote(for: url)
+            fact.camera = fact.camera ?? note.camera
+            fact.taken = fact.taken ?? note.taken
+        }
+        return fact
+    }
+
+    /// Sony cameras (FX3, FX6, A7 series) keep the camera model in a small notes file beside each
+    /// clip ("C0001M01.XML"), not inside the video. Reads that when it's there.
+    static func cameraNote(for video: URL) -> (camera: String?, taken: Date?) {
+        let base = video.deletingPathExtension()
+        for ext in ["XML", "xml"] {
+            let note = base.deletingLastPathComponent().appendingPathComponent(base.lastPathComponent + "M01." + ext)
+            guard let text = try? String(contentsOf: note, encoding: .utf8) else { continue }
+            func attribute(_ tag: String, _ name: String) -> String? {
+                guard let tagRange = text.range(of: "<\(tag) ") else { return nil }
+                let rest = text[tagRange.upperBound...].prefix(600)
+                guard let r = rest.range(of: name + "=\""), let end = rest[r.upperBound...].firstIndex(of: "\"") else { return nil }
+                return String(rest[r.upperBound..<end])
+            }
+            let camera = cameraName(make: attribute("Device", "manufacturer"), model: attribute("Device", "modelName"))
+            let taken = attribute("CreationDate", "value").flatMap { ISO8601DateFormatter().date(from: $0) }
+            return (camera, taken)
+        }
+        return (nil, nil)
+    }
+
+    /// "Sony ILME-FX3", without saying the maker twice ("Canon Canon EOS R5" → "Canon EOS R5").
+    static func cameraName(make: String?, model: String?) -> String? {
+        let make = make?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let model = model?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        guard let model else { return make.map(tidyMaker) }
+        guard let make else { return model }
+        let maker = tidyMaker(make)
+        if model.lowercased().hasPrefix(maker.lowercased()) || model.lowercased().hasPrefix(make.lowercased()) { return model }
+        return "\(maker) \(model)"
+    }
+
+    /// "NIKON CORPORATION" → "Nikon", "SONY" → "Sony".
+    private static func tidyMaker(_ make: String) -> String {
+        let first = make.split(separator: " ").first.map(String.init) ?? make
+        return first.count <= 3 ? first.uppercased() : first.capitalized
+    }
+
+    private static func exifDate(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        return f.date(from: s)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// Keeps two reads of the same drive from running at once.
+private actor RunningSet {
+    private var ids: Set<String> = []
+    func start(_ id: String) -> Bool { ids.insert(id).inserted }
+    func finish(_ id: String) { ids.remove(id) }
+}
+
+// MARK: - Place names
+
+/// Turns GPS into "Austin, TX" and remembers every answer on disk (`Catalog/places.json`), so a
+/// place is only ever looked up once. Lookups are spaced out, because Apple's map service turns
+/// away apps that ask too often; when it does, Lens waits a few minutes before asking again.
+final class PlaceBook: @unchecked Sendable {
+    static let shared = PlaceBook()
+
+    private let lock = NSLock()
+    /// Rounded coordinate → place. An empty string means "looked, nothing there" (out at sea, say).
+    private var places: [String: String] = [:]
+    private var pausedUntil = Date.distantPast
+    private let gate = PlaceGate()
+
+    private static var fileURL: URL { DriveCatalog.folder.appendingPathComponent("places.json") }
+
+    private init() {
+        if let data = try? Data(contentsOf: Self.fileURL),
+           let saved = try? JSONDecoder().decode([String: String].self, from: data) {
+            places = saved
+        }
+    }
+
+    /// About a kilometre across: close enough for a town name.
+    static func key(_ lat: Double, _ lon: Double) -> String { String(format: "%.2f,%.2f", lat, lon) }
+
+    /// The place, if Lens already knows it.
+    func cached(_ lat: Double, _ lon: Double) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        guard let p = places[Self.key(lat, lon)], !p.isEmpty else { return nil }
+        return p
+    }
+
+    /// True once Lens has asked about this spot (whether or not there was an answer).
+    func known(_ lat: Double, _ lon: Double) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return places[Self.key(lat, lon)] != nil
+    }
+
+    /// Looks the place up (or returns what's remembered). Never takes more than a few seconds per
+    /// spot and returns nil when offline or turned away, without remembering that as "nowhere".
+    func label(_ lat: Double, _ lon: Double) async -> String? {
+        if let p = cached(lat, lon) { return p }
+        if known(lat, lon) { return nil }
+        return await gate.run { [self] in
+            // Another lookup may have answered this while we waited our turn.
+            if let p = cached(lat, lon) { return p }
+            if known(lat, lon) { return nil }
+            if isPaused() { return nil }
+            let result = await Self.reverseGeocode(lat, lon)
+            remember(result, lat, lon)
+            if case .found(let label) = result { return label }
+            return nil
+        }
+    }
+
+    // MARK: A project's place, as typed
+
+    private static func textKey(_ text: String) -> String { "text:" + text.lowercased().trimmingCharacters(in: .whitespaces) }
+
+    /// "Boulder, CO" for a typed place like "Chautauqua Park, Boulder", if Lens has looked it up.
+    func cached(text: String) -> String? {
+        lock.withLock {
+            guard let p = places[Self.textKey(text)], !p.isEmpty else { return nil }
+            return p
+        }
+    }
+
+    func known(text: String) -> Bool { lock.withLock { places[Self.textKey(text)] != nil } }
+
+    /// Looks up a typed place on Apple's map service to find its town and state. Remembered on disk.
+    func label(text: String) async -> String? {
+        if let p = cached(text: text) { return p }
+        if known(text: text) { return nil }
+        return await gate.run { [self] in
+            if let p = cached(text: text) { return p }
+            if known(text: text) || isPaused() { return nil }
+            let result = await Self.geocode(text)
+            let key = Self.textKey(text)
+            let snapshot: [String: String]? = lock.withLock {
+                switch result {
+                case .found(let label): places[key] = label
+                case .nowhere: places[key] = ""
+                case .turnedAway: pausedUntil = Date().addingTimeInterval(180); return nil
+                case .failed: return nil
+                }
+                return places
+            }
+            if let snapshot { Self.write(snapshot) }
+            if case .found(let label) = result { return label }
+            return nil
+        }
+    }
+
+    @MainActor
+    private static func geocode(_ text: String, timeout: TimeInterval = 5) async -> Answer {
+        let geocoder = CLGeocoder()
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { geocoder.cancelGeocode() }
+        return await withCheckedContinuation { continuation in
+            geocoder.geocodeAddressString(text) { placemarks, error in
+                continuation.resume(returning: answer(placemarks, error))
+            }
+        }
+    }
+
+    private static func answer(_ placemarks: [CLPlacemark]?, _ error: Error?) -> Answer {
+        if let error = error as? CLError {
+            switch error.code {
+            case .network: return .turnedAway
+            case .geocodeFoundNoResult, .geocodeFoundPartialResult: return .nowhere
+            default: return .failed
+            }
+        }
+        guard let mark = placemarks?.first else { return .nowhere }
+        let city = mark.locality ?? mark.subAdministrativeArea
+        let region = mark.administrativeArea ?? mark.country
+        let label = [city, region].compactMap { $0 }.joined(separator: ", ")
+        return label.isEmpty ? .nowhere : .found(label)
+    }
+
+    private func isPaused() -> Bool {
+        lock.withLock { pausedUntil > Date() }
+    }
+
+    private func remember(_ result: Answer, _ lat: Double, _ lon: Double) {
+        let snapshot: [String: String]? = lock.withLock {
+            switch result {
+            case .found(let label): places[Self.key(lat, lon)] = label
+            case .nowhere: places[Self.key(lat, lon)] = ""
+            case .turnedAway: pausedUntil = Date().addingTimeInterval(180); return nil
+            case .failed: return nil
+            }
+            return places
+        }
+        if let snapshot { Self.write(snapshot) }
+    }
+
+    private static func write(_ places: [String: String]) {
+        try? FileManager.default.createDirectory(at: DriveCatalog.folder, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(places) { try? data.write(to: fileURL, options: .atomic) }
+    }
+
+    private enum Answer { case found(String), nowhere, turnedAway, failed }
+
+    /// CLGeocoder only calls back on a thread with a run loop and can stall when offline, so it runs
+    /// on the main thread and gives up after a few seconds.
+    @MainActor
+    private static func reverseGeocode(_ lat: Double, _ lon: Double, timeout: TimeInterval = 5) async -> Answer {
+        let geocoder = CLGeocoder()
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { geocoder.cancelGeocode() }
+        return await withCheckedContinuation { continuation in
+            geocoder.reverseGeocodeLocation(CLLocation(latitude: lat, longitude: lon)) { placemarks, error in
+                continuation.resume(returning: answer(placemarks, error))
+            }
+        }
+    }
+}
+
+/// Place lookups start at least a second apart.
+private actor PlaceGate {
+    private var last = Date.distantPast
+
+    func run(_ work: @escaping () async -> String?) async -> String? {
+        // Book the next slot before waiting, so calls that arrive together still go one by one.
+        let slot = max(Date(), last.addingTimeInterval(1.1))
+        last = slot
+        let wait = slot.timeIntervalSinceNow
+        if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+        return await work()
+    }
+}

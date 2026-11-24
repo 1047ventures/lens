@@ -4,20 +4,31 @@ import AppKit
 /// The top of Library: every drive the user owns (plugged in or in a drawer) and one search box
 /// across all of them.
 struct LibraryDrivesView: View {
+    /// The top of the Library shows the search; the Drives section further down shows the drives.
+    enum Part { case search, drives }
+    let part: Part
+    @Binding var query: String
+
     @EnvironmentObject private var viewModel: ScanViewModel
     @ObservedObject private var catalog = DriveCatalog.shared
     @ObservedObject private var importer = SiteImporter.shared
-    @State private var query = ""
     @State private var hits: [CatalogHit] = []
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var showAllHits = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            if let url = catalog.newDrive { newDriveBanner(url) }
-            searchBox
-            if !query.trimmingCharacters(in: .whitespaces).isEmpty { results }
-            drivesGrid
+            switch part {
+            case .search:
+                if let url = catalog.newDrive { newDriveBanner(url) }
+                searchBox
+                // Folder matches only; the shoots below answer the same search, so an empty
+                // list here says nothing.
+                if !query.trimmingCharacters(in: .whitespaces).isEmpty && (!hits.isEmpty || searching) { results }
+            case .drives:
+                drivesGrid
+            }
         }
     }
 
@@ -81,15 +92,27 @@ struct LibraryDrivesView: View {
     }
 
     private var results: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !hits.isEmpty { SectionLabel("Folders on your drives") }
+            resultsList
+            if hits.count > 6 {
+                Button(showAllHits ? "Show fewer folders" : "Show all \(hits.count) folders") { showAllHits.toggle() }
+                    .buttonStyle(.link).font(Theme.font(size: 13))
+            }
+        }
+    }
+
+    private var resultsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             if hits.isEmpty && !searching {
                 Text(catalog.drives.isEmpty ? "Add a drive first, then everything on it is searchable."
                                             : "Nothing on any drive matches that.")
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.muted).padding(14)
             }
-            ForEach(hits) { hit in
+            let shown = showAllHits ? hits : Array(hits.prefix(6))
+            ForEach(shown) { hit in
                 resultRow(hit)
-                if hit.id != hits.last?.id { Divider().overlay(Theme.line) }
+                if hit.id != shown.last?.id { Divider().overlay(Theme.line) }
             }
         }
         .background(Theme.panel)
@@ -138,7 +161,6 @@ struct LibraryDrivesView: View {
 
     private var drivesGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel("Your drives")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 macTile
                 photosTile

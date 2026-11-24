@@ -5,14 +5,18 @@ enum FootageRoute: Hashable {
     case duplicates, cache, organize, retirees, cleanupList
     case folder(driveID: String, path: String)
     case drive(id: String)
+    case shoot(UUID)
+    case unsorted(driveID: String, folder: String)
 }
 
-/// The footage engine, living inside the business hub: where the SSD's space is going,
-/// one-click ways to get it back, and footage grouped by project.
+/// The Library: every shoot's photos and videos, on every drive, sorted the way she asks. Below
+/// that, the drives themselves; in Everything, where each drive's space is going and how to get it back.
 struct FootageView: View {
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
+    @State private var query = ""
     @State private var path: [FootageRoute] = []
     @State private var movingAll = false
     @State private var addingSite = false
@@ -24,24 +28,9 @@ struct FootageView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
-                    LibraryDrivesView()
-                    drives
-                    if viewModel.hasScanned && !pluggedRoots {
-                        Text("Plug in a drive to tidy it up. Everything on your drives is still searchable above.")
-                            .font(Theme.font(size: 14))
-                            .foregroundStyle(Theme.text3)
-                            .panel(padding: 22)
-                    } else if viewModel.hasScanned {
-                        drivePanel
-                        reclaim
-                        byProject
-                        loose
-                    } else if !viewModel.pluggedRoots.isEmpty {
-                        Text("Scan the drive to see where its space is going.")
-                            .font(Theme.font(size: 14))
-                            .foregroundStyle(Theme.text3)
-                            .panel(padding: 22)
-                    }
+                    LibraryDrivesView(part: .search, query: $query)
+                    LibraryShootsView(query: query)
+                    drivesSection
                 }
                 .padding(.horizontal, 48)
                 .padding(.vertical, 40)
@@ -59,6 +48,8 @@ struct FootageView: View {
                     case .cleanupList: CleanupExplainedView(viewModel: viewModel)
                     case .folder(let driveID, let path): LibraryFolderView(driveID: driveID, folder: path)
                     case .drive(let id): LibraryDriveView(driveID: id)
+                    case .shoot(let id): ShootFilesView(subject: .project(id))
+                    case .unsorted(let driveID, let folder): ShootFilesView(subject: .folder(driveID: driveID, folder: folder))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -80,7 +71,7 @@ struct FootageView: View {
                 Text("Library")
                     .font(Theme.font(size: 30, weight: .bold))
                     .foregroundStyle(Theme.text)
-                Text("Every photo and video, on every drive. Plug one in to tidy it up.")
+                Text("Every shoot, on every drive. Find footage by project, date, place or camera.")
                     .font(Theme.font(size: 15))
                     .foregroundStyle(Theme.muted)
             }
@@ -103,12 +94,49 @@ struct FootageView: View {
         }
     }
 
+    /// The drives themselves. Simple shows them and what's happening; Everything adds the space
+    /// on each drive and the ways to get it back.
+    private var drivesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel("Drives")
+                Spacer()
+                if !appearance.simple, let root = viewModel.pluggedRoots.first {
+                    Button("Make projects from this drive's folders") {
+                        projects.importProjects(fromFoldersIn: root)
+                    }
+                    .buttonStyle(.link)
+                    .font(Theme.font(size: 13))
+                }
+            }
+            LibraryDrivesView(part: .drives, query: $query)
+            drives
+            if !appearance.simple {
+                if viewModel.hasScanned && !pluggedRoots {
+                    Text("Plug in a drive to tidy it up. Everything on your drives is still searchable above.")
+                        .font(Theme.font(size: 14))
+                        .foregroundStyle(Theme.text3)
+                        .panel(padding: 22)
+                } else if viewModel.hasScanned {
+                    drivePanel
+                    reclaim
+                    loose
+                } else if !viewModel.pluggedRoots.isEmpty {
+                    Text("Scan the drive to see where its space is going.")
+                        .font(Theme.font(size: 14))
+                        .foregroundStyle(Theme.text3)
+                        .panel(padding: 22)
+                }
+            }
+        }
+    }
+
     private var drives: some View {
         VStack(alignment: .leading, spacing: 10) {
             if viewModel.roots.isEmpty {
                 EmptyView()
             } else {
-                ForEach(viewModel.pluggedRoots, id: \.self) { root in
+                ForEach(appearance.simple ? [] : viewModel.pluggedRoots, id: \.self) { root in
                     HStack(spacing: 10) {
                         Image(systemName: "externaldrive").foregroundStyle(Theme.text3)
                         Text(root.path)
@@ -299,75 +327,6 @@ struct FootageView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
         .panel(padding: 20)
-    }
-
-    // MARK: - By project
-
-    private var byProject: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                SectionLabel("By project")
-                Spacer()
-                if let root = viewModel.roots.first {
-                    Button("Import folders as projects") {
-                        projects.importProjects(fromFoldersIn: root)
-                    }
-                    .buttonStyle(.link)
-                    .font(Theme.font(size: 13))
-                }
-            }
-            if onDriveProjects.isEmpty {
-                Text("No projects point at folders on this drive yet. Import the drive's folders, or set a footage folder on a project.")
-                    .font(Theme.font(size: 14))
-                    .foregroundStyle(Theme.text3)
-                    .panel(padding: 20)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(onDriveProjects.enumerated()), id: \.element.id) { index, project in
-                        if index > 0 { Divider().overlay(Theme.lineSoft) }
-                        projectRow(project)
-                    }
-                }
-                .background(Theme.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-            }
-        }
-    }
-
-    private func projectRow(_ project: Project) -> some View {
-        let files = project.files(in: viewModel.allFiles)
-        return HStack(spacing: 18) {
-            HStack(spacing: 3) {
-                ForEach(files.prefix(3)) { file in
-                    ThumbnailImageView(file: file, size: CGSize(width: 56, height: 32))
-                }
-                ForEach(0..<max(0, 3 - min(files.count, 3)), id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3]))
-                        .frame(width: 56, height: 32)
-                }
-            }
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Button(project.name) { navigator.openProject(project.id) }
-                        .buttonStyle(.plain)
-                        .font(Theme.font(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                    Text(project.stage.label)
-                        .font(Theme.font(size: 12))
-                        .foregroundStyle(project.stage == .paid ? Theme.chartReady : Theme.text3)
-                }
-                StageBar(stage: project.stage).frame(maxWidth: 180)
-            }
-            Spacer()
-            Text(files.isEmpty ? "No footage yet" : "\(files.count) clips · \(ByteFormat.string(files.reduce(0) { $0 + $1.sizeBytes }))")
-                .font(Theme.font(size: 13))
-                .monospacedDigit()
-                .foregroundStyle(Theme.text3)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     // MARK: - Loose clips

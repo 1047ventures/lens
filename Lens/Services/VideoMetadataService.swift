@@ -35,6 +35,10 @@ enum VideoMetadataService {
             }
         }
 
+        if let created = try? await asset.load(.creationDate), let date = try? await created.load(.dateValue) {
+            file.captureDate = date
+        }
+
         if let metadata = try? await asset.load(.metadata) {
             var make: String?
             var model: String?
@@ -42,27 +46,22 @@ enum VideoMetadataService {
                 if item.commonKey == .commonKeyMake, let value = item.stringValue { make = value }
                 if item.commonKey == .commonKeyModel, let value = item.stringValue { model = value }
 
-                // GPS shows up under the common "location" key (e.g. ffmpeg-authored udta atoms)
-                // or under a QuickTime-specific ISO6709 identifier (real-camera .mov files) —
-                // check both rather than assuming one container's convention.
-                let looksLikeLocation = item.commonKey?.rawValue == "location"
-                    || (item.identifier?.rawValue).map {
-                        $0.localizedCaseInsensitiveContains("location.ISO6709") || $0.localizedCaseInsensitiveContains("GPSCoordinates")
-                    } == true
-                if looksLikeLocation, let value = item.stringValue, let coords = parseISO6709(value) {
+                if isLocation(item), let value = item.stringValue, let coords = parseISO6709(value) {
                     file.gpsLatitude = coords.lat
                     file.gpsLongitude = coords.lon
                 }
             }
-            if let model {
-                file.cameraModel = make.map { "\($0) \(model)" } ?? model
-            } else {
-                file.cameraModel = make
-            }
+            file.cameraModel = FileFacts.cameraName(make: make, model: model)
+        }
+
+        if file.cameraModel == nil || file.captureDate == nil {
+            let note = FileFacts.cameraNote(for: file.url)
+            file.cameraModel = file.cameraModel ?? note.camera
+            file.captureDate = file.captureDate ?? note.taken
         }
 
         if let lat = file.gpsLatitude, let lon = file.gpsLongitude {
-            file.locationLabel = await GeocodeCache.shared.label(for: lat, lon)
+            file.locationLabel = await PlaceBook.shared.label(lat, lon)
         }
 
         return file
@@ -116,8 +115,17 @@ enum VideoMetadataService {
         return string.isEmpty ? "Unknown" : string
     }
 
+    /// GPS shows up under the common "location" key (e.g. ffmpeg-authored udta atoms) or under a
+    /// QuickTime-specific ISO6709 identifier (real-camera .mov files), so both are checked.
+    static func isLocation(_ item: AVMetadataItem) -> Bool {
+        item.commonKey?.rawValue == "location"
+            || (item.identifier?.rawValue).map {
+                $0.localizedCaseInsensitiveContains("location.ISO6709") || $0.localizedCaseInsensitiveContains("GPSCoordinates")
+            } == true
+    }
+
     /// Parses an ISO 6709 location string like "+37.3349-122.0090+000.000/" into (lat, lon).
-    private static func parseISO6709(_ string: String) -> (lat: Double, lon: Double)? {
+    static func parseISO6709(_ string: String) -> (lat: Double, lon: Double)? {
         let pattern = #"[+-][0-9]+\.[0-9]+"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let matches = regex.matches(in: string, range: NSRange(string.startIndex..., in: string))
@@ -127,49 +135,5 @@ enum VideoMetadataService {
               let lat = Double(string[latRange]),
               let lon = Double(string[lonRange]) else { return nil }
         return (lat, lon)
-    }
-}
-
-/// Reverse-geocodes GPS coordinates into a short place name, caching by rounded
-/// coordinate so clips shot in the same session don't each trigger a network lookup.
-/// CLGeocoder only calls back on a thread with a run loop and can stall when offline or
-/// rate-limited, so lookups run on the main actor, share in-flight requests, and give up
-/// after a few seconds — a missing place name must never hold up a scan.
-@MainActor
-private final class GeocodeCache {
-    static let shared = GeocodeCache()
-
-    private var cache: [String: String?] = [:]
-    private var inFlight: [String: Task<String?, Never>] = [:]
-
-    nonisolated func label(for lat: Double, _ lon: Double) async -> String? {
-        await lookup(lat, lon)
-    }
-
-    private func lookup(_ lat: Double, _ lon: Double) async -> String? {
-        let key = String(format: "%.3f,%.3f", lat, lon)
-        if let cached = cache[key] { return cached }
-        if let running = inFlight[key] { return await running.value }
-
-        let task = Task { @MainActor in await Self.reverseGeocode(lat, lon) }
-        inFlight[key] = task
-        let label = await task.value
-        inFlight[key] = nil
-        cache[key] = label
-        return label
-    }
-
-    private static func reverseGeocode(_ lat: Double, _ lon: Double, timeout: TimeInterval = 4) async -> String? {
-        let geocoder = CLGeocoder()
-        // Cancelling makes the completion handler fire with an error, so the wait always ends.
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { geocoder.cancelGeocode() }
-        return await withCheckedContinuation { continuation in
-            geocoder.reverseGeocodeLocation(CLLocation(latitude: lat, longitude: lon)) { placemarks, _ in
-                let label = placemarks?.first.map {
-                    [$0.locality, $0.administrativeArea].compactMap { $0 }.joined(separator: ", ")
-                }
-                continuation.resume(returning: (label?.isEmpty ?? true) ? nil : label)
-            }
-        }
     }
 }

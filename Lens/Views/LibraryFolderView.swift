@@ -150,7 +150,9 @@ struct FolderItem: Identifiable, Hashable {
     let url: URL?
     /// Set for items in the Photos app.
     var assetID: String? = nil
-    var id: String { assetID ?? name }
+    /// Set when items from different folders are shown together, where names can repeat (C0001.MP4).
+    var key: String? = nil
+    var id: String { key ?? assetID ?? name }
     var canPreview: Bool { url != nil || assetID != nil }
 }
 
@@ -158,7 +160,7 @@ struct FolderItem: Identifiable, Hashable {
 
 /// A small picture of any photo (RAW included) or video, made by macOS on demand and dropped
 /// when it scrolls away, so a folder of thousands stays light.
-private struct Thumbnail: View {
+struct Thumbnail: View {
     let url: URL?
     var assetID: String? = nil
     let kind: CatalogKind
@@ -191,7 +193,7 @@ private struct Thumbnail: View {
 
 // MARK: - Full preview
 
-private struct PreviewSheet: View {
+struct PreviewSheet: View {
     let items: [FolderItem]
     @State var index: Int
     @Environment(\.dismiss) private var dismiss

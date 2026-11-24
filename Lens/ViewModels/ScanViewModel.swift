@@ -105,6 +105,10 @@ final class ScanViewModel: ObservableObject {
             let projectFiles = FileScanner.findProjectFiles(roots: capturedRoots)
             PremiereProjectParser.annotateLinkedFiles(&files, projectFiles: projectFiles)
             files = await VideoMetadataService.enrichAll(files)
+            // Keep what was just read (camera, date, place) so the Library can sort by it later,
+            // even with the drive unplugged. Photos on the drive are read in the same pass.
+            let known = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
+            await MainActor.run { DriveCatalog.shared.readFacts(for: remembered, known: known) }
 
             let dupes = HashingService.findDuplicates(among: files)
             let cache = PremiereCacheFinder.find(in: capturedRoots)
