@@ -8,9 +8,15 @@ struct MapPin: Identifiable {
     let title: String
     /// An item to show as the pin's picture (a position in `LibraryIndex.items`).
     let sample: Int?
-    let route: FootageRoute
+    let target: MapTarget
     /// False for a loose folder, which is drawn quieter than a shoot.
     let isShoot: Bool
+}
+
+/// Where clicking a pin goes: a shoot or folder in the Library, or a project with no footage found yet.
+enum MapTarget {
+    case library(FootageRoute)
+    case project(UUID)
 }
 
 /// Pins close enough together at the current zoom to show as one, with a count.
@@ -40,7 +46,7 @@ enum MapSpot {
 /// grouped with a count when zoomed out. Click one to open it; click a group to zoom in.
 struct LibraryMapView: View {
     let pins: [MapPin]
-    let open: (FootageRoute) -> Void
+    let open: (MapTarget) -> Void
 
     @State private var position: MapCameraPosition = .automatic
     /// How much of the world is showing, in degrees, so nearby pins can be grouped to suit.
@@ -75,11 +81,17 @@ struct LibraryMapView: View {
         .overlay(alignment: .bottomLeading) {
             if let stack { stackList(stack).padding(14) }
         }
-        .overlay {
+        .overlay(alignment: .topLeading) {
             if pins.isEmpty {
-                Text("Shoots show up here once Lens knows where they were taken.")
-                    .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
-                    .panel(padding: 16)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No shoots on the map yet").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text("Add a place to a project and it shows up here.")
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .panel(padding: 12)
+                .frame(width: 250)
+                .padding(14)
             }
         }
     }
@@ -93,7 +105,13 @@ struct LibraryMapView: View {
 
     /// Frames every pin, with room above each one for its picture (pins hang from their spot).
     private func fitAll() {
-        guard let first = pins.first else { return }
+        stack = nil
+        guard let first = pins.first else {
+            // Nothing to show yet: a wide view of the US rather than the whole world.
+            position = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 39, longitude: -97),
+                                                  span: MKCoordinateSpan(latitudeDelta: 32, longitudeDelta: 62)))
+            return
+        }
         var minLat = first.coordinate.latitude, maxLat = minLat
         var minLon = first.coordinate.longitude, maxLon = minLon
         for p in pins {
@@ -140,7 +158,7 @@ struct LibraryMapView: View {
     }
 
     private func tap(_ group: PinCluster) {
-        if group.pins.count == 1 { open(group.pins[0].route); return }
+        if group.pins.count == 1 { open(group.pins[0].target); return }
         let lats = group.pins.map(\.coordinate.latitude), lons = group.pins.map(\.coordinate.longitude)
         let spread = max((lats.max()! - lats.min()!), (lons.max()! - lons.min()!))
         if spread < 0.002 {
@@ -166,7 +184,7 @@ struct LibraryMapView: View {
                     .help("Close")
             }
             ForEach(group.pins) { pin in
-                Button { open(pin.route) } label: {
+                Button { open(pin.target) } label: {
                     HStack(spacing: 8) {
                         Image(systemName: pin.isShoot ? "photo.stack" : "folder")
                             .foregroundStyle(Theme.text3).frame(width: 16)

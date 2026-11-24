@@ -328,13 +328,30 @@ final class PlaceBook: @unchecked Sendable {
         }
     }
 
-    /// True when the typed place still needs looking up (never asked, or asked before positions were kept).
+    /// True when the typed place still needs looking up: never asked, asked before positions were kept,
+    /// or not found before Lens knew to try just the town ("Planet Bluegrass, Lyons" → "Lyons").
     func needsLookup(text: String) -> Bool {
         lock.withLock {
             let key = Self.textKey(text)
             guard let label = places[key] else { return true }
-            return !label.isEmpty && places["pos:" + key] == nil
+            if label.isEmpty { return places["town:" + key] == nil }
+            return places["pos:" + key] == nil
         }
+    }
+
+    /// Near the places Lens already knows, so "Lyons" means the one down the road, not the one in France.
+    private func nearby() -> CLCircularRegion? {
+        let spots: [(Double, Double)] = lock.withLock {
+            places.compactMap { k, v in
+                guard k.hasPrefix("pos:") else { return nil }
+                let parts = v.split(separator: ",").compactMap { Double($0) }
+                return parts.count == 2 ? (parts[0], parts[1]) : nil
+            }
+        }
+        guard !spots.isEmpty else { return nil }
+        let lat = spots.map(\.0).reduce(0, +) / Double(spots.count)
+        let lon = spots.map(\.1).reduce(0, +) / Double(spots.count)
+        return CLCircularRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lon), radius: 400_000, identifier: "nearby")
     }
 
     /// Looks up a typed place on Apple's map service to find its town and state. Remembered on disk.
@@ -344,14 +361,20 @@ final class PlaceBook: @unchecked Sendable {
             if !needsLookup(text: text) { return cached(text: text) }
             if isPaused() { return nil }
             var spot: CLLocationCoordinate2D?
-            let result = await Self.geocode(text) { spot = $0 }
+            let near = nearby()
+            var result = await Self.geocode(text, near: near) { spot = $0 }
+            // A venue the map service doesn't know ("Planet Bluegrass, Lyons"): try the town after the comma.
+            if case .nowhere = result, let comma = text.firstIndex(of: ",") {
+                let town = text[text.index(after: comma)...].trimmingCharacters(in: .whitespaces)
+                if !town.isEmpty { result = await Self.geocode(town, near: near) { spot = $0 } }
+            }
             let key = Self.textKey(text)
             let snapshot: [String: String]? = lock.withLock {
                 switch result {
                 case .found(let label):
                     places[key] = label
                     if let spot { places["pos:" + key] = String(format: "%.5f,%.5f", spot.latitude, spot.longitude) }
-                case .nowhere: places[key] = ""
+                case .nowhere: places[key] = ""; places["town:" + key] = "1"
                 case .turnedAway: pausedUntil = Date().addingTimeInterval(180); return nil
                 case .failed: return nil
                 }
@@ -364,12 +387,12 @@ final class PlaceBook: @unchecked Sendable {
     }
 
     @MainActor
-    private static func geocode(_ text: String, timeout: TimeInterval = 5,
+    private static func geocode(_ text: String, near: CLRegion? = nil, timeout: TimeInterval = 5,
                                 at spot: @escaping (CLLocationCoordinate2D) -> Void) async -> Answer {
         let geocoder = CLGeocoder()
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { geocoder.cancelGeocode() }
         return await withCheckedContinuation { continuation in
-            geocoder.geocodeAddressString(text) { placemarks, error in
+            geocoder.geocodeAddressString(text, in: near) { placemarks, error in
                 if let c = placemarks?.first?.location?.coordinate { spot(c) }
                 continuation.resume(returning: answer(placemarks, error))
             }

@@ -94,6 +94,7 @@ struct LibraryShootsView: View {
     @EnvironmentObject private var money: MoneyStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var appearance: Appearance
+    @EnvironmentObject private var navigator: Navigator
     @ObservedObject private var index = LibraryIndex.shared
     @ObservedObject private var links = LibraryLinks.shared
     @ObservedObject private var catalog = DriveCatalog.shared
@@ -118,8 +119,14 @@ struct LibraryShootsView: View {
                     if viewRaw != "map" { sortBar }
                 }
                 if viewRaw == "map" && !(index.loading && index.items.isEmpty) {
-                    LibraryMapView(pins: mapPins(shown, shelf), open: open)
-                    noPlaceStrip(shown)
+                    let waiting = waitingProjects(shoots)
+                    LibraryMapView(pins: mapPins(shown, waiting, shelf)) { target in
+                        switch target {
+                        case .library(let route): open(route)
+                        case .project(let id): navigator.openProject(id)
+                        }
+                    }
+                    noPlaceStrip(shown, waiting)
                 } else if index.loading && index.items.isEmpty {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Reading your drives…") }
                         .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
@@ -176,12 +183,32 @@ struct LibraryShootsView: View {
         .overlay(Capsule().stroke(Theme.line))
     }
 
-    /// Shoots where they happened, plus loose folders whose photos say where they were taken.
-    private func mapPins(_ shoots: [Shoot], _ shelf: Shelf) -> [MapPin] {
+    /// Projects with no footage found yet, which still belong on the map from day one (matching the search).
+    private func waitingProjects(_ shoots: [Shoot]) -> [Project] {
+        let have = Set(shoots.map(\.id))
+        let words = query.lowercased().split(separator: " ").map(String.init)
+        return projects.projects.filter { p in
+            guard !have.contains(p.id) else { return false }
+            let text = [p.name, p.client, p.location].joined(separator: " ").lowercased()
+            return words.allSatisfy { text.contains($0) }
+        }
+    }
+
+    private func placeSpot(_ project: Project) -> CLLocationCoordinate2D? {
+        PlaceBook.shared.position(text: project.location).map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+    }
+
+    /// Shoots where they happened, projects at their typed place, and loose folders whose photos say where they were taken.
+    private func mapPins(_ shoots: [Shoot], _ waiting: [Project], _ shelf: Shelf) -> [MapPin] {
         var pins: [MapPin] = shoots.compactMap { s in
             guard let spot = s.spot else { return nil }
             return MapPin(id: s.id.uuidString, coordinate: spot, title: s.project.name, sample: s.sample.first,
-                          route: .shoot(s.id), isShoot: true)
+                          target: .library(.shoot(s.id)), isShoot: true)
+        }
+        for p in waiting {
+            guard let spot = placeSpot(p) else { continue }
+            pins.append(MapPin(id: p.id.uuidString, coordinate: spot, title: p.name, sample: nil,
+                               target: .project(p.id), isShoot: true))
         }
         for i in shelf.unsorted where index.folders.indices.contains(i) {
             let f = index.folders[i]
@@ -190,8 +217,8 @@ struct LibraryShootsView: View {
             guard let spot = MapSpot.common(items) else { continue }
             let sample = f.items.first { index.items.indices.contains($0) && index.items[$0].kind == .photo } ?? f.items.first
             pins.append(MapPin(id: f.id, coordinate: spot, title: f.name, sample: sample,
-                               route: f.isPhotosDay ? .unsorted(driveID: f.driveID, folder: f.folder)
-                                                    : .folder(driveID: f.driveID, path: f.folder),
+                               target: .library(f.isPhotosDay ? .unsorted(driveID: f.driveID, folder: f.folder)
+                                                              : .folder(driveID: f.driveID, path: f.folder)),
                                isShoot: false))
         }
         return pins
@@ -199,16 +226,23 @@ struct LibraryShootsView: View {
 
     /// Shoots Lens can't place yet, so they aren't missing from the map without a word.
     @ViewBuilder
-    private func noPlaceStrip(_ shoots: [Shoot]) -> some View {
-        let unplaced = shoots.filter { $0.spot == nil }.sorted(by: newestFirst)
+    private func noPlaceStrip(_ shoots: [Shoot], _ waiting: [Project]) -> some View {
+        let unplaced: [(id: UUID, name: String, target: MapTarget)] =
+            shoots.filter { $0.spot == nil }.sorted(by: newestFirst).map { ($0.id, $0.project.name, .library(.shoot($0.id))) }
+            + waiting.filter { placeSpot($0) == nil }.map { ($0.id, $0.name, .project($0.id)) }
         if !unplaced.isEmpty {
             HStack(alignment: .center, spacing: 10) {
                 Text("No place yet").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(unplaced) { s in
-                            Button { open(.shoot(s.id)) } label: {
-                                Text(s.project.name)
+                        ForEach(unplaced, id: \.id) { s in
+                            Button {
+                                switch s.target {
+                                case .library(let route): open(route)
+                                case .project(let id): navigator.openProject(id)
+                                }
+                            } label: {
+                                Text(s.name)
                                     .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                                     .padding(.horizontal, 12).padding(.vertical, 6)
                                     .background(Capsule().fill(Theme.panel))
