@@ -15,11 +15,17 @@ struct ProjectDetailView: View {
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var moving = false
+    @EnvironmentObject private var appearance: Appearance
+    @State private var addingPerson = false
 
     private var files: [MediaFile] { project.files(in: viewModel.allFiles) }
     private var books: ProjectBooks { ProjectBooks.make(project, money: money, deals: deals) }
 
     var body: some View {
+        if appearance.simple { simpleBody } else { everythingBody }
+    }
+
+    private var everythingBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 Button {
@@ -370,5 +376,261 @@ enum ServerFolder {
         settings.archiveDestinationPath = url.path
         settings.save()
         return url
+    }
+}
+
+
+// MARK: - Simple
+
+extension ProjectDetailView {
+    private var chips: [(String, ProjectStage)] {
+        [("Booked", .booked), ("Shot", .shoot), ("Editing", .edit), ("Delivered", .delivered), ("Paid", .paid)]
+    }
+
+    /// Where the project sits in the five chips, or -1 for an inquiry.
+    private var chipIndex: Int {
+        switch project.stage {
+        case .lead: return -1
+        case .booked: return 0
+        case .shoot: return 1
+        case .edit: return 2
+        case .delivered: return 3
+        case .paid, .archived: return 4
+        }
+    }
+
+    private var stageSentence: String {
+        switch project.stage {
+        case .lead: return "You're getting this one booked"
+        case .booked: return "You're booked"
+        case .shoot: return "You're shooting"
+        case .edit: return "You're editing"
+        case .delivered: return "You've delivered"
+        case .paid: return "You're paid"
+        case .archived: return "This one's done"
+        }
+    }
+
+    var simpleBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                Button {
+                    navigator.projectID = nil
+                } label: {
+                    Label("All projects", systemImage: "chevron.left")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                }
+                .buttonStyle(.plain)
+
+                simpleHeader
+                simpleStageLine
+                simpleNextUp
+                simplePeople
+                simpleMoney
+                simpleEmails
+                simpleFooter
+            }
+            .padding(.horizontal, 48)
+            .padding(.vertical, 32)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $addingPerson) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Who's on it").font(Theme.display(size: 22)).foregroundStyle(Theme.text)
+                ScrollView { ProjectPeopleTab(project: project) }
+                HStack { Spacer(); Button("Done") { addingPerson = false }.buttonStyle(PrimaryButtonStyle()) }
+            }
+            .padding(24)
+            .frame(width: 640, height: 520)
+        }
+    }
+
+    private var simpleHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let when = [project.shootDate?.formatted(.dateTime.month(.wide).day()) ?? "", project.location]
+                .filter { !$0.isEmpty }.joined(separator: ", ")
+            let meta = [project.client, when].filter { !$0.isEmpty }.joined(separator: " · ")
+            if !meta.isEmpty {
+                Text(meta).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+            }
+            Text(project.name).font(Theme.display(size: 38)).foregroundStyle(Theme.text)
+        }
+    }
+
+    private var simpleStageLine: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(stageSentence).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+            HStack(spacing: 8) {
+                ForEach(Array(chips.enumerated()), id: \.offset) { i, chip in
+                    let current = i == chipIndex
+                    let past = i < chipIndex
+                    Text(chip.0)
+                        .font(Theme.font(size: 13, weight: current ? .bold : .medium))
+                        .foregroundStyle(current ? Theme.onTeal : past ? Theme.teal : Theme.muted)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(current ? Theme.teal : past ? Theme.teal.opacity(0.14) : Color.clear)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(current || past ? Color.clear : Theme.line))
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(stageSentence)
+        }
+    }
+
+    private var nextSentence: String {
+        var line = SimpleProject.nextLine(project)
+        if project.stage == .delivered,
+           let due = money.receivables.filter({ $0.projectID == project.id && $0.paidOn == nil }).map(\.due).min() {
+            line = "Delivered. The final payment is due \(SimpleProject.when(due))."
+        }
+        return line
+    }
+
+    private var simpleNextUp: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Next up").font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+            Text(nextSentence)
+                .font(Theme.font(size: 16)).foregroundStyle(Theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+            simpleAction
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel(padding: 22)
+        .accentBar(Theme.teal)
+    }
+
+    @ViewBuilder private var simpleAction: some View {
+        let folder = project.folderURL
+        switch project.stage {
+        case .lead:
+            Button("Mark as booked") { projects.setStage(.booked, for: project) }.buttonStyle(PrimaryButtonStyle())
+        case .booked:
+            Button("Start shooting") { projects.setStage(.shoot, for: project) }.buttonStyle(PrimaryButtonStyle())
+        case .shoot:
+            Button("The shoot is done, start editing") { projects.setStage(.edit, for: project) }.buttonStyle(PrimaryButtonStyle())
+        case .edit:
+            if let folder {
+                HStack(spacing: 10) {
+                    Button("Open the footage") { NSWorkspace.shared.open(folder) }.buttonStyle(PrimaryButtonStyle())
+                    Button("Mark as delivered") { projects.setStage(.delivered, for: project) }.buttonStyle(SecondaryButtonStyle())
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Button("Choose the footage folder") { chooseFolder() }.buttonStyle(PrimaryButtonStyle())
+                    Button("Mark as delivered") { projects.setStage(.delivered, for: project) }.buttonStyle(SecondaryButtonStyle())
+                }
+            }
+        case .delivered:
+            Button("Mark as paid") { projects.setStage(.paid, for: project) }.buttonStyle(PrimaryButtonStyle())
+        case .paid:
+            if project.folderPath != nil, !project.isOnServer {
+                Button(moving ? "Moving…" : "Move footage to the server") { moveToServer() }
+                    .buttonStyle(PrimaryButtonStyle()).disabled(moving)
+            }
+        case .archived:
+            EmptyView()
+        }
+    }
+
+    private func initials(_ name: String) -> String {
+        let letters = name.split(separator: " ").prefix(2).compactMap { $0.first }
+        return String(letters).uppercased()
+    }
+
+    private var simplePeople: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Who's on it").font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+            let people = project.people ?? []
+            if people.isEmpty {
+                Text("No one added yet.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+            }
+            ForEach(people) { person in
+                HStack(spacing: 12) {
+                    Text(initials(person.name))
+                        .font(Theme.font(size: 13, weight: .bold)).foregroundStyle(Theme.teal)
+                        .frame(width: 38, height: 38)
+                        .background(Theme.teal.opacity(0.14)).clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(person.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        if !person.role.isEmpty {
+                            Text(person.role).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                }
+            }
+            Button("+ Add someone") { addingPerson = true }
+                .buttonStyle(.link).font(Theme.font(size: 13, weight: .semibold))
+        }
+    }
+
+    private var moneySentences: [String] {
+        let mine = money.receivables.filter { $0.projectID == project.id }
+        let paid = mine.filter { $0.paidOn != nil }.reduce(0) { $0 + $1.amount }
+        let total = books.price ?? (mine.isEmpty ? nil : mine.reduce(0) { $0 + $1.amount })
+        let hours = project.totalHours
+        var sentences: [String] = []
+        if let total, total > 0 {
+            if paid > 0 {
+                let who = project.client.trimmingCharacters(in: .whitespaces).isEmpty ? "They've" : "\(project.client) has"
+                var s = "\(who) paid \(Money.string(paid)) of \(Money.string(total))."
+                if paid < total { s += project.stage.rawValue < ProjectStage.delivered.rawValue ? " The rest comes after you deliver." : " The rest is still to come." }
+                sentences.append(s)
+            } else {
+                sentences.append("The price is \(Money.string(total)). Nothing has come in yet.")
+            }
+        }
+        if hours > 0 { sentences.append("You've spent \(Hours.short(hours)) on it so far.") }
+        return sentences
+    }
+
+    @ViewBuilder private var simpleMoney: some View {
+        let sentences = moneySentences
+        if !sentences.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Money").font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                Text(sentences.joined(separator: " "))
+                    .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var simpleEmails: some View {
+        let latest = (project.emails ?? []).sorted { $0.lastDate > $1.lastDate }.prefix(2)
+        if !latest.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(project.client.isEmpty ? "Latest emails" : "Latest from \(project.client)")
+                    .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                ForEach(Array(latest)) { mail in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(mail.subject.isEmpty ? "No subject" : mail.subject)
+                                .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                            Spacer()
+                            Text(mail.lastDate.formatted(.relative(presentation: .named)))
+                                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                        if !mail.snippet.isEmpty {
+                            Text(mail.snippet).font(Theme.font(size: 13)).foregroundStyle(Theme.muted).lineLimit(2)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .panel(padding: 16)
+                }
+            }
+        }
+    }
+
+    private var simpleFooter: some View {
+        HStack(spacing: 0) {
+            Text("Meeting notes, files, hours and every detail are in ")
+            Button("Everything") { Appearance.shared.detail = .everything }
+                .buttonStyle(.link)
+            Text(".")
+        }
+        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+        .padding(.top, 8)
     }
 }

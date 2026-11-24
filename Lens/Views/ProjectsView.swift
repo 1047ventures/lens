@@ -7,6 +7,9 @@ struct ProjectsView: View {
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var money: MoneyStore
     @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var appearance: Appearance
+    @EnvironmentObject private var history: EmailHistory
+    @State private var doneOpen = false
     @State private var editing: Project?
     @State private var creating = false
     @State private var importMessage: String?
@@ -15,6 +18,8 @@ struct ProjectsView: View {
         Group {
             if let project = projects.project(id: navigator.projectID) {
                 ProjectDetailView(project: project)
+            } else if appearance.simple {
+                simpleList
             } else {
                 list
             }
@@ -80,6 +85,117 @@ struct ProjectsView: View {
             .padding(.vertical, 40)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: - Simple
+
+    private func simpleGroup(_ title: String, _ items: [Project]) -> [(String, [Project])] {
+        items.isEmpty ? [] : [(title, items)]
+    }
+
+    private var simpleList: some View {
+        let all = projects.projects
+        func byDate(_ a: Project, _ b: Project) -> Bool {
+            (a.shootDate ?? .distantFuture) < (b.shootDate ?? .distantFuture)
+        }
+        let groups = simpleGroup("Coming up", all.filter { $0.stage == .lead || $0.stage == .booked }.sorted(by: byDate))
+            + simpleGroup("Shooting", all.filter { $0.stage == .shoot }.sorted(by: byDate))
+            + simpleGroup("Editing", all.filter { $0.stage == .edit }.sorted(by: byDate))
+            + simpleGroup("Waiting on payment", all.filter { $0.stage == .delivered }.sorted(by: byDate))
+        let done = all.filter { $0.stage == .paid || $0.stage == .archived }
+            .sorted { ($0.shootDate ?? $0.createdAt) > ($1.shootDate ?? $1.createdAt) }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Projects")
+                            .font(Theme.display(size: 34))
+                            .foregroundStyle(Theme.text)
+                        Text("Here's what's on your plate, grouped by what you do next.")
+                            .font(Theme.font(size: 15))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Button("New project") { creating = true }
+                        .buttonStyle(PrimaryButtonStyle())
+                }
+                if !history.found.isEmpty { FoundWorkPanel() }
+                if all.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No projects yet")
+                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        Text("Start one with New project, and it will show up here.")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                    .panel(padding: 22)
+                }
+                ForEach(groups, id: \.0) { title, items in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(title)
+                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                        ForEach(items) { simpleCard($0) }
+                    }
+                }
+                if !done.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            withAnimation { doneOpen.toggle() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("Finished and paid · \(done.count)")
+                                    .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                                Image(systemName: doneOpen ? "chevron.down" : "chevron.right")
+                                    .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if doneOpen { ForEach(done) { simpleCard($0) } }
+                    }
+                }
+            }
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func simpleCard(_ project: Project) -> some View {
+        Button {
+            navigator.projectID = project.id
+        } label: {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(project.name)
+                        .font(Theme.display(size: 19)).foregroundStyle(Theme.text)
+                    if !project.client.isEmpty {
+                        Text(project.client).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                    }
+                    Text(SimpleProject.nextLine(project))
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+                Spacer(minLength: 12)
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(SimpleProject.chipName(project.stage))
+                        .font(Theme.font(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.teal)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Theme.teal.opacity(0.12))
+                        .clipShape(Capsule())
+                    if let date = project.shootDate {
+                        Text(SimpleProject.when(date))
+                            .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .panel(padding: 20)
     }
 
     private func group(title: String, items: [Project]) -> some View {
@@ -305,5 +421,56 @@ struct FoundWorkPanel: View {
             }
         }
         .panel(padding: 22)
+    }
+}
+
+// MARK: - Simple wording shared by the list and the project page
+
+enum SimpleProject {
+    /// "Saturday, Dec 6", "in 3 days", "today", "yesterday".
+    static func when(_ date: Date) -> String {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
+        switch days {
+        case 0: return "today"
+        case 1: return "tomorrow"
+        case -1: return "yesterday"
+        case 2...6: return "in \(days) days"
+        case ..<0: return date.formatted(.dateTime.month(.abbreviated).day())
+        default: return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        }
+    }
+
+    static func chipName(_ stage: ProjectStage) -> String {
+        switch stage {
+        case .lead: return "Inquiry"
+        case .booked: return "Booked"
+        case .shoot: return "Shooting"
+        case .edit: return "Editing"
+        case .delivered: return "Delivered"
+        case .paid: return "Paid"
+        case .archived: return "Done"
+        }
+    }
+
+    /// One plain sentence about what comes next.
+    static func nextLine(_ p: Project) -> String {
+        let day = p.shootDate.map { when($0) }
+        let ahead = p.shootDate.map { $0 >= Calendar.current.startOfDay(for: Date()) } ?? false
+        switch p.stage {
+        case .lead: return "Follow up and get this one booked."
+        case .booked:
+            if let day, ahead { return "Shoot day is \(day)." }
+            if let day { return "The shoot was \(day). Mark it shot once it's done." }
+            return "Set the shoot date when you have it."
+        case .shoot:
+            if let day, ahead { return "Shooting \(day), then bring the footage in." }
+            return "Finish shooting, then bring the footage in."
+        case .edit:
+            return p.folderPath == nil ? "Finish the edit. Pick the footage folder to find it fast." : "Finish the edit and deliver it."
+        case .delivered: return "Delivered. Waiting for the final payment."
+        case .paid: return p.folderPath != nil && !p.isOnServer ? "Paid. Move the footage to the server when you're ready." : "All paid. Nicely done."
+        case .archived: return "Finished and put away."
+        }
     }
 }
