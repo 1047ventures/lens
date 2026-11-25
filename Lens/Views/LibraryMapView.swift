@@ -11,6 +11,11 @@ struct MapPin: Identifiable {
     let target: MapTarget
     /// False for a loose folder, which is drawn quieter than a shoot.
     let isShoot: Bool
+    /// For the list of everything at one spot: when it was shot, a line about it, what's in it, and its step.
+    var date: Date? = nil
+    var detail: String = ""
+    var counts: String = ""
+    var stage: String? = nil
 }
 
 /// Where clicking a pin goes: a shoot or folder in the Library, or a project with no footage found yet.
@@ -43,7 +48,7 @@ enum MapSpot {
 }
 
 /// The Library as a map, the way the Photos app shows Places: a picture where each shoot happened,
-/// grouped with a count when zoomed out. Click one to open it; click a group to zoom in.
+/// grouped with a count when zoomed out. Click one to open it; click a group to list everything in it beside the map.
 struct LibraryMapView: View {
     let pins: [MapPin]
     let open: (MapTarget) -> Void
@@ -51,7 +56,7 @@ struct LibraryMapView: View {
     @State private var position: MapCameraPosition = .automatic
     /// How much of the world is showing, in degrees, so nearby pins can be grouped to suit.
     @State private var span: Double?
-    /// A group of shoots at the very same spot, listed so she can pick one.
+    /// The group she clicked, listed beside the map so she can pick one without zooming or scrolling.
     @State private var stack: PinCluster?
 
     var body: some View {
@@ -78,9 +83,10 @@ struct LibraryMapView: View {
         .frame(height: 540)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-        .overlay(alignment: .bottomLeading) {
-            if let stack { stackList(stack).padding(14) }
+        .overlay(alignment: .topTrailing) {
+            if let stack { placeList(stack).padding(12).transition(.move(edge: .trailing).combined(with: .opacity)) }
         }
+        .animation(.easeInOut(duration: 0.2), value: stack?.id)
         .overlay(alignment: .topLeading) {
             if pins.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -167,47 +173,104 @@ struct LibraryMapView: View {
     }
 
     private func tap(_ group: PinCluster) {
-        if group.pins.count == 1 { open(group.pins[0].target); return }
-        let lats = group.pins.map(\.coordinate.latitude), lons = group.pins.map(\.coordinate.longitude)
-        let spread = max((lats.max()! - lats.min()!), (lons.max()! - lons.min()!))
-        if spread < 0.002 {
-            // All at one spot: zooming won't pull them apart, so list them.
-            stack = group
-            return
-        }
-        stack = nil
-        let center = CLLocationCoordinate2D(latitude: (lats.max()! + lats.min()!) / 2, longitude: (lons.max()! + lons.min()!) / 2)
-        let size = spread * 1.6 + 0.01
-        withAnimation(.easeInOut(duration: 0.4)) {
-            position = .region(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: size, longitudeDelta: size)))
-        }
+        if group.pins.count == 1 { stack = nil; open(group.pins[0].target); return }
+        stack = group
     }
 
-    private func stackList(_ group: PinCluster) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("At this spot").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+    /// Everything under the bubble she clicked, newest shoot first, with loose folders after.
+    private func placeList(_ group: PinCluster) -> some View {
+        let shoots = group.pins.filter(\.isShoot).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        let loose = group.pins.filter { !$0.isShoot }.sorted { $0.title < $1.title }
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(heading(shoots: shoots.count, loose: loose.count))
+                    .font(Theme.display(size: 17)).foregroundStyle(Theme.text)
                 Spacer()
-                Button { stack = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
-                    .buttonStyle(.plain)
-                    .help("Close")
-            }
-            ForEach(group.pins) { pin in
-                Button { open(pin.target) } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: pin.isShoot ? "photo.stack" : "folder")
-                            .foregroundStyle(Theme.text3).frame(width: 16)
-                        Text(pin.title).font(Theme.font(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right").font(Theme.font(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
-                    }
-                    .contentShape(Rectangle())
+                Button { stack = nil } label: {
+                    Image(systemName: "xmark").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                        .frame(width: 24, height: 24).background(Circle().fill(Theme.raised))
                 }
                 .buttonStyle(.plain)
+                .help("Close")
+            }
+            .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(shoots) { pin in PlaceRow(pin: pin) { open(pin.target) } }
+                    if !loose.isEmpty {
+                        Text("Not sorted yet").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                            .padding(.horizontal, 8).padding(.top, shoots.isEmpty ? 0 : 10).padding(.bottom, 2)
+                        ForEach(loose) { pin in PlaceRow(pin: pin) { open(pin.target) } }
+                    }
+                }
+                .padding(.horizontal, 6).padding(.bottom, 8)
             }
         }
-        .frame(width: 260)
-        .panel(padding: 14)
+        .frame(width: 330)
+        .frame(maxHeight: 516)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+    }
+
+    private func heading(shoots: Int, loose: Int) -> String {
+        if loose == 0 { return "\(shoots) shoot\(shoots == 1 ? "" : "s") here" }
+        if shoots == 0 { return "\(loose) folder\(loose == 1 ? "" : "s") here" }
+        return "\(shoots) shoot\(shoots == 1 ? "" : "s"), \(loose) folder\(loose == 1 ? "" : "s")"
+    }
+}
+
+/// One shoot or folder in the list beside the map: its picture, name, when and who, and what's in it.
+private struct PlaceRow: View {
+    let pin: MapPin
+    let action: () -> Void
+    @ObservedObject private var index = LibraryIndex.shared
+    @ObservedObject private var catalog = DriveCatalog.shared
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                picture
+                    .frame(width: 54, height: 54)
+                    .background(Theme.raised)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pin.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                    if !pin.detail.isEmpty {
+                        Text(pin.detail).font(Theme.font(size: 12)).foregroundStyle(Theme.text3).lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        if !pin.counts.isEmpty {
+                            Text(pin.counts).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).monospacedDigit().lineLimit(1)
+                        }
+                        if let stage = pin.stage {
+                            Text(stage).font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.text2)
+                                .padding(.horizontal, 7).padding(.vertical, 1)
+                                .background(Capsule().fill(Theme.raised))
+                        }
+                    }
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 12).fill(hovering ? Theme.raised.opacity(0.6) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder private var picture: some View {
+        if let i = pin.sample, index.items.indices.contains(i) {
+            let item = index.items[i]
+            Thumbnail(url: LibraryFiles.url(of: item, catalog: catalog), assetID: item.assetID, kind: item.kind)
+        } else {
+            Image(systemName: pin.isShoot ? "photo" : "folder").font(Theme.font(size: 18)).foregroundStyle(Theme.muted)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 

@@ -22,6 +22,10 @@ enum WhatsNew {
                  detail: "Everything now opens with a few things for you, the rest folded away for later, and a plain sentence on each chart saying what it means."),
             Item(icon: "chart.bar.fill", title: "Where your jobs are",
                  detail: "The jobs card on Today now shows each step in plain words, from Quoting to Wrapping up, with how many jobs are there and what they're worth. Rest the pointer on a step to see what it means."),
+            Item(icon: "map.fill", title: "Every shoot in a place, in one list",
+                 detail: "Click a group of pictures on the Library map and every shoot there is listed right beside it, with when, who and what's in it. Click one to open it."),
+            Item(icon: "person.2.crop.square.stack.fill", title: "A shoot, at a glance",
+                 detail: "A shoot's photos and videos now start with a short brief: what it was, how far it got, who was involved and what happened last. Sort the files by folder, day, camera or place, and by who's in them or which scene when your files say so."),
         ]),
         ("2.0.1", [
             Item(icon: "photo.on.rectangle.angled", title: "A project's photos and videos, right there",

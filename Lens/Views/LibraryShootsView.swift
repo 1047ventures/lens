@@ -210,12 +210,16 @@ struct LibraryShootsView: View {
         var pins: [MapPin] = shoots.compactMap { s in
             guard let spot = s.spot else { return nil }
             return MapPin(id: s.id.uuidString, coordinate: spot, title: s.project.name, sample: s.sample.first,
-                          target: .library(.shoot(s.id)), isShoot: true)
+                          target: .library(.shoot(s.id)), isShoot: true,
+                          date: s.date, detail: Self.whenWho(s.date, s.project.client),
+                          counts: Self.counts(photos: s.photos, videos: s.videos), stage: s.project.stage.label)
         }
         for p in waiting {
             guard let spot = placeSpot(p) else { continue }
             pins.append(MapPin(id: p.id.uuidString, coordinate: spot, title: p.name, sample: nil,
-                               target: .library(.shoot(p.id)), isShoot: true))
+                               target: .library(.shoot(p.id)), isShoot: true,
+                               date: p.shootDate, detail: Self.whenWho(p.shootDate, p.client),
+                               counts: "No photos or videos found yet", stage: p.stage.label))
         }
         for i in shelf.unsorted where index.folders.indices.contains(i) {
             let f = index.folders[i]
@@ -226,9 +230,27 @@ struct LibraryShootsView: View {
             pins.append(MapPin(id: f.id, coordinate: spot, title: f.name, sample: sample,
                                target: .library(f.isPhotosDay ? .unsorted(driveID: f.driveID, folder: f.folder)
                                                               : .folder(driveID: f.driveID, path: f.folder)),
-                               isShoot: false))
+                               isShoot: false,
+                               date: f.first == .distantFuture ? nil : f.first,
+                               detail: Self.whenWho(f.first == .distantFuture ? nil : f.first, driveName(f.driveID)),
+                               counts: Self.counts(photos: f.photos, videos: f.videos)))
         }
         return pins
+    }
+
+    private static func whenWho(_ date: Date?, _ who: String) -> String {
+        var parts: [String] = []
+        if let date { parts.append(date.formatted(.dateTime.month(.abbreviated).day().year())) }
+        let who = who.trimmingCharacters(in: .whitespaces)
+        if !who.isEmpty { parts.append(who) }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func counts(photos: Int, videos: Int) -> String {
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos.formatted()) photo\(photos == 1 ? "" : "s")") }
+        if videos > 0 { parts.append("\(videos.formatted()) video\(videos == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
     }
 
     /// Shoots Lens can't place yet, so they aren't missing from the map without a word.
@@ -866,30 +888,120 @@ struct ShootFilesView: View {
         }
     }
 
-    private func items(in folder: LibraryFolder) -> [FolderItem] {
-        folder.items.compactMap { i -> FolderItem? in
-            guard index.items.indices.contains(i) else { return nil }
-            let item = index.items[i]
-            switch show {
-            case .all: break
-            case .video: if item.kind != .video { return nil }
-            case .photo: if item.kind != .photo { return nil }
+    /// How the photos and videos are grouped. People and Scene only show when the files themselves say who or which.
+    enum Arrange: String, CaseIterable, Identifiable {
+        case folder = "Folder", day = "Day of shoot", camera = "Camera", place = "Location", people = "Who's in it", scene = "Scene"
+        var id: String { rawValue }
+    }
+    @AppStorage("shoot.arrange") private var arrangeRaw = Arrange.folder.rawValue
+
+    private struct Entry {
+        let item: LibraryItem
+        let file: FolderItem
+        let folder: LibraryFolder
+    }
+
+    private struct FileSection: Identifiable {
+        let id: String
+        let title: String
+        let icon: String
+        /// Set when the section is one folder on a drive, so it keeps Show in Finder.
+        let folder: LibraryFolder?
+        let files: [FolderItem]
+    }
+
+    /// Every photo and video in this shoot that matches Everything / Video / Photos, oldest first within each folder.
+    private var entries: [Entry] {
+        folders.flatMap { folder in
+            folder.items.compactMap { i -> Entry? in
+                guard index.items.indices.contains(i) else { return nil }
+                let item = index.items[i]
+                switch show {
+                case .all: break
+                case .video: if item.kind != .video { return nil }
+                case .photo: if item.kind != .photo { return nil }
+                }
+                let file = FolderItem(name: item.name, size: item.size, modified: item.date, kind: item.kind,
+                                      url: LibraryFiles.url(of: item, catalog: catalog), assetID: item.assetID, key: item.id)
+                return Entry(item: item, file: file, folder: folder)
             }
-            return FolderItem(name: item.name, size: item.size, modified: item.date, kind: item.kind,
-                              url: LibraryFiles.url(of: item, catalog: catalog), assetID: item.assetID, key: item.id)
+            .sorted { $0.file.modified < $1.file.modified }
         }
-        .sorted { $0.modified < $1.modified }
+    }
+
+    /// The ways to group that mean something for these files.
+    private func choices(_ entries: [Entry]) -> [Arrange] {
+        Arrange.allCases.filter { a in
+            switch a {
+            case .folder, .day: return true
+            case .camera: return entries.contains { $0.item.camera != nil }
+            case .place: return entries.contains { $0.item.place != nil }
+            case .people: return entries.contains { !($0.item.people ?? []).isEmpty }
+            case .scene: return entries.contains { !($0.item.scene ?? "").isEmpty }
+            }
+        }
+    }
+
+    private func arrange(_ entries: [Entry]) -> Arrange {
+        let saved = Arrange(rawValue: arrangeRaw) ?? .folder
+        return choices(entries).contains(saved) ? saved : .folder
+    }
+
+    private func sections(_ entries: [Entry]) -> [FileSection] {
+        switch arrange(entries) {
+        case .folder:
+            return folders.compactMap { f in
+                let files = entries.filter { $0.folder.id == f.id }.map(\.file)
+                return files.isEmpty ? nil : FileSection(id: f.id, title: f.name, icon: "folder.fill", folder: f, files: files)
+            }
+        case .day:
+            let cal = Calendar.current
+            let days = Dictionary(grouping: entries) { cal.startOfDay(for: $0.item.date) }
+            let keys = days.keys.sorted()
+            return keys.enumerated().map { n, day in
+                let title = (keys.count > 1 ? "Day \(n + 1) · " : "") + day.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+                return FileSection(id: "day-\(Int(day.timeIntervalSince1970))", title: title, icon: "calendar", folder: nil,
+                                   files: (days[day] ?? []).map(\.file).sorted { $0.modified < $1.modified })
+            }
+        case .camera: return labelled(entries, icon: "camera", none: "Camera not known") { $0.camera.map { [$0] } ?? [] }
+        case .place: return labelled(entries, icon: "mappin.and.ellipse", none: "Place not known") { $0.place.map { [$0] } ?? [] }
+        case .people: return labelled(entries, icon: "person", none: "No one named") { $0.people ?? [] }
+        case .scene: return labelled(entries, icon: "film", none: "No scene noted") { $0.scene.map { [$0] } ?? [] }
+        }
+    }
+
+    /// Groups by a name each file carries. A photo of two people shows under both of them.
+    private func labelled(_ entries: [Entry], icon: String, none: String, keys: (LibraryItem) -> [String]) -> [FileSection] {
+        var groups: [String: [FolderItem]] = [:]
+        var rest: [FolderItem] = []
+        for e in entries {
+            let names = Set(keys(e.item).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+            if names.isEmpty { rest.append(e.file) } else { for n in names { groups[n, default: []].append(e.file) } }
+        }
+        var out = groups.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { name in
+            FileSection(id: icon + "|" + name, title: name, icon: icon, folder: nil,
+                        files: (groups[name] ?? []).sorted { $0.modified < $1.modified })
+        }
+        if !rest.isEmpty { out.append(FileSection(id: icon + "|none", title: none, icon: icon, folder: nil, files: rest)) }
+        return out
     }
 
     var body: some View {
-        let groups = folders.map { ($0, items(in: $0)) }.filter { !$0.1.isEmpty }
-        let all = groups.flatMap(\.1)
+        let entries = self.entries
+        let groups = sections(entries)
+        let all = entries.map(\.file)
         VStack(alignment: .leading, spacing: 0) {
-            header(all)
+            header(all, entries: entries)
             Divider().overlay(Theme.line)
             if groups.isEmpty {
                 if let project, !index.loading {
-                    ScrollView { notFound(project).padding(24) }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            brief(project)
+                            notFound(project)
+                        }
+                        .padding(24)
+                    }
                 } else {
                     Text(index.loading ? "Reading your drives…" : "No photos or videos here yet.")
                         .font(Theme.font(size: 14)).foregroundStyle(Theme.muted).padding(40)
@@ -898,11 +1010,12 @@ struct ShootFilesView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        ForEach(groups, id: \.0.id) { folder, files in
+                        if let project { brief(project) }
+                        ForEach(groups) { section in
                             VStack(alignment: .leading, spacing: 10) {
-                                folderHeader(folder, count: files.count)
+                                sectionHeader(section)
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
-                                    ForEach(files) { tile($0) }
+                                    ForEach(section.files) { tile($0) }
                                 }
                             }
                         }
@@ -916,6 +1029,131 @@ struct ShootFilesView: View {
         .sheet(item: $previewing) { item in
             PreviewSheet(items: all.filter(\.canPreview), start: item)
         }
+    }
+
+    @ViewBuilder private func sectionHeader(_ section: FileSection) -> some View {
+        if let folder = section.folder {
+            folderHeader(folder, count: section.files.count)
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: section.icon).foregroundStyle(Theme.text3)
+                Text(section.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("\(section.files.count)").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: The brief
+
+    /// A few lines on what the project was, how far it got, who was involved and what happened last,
+    /// so she knows which shoot she's looking at before the photos. The full story stays on the project page.
+    private func brief(_ p: Project) -> some View {
+        let people = involved(p)
+        let recent = Array(p.events.suffix(3).reversed())
+        return VStack(alignment: .leading, spacing: 18) {
+            Text(briefSentence(p))
+                .font(Theme.font(size: 15)).foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 6) {
+                ForEach(ProjectStage.allCases) { step in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Capsule()
+                            .fill(step.rawValue < p.stage.rawValue ? Theme.tealDim : step == p.stage ? Theme.teal : Theme.track)
+                            .frame(height: 5)
+                        Text(step.label)
+                            .font(Theme.font(size: 11, weight: step == p.stage ? .semibold : .regular))
+                            .foregroundStyle(step.rawValue <= p.stage.rawValue ? Theme.text2 : Theme.muted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(p.stage.rawValue + 1) of 7, \(p.stage.label)")
+            if !people.isEmpty || !recent.isEmpty {
+                HStack(alignment: .top, spacing: 32) {
+                    if !people.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Who was involved").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10, alignment: .leading)],
+                                      alignment: .leading, spacing: 10) {
+                                ForEach(people, id: \.name) { person in personChip(person.name, person.role) }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !recent.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Lately").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                            ForEach(recent) { event in
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(event.date.formatted(.dateTime.month(.abbreviated).day()))
+                                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                                        .frame(width: 48, alignment: .leading)
+                                    Text(event.text).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).lineLimit(2)
+                                }
+                            }
+                        }
+                        .frame(width: 300, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .panel(padding: 20)
+    }
+
+    private func personChip(_ name: String, _ role: String) -> some View {
+        let initials = name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
+        return HStack(spacing: 9) {
+            Text(initials.uppercased())
+                .font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(Theme.text2)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Palette.orchid.opacity(0.16)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                if !role.isEmpty { Text(role).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1) }
+            }
+        }
+    }
+
+    /// The client first, then everyone else on the project with their role, each name once.
+    private func involved(_ p: Project) -> [(name: String, role: String)] {
+        var out: [(name: String, role: String)] = []
+        var seen = Set<String>()
+        let client = p.client.trimmingCharacters(in: .whitespaces)
+        if !client.isEmpty { out.append((client, "Client")); seen.insert(client.lowercased()) }
+        for person in p.people ?? [] {
+            let name = person.name.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { continue }
+            out.append((name, person.role))
+        }
+        return out
+    }
+
+    private func briefSentence(_ p: Project) -> String {
+        var first = ""
+        let client = p.client.trimmingCharacters(in: .whitespaces)
+        let place = p.location.trimmingCharacters(in: .whitespaces)
+        let past = (p.shootDate ?? .distantFuture) <= Date()
+        if !client.isEmpty || p.shootDate != nil || !place.isEmpty {
+            first = p.shootDate == nil ? "A shoot" : (past ? "Shot" : "Shooting")
+            if !client.isEmpty { first += " for \(client)" }
+            if let d = p.shootDate { first += " on \(d.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))" }
+            if !place.isEmpty { first += " at \(place)" }
+            if let price = p.price, price > 0 { first += ", for \(Money.string(price))" }
+            first += ". "
+        }
+        let now: String
+        switch p.stage {
+        case .lead: now = "It's still a possible job."
+        case .booked: now = past ? "It's booked." : "It's booked and the shoot is coming up."
+        case .shoot: now = past ? "The shoot's done and the edit is next." : "The shoot is coming up."
+        case .edit: now = "It's in the edit now."
+        case .delivered: now = "It's delivered and waiting on payment."
+        case .paid: now = "It's delivered and paid."
+        case .archived: now = "It's finished and put away."
+        }
+        return first + now
     }
 
     /// A shoot with nothing found yet: say so, and offer the loose folders most likely to be it.
@@ -978,7 +1216,7 @@ struct ShootFilesView: View {
         return parts.joined(separator: " · ")
     }
 
-    private func header(_ all: [FolderItem]) -> some View {
+    private func header(_ all: [FolderItem], entries: [Entry]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -995,8 +1233,18 @@ struct ShootFilesView: View {
                 }
             }
             if !folders.isEmpty {
-                Picker("", selection: $show) { ForEach(Show.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+                HStack(spacing: 18) {
+                    Picker("", selection: $show) { ForEach(Show.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+                    let options = choices(entries)
+                    if options.count > 1 {
+                        Picker("Sort by", selection: Binding(get: { arrange(entries).rawValue }, set: { arrangeRaw = $0 })) {
+                            ForEach(options) { Text($0.rawValue).tag($0.rawValue) }
+                        }
+                        .pickerStyle(.menu).fixedSize()
+                        .font(Theme.font(size: 13))
+                    }
+                }
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 18)

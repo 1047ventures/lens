@@ -19,6 +19,9 @@ struct LibraryItem: Identifiable, Hashable {
     let place: String?
     let lat: Double?
     let lon: Double?
+    /// Who is in it and which scene, only when the file's own notes say so.
+    let people: [String]?
+    let scene: String?
 
     var id: String { driveID + "|" + path + "|" + (assetID ?? "") }
     var name: String { (path as NSString).lastPathComponent }
@@ -67,6 +70,10 @@ final class LibraryIndex: ObservableObject {
         guard !loadedOnce else { return }
         loadedOnce = true
         reload(after: 0)
+        // Catch up on anything not read yet (such as who's in each photo, added in 2.0.2) for drives
+        // that are plugged in, without waiting for her to scan them again. Files already read are skipped.
+        let catalog = DriveCatalog.shared
+        catalog.readFacts(for: catalog.drives.filter { catalog.isPlugged($0) && !$0.isPhotos && !$0.isWebsite })
     }
 
     func catalogChanged() { if loadedOnce { reload(after: 0.5) } }
@@ -108,7 +115,8 @@ final class LibraryIndex: ObservableObject {
                     let item = LibraryItem(driveID: drive.id, path: row.path, folder: folder, size: row.size,
                                            modified: modified, kind: row.kind, assetID: row.assetID,
                                            camera: fact?.camera, taken: taken, place: place,
-                                           lat: fact?.lat, lon: fact?.lon)
+                                           lat: fact?.lat, lon: fact?.lon,
+                                           people: fact?.people, scene: fact?.scene)
                     let key = drive.id + "|" + folder
                     var f = byKey[key] ?? LibraryFolder(driveID: drive.id, folder: folder)
                     f.items.append(items.count)

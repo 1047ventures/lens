@@ -15,6 +15,12 @@ struct FileFact: Hashable {
     var place: String?
     /// The file's modified time when these were read, so a changed file is read again.
     var stamp: Int = 0
+    /// Who is in it, only when the file's own notes say so (XMP "person in image", face-region names).
+    var people: [String]?
+    /// The scene, only from a real scene field (Blackmagic, XMP scene, QuickTime scene).
+    var scene: String?
+    /// True once people and scene have been looked for (saved lines with 9 columns). Not stored itself.
+    var peopleRead = false
 
     var hasGPS: Bool { lat != nil && lon != nil }
 }
@@ -33,11 +39,21 @@ enum FileFacts {
         text.enumerateLines { line, _ in
             let p = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard p.count >= 7 else { return }
-            out[p[0]] = FileFact(camera: p[1].isEmpty ? nil : p[1],
-                                 taken: Double(p[2]).map { Date(timeIntervalSince1970: $0) },
-                                 lat: Double(p[3]), lon: Double(p[4]),
-                                 place: p[5].isEmpty ? nil : p[5],
-                                 stamp: Int(p[6]) ?? 0)
+            var fact = FileFact(camera: p[1].isEmpty ? nil : p[1],
+                                taken: Double(p[2]).map { Date(timeIntervalSince1970: $0) },
+                                lat: Double(p[3]), lon: Double(p[4]),
+                                place: p[5].isEmpty ? nil : p[5],
+                                stamp: Int(p[6]) ?? 0)
+            // Lines saved by older versions have 7 columns: people and scene haven't been read yet.
+            if p.count >= 8 {
+                let names = p[7].split(separator: "|").map { String($0) }
+                fact.people = names.isEmpty ? nil : names
+            }
+            if p.count >= 9 {
+                fact.scene = p[8].isEmpty ? nil : p[8]
+                fact.peopleRead = true
+            }
+            out[p[0]] = fact
         }
         return out
     }
@@ -54,7 +70,9 @@ enum FileFacts {
             text += (f.taken.map { String(Int($0.timeIntervalSince1970)) } ?? "") + "\t"
             text += (f.lat.map { String(format: "%.5f", $0) } ?? "") + "\t"
             text += (f.lon.map { String(format: "%.5f", $0) } ?? "") + "\t"
-            text += clean(f.place) + "\t" + String(f.stamp) + "\n"
+            text += clean(f.place) + "\t" + String(f.stamp) + "\t"
+            text += clean((f.people ?? []).map { $0.replacingOccurrences(of: "|", with: " ") }.joined(separator: "|")) + "\t"
+            text += clean(f.scene) + "\n"
         }
         try? text.write(to: url(for: driveID), atomically: true, encoding: .utf8)
     }
@@ -83,18 +101,23 @@ enum FileFacts {
 
         var fresh = 0
         for row in rows where row.kind != .project {
-            if let f = facts[row.path], f.stamp == row.modified { continue }
+            // Read again when the file changed, or when it was saved before people and scene were read.
+            if let f = facts[row.path], f.stamp == row.modified, f.peopleRead { continue }
             let full = base.hasSuffix("/") ? base + row.path : base + "/" + row.path
             var fact: FileFact
             if let m = known[full] {
                 fact = FileFact(camera: m.cameraModel, taken: m.captureDate, lat: m.gpsLatitude, lon: m.gpsLongitude,
                                 place: m.locationLabel)
+                let extra = await readVideoExtras(URL(fileURLWithPath: full))
+                fact.people = extra.people
+                fact.scene = extra.scene
             } else if row.kind == .photo {
                 fact = autoreleasepool { readPhoto(URL(fileURLWithPath: full)) }
             } else {
                 fact = await readVideo(URL(fileURLWithPath: full))
             }
             fact.stamp = row.modified
+            fact.peopleRead = true
             facts[row.path] = fact
             fresh += 1
             // Save as it goes, so a big drive shows its details bit by bit.
@@ -162,7 +185,50 @@ enum FileFacts {
             let lo = lonRef == "W" ? -abs(lon) : lon
             if !(la == 0 && lo == 0) { fact.lat = la; fact.lon = lo }
         }
+        if let md = CGImageSourceCopyMetadataAtIndex(source, 0, nil) {
+            let found = xmpPeopleAndScene(md)
+            fact.people = found.people
+            fact.scene = found.scene
+        }
         return fact
+    }
+
+    /// People and scene from a photo's XMP: PersonInImage, face-region names (MWG), and xmpDM:scene.
+    /// Nothing else counts (no headline, no file names).
+    static func xmpPeopleAndScene(_ md: CGImageMetadata) -> (people: [String]?, scene: String?) {
+        var names: [String] = []
+        var scene: String?
+        func add(_ s: String?) {
+            guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty,
+                  !names.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) else { return }
+            names.append(t)
+        }
+        func text(_ tag: CGImageMetadataTag) -> String? { CGImageMetadataTagCopyValue(tag) as? String }
+        func strings(_ tag: CGImageMetadataTag) -> [String] {
+            let v = CGImageMetadataTagCopyValue(tag)
+            if let s = v as? String { return [s] }
+            if let arr = v as? [Any] {
+                return arr.compactMap { el -> String? in
+                    if let str = el as? String { return str }
+                    let ref = el as CFTypeRef
+                    return CFGetTypeID(ref) == CGImageMetadataTagGetTypeID() ? text(unsafeBitCast(ref, to: CGImageMetadataTag.self)) : nil
+                }
+            }
+            return []
+        }
+        CGImageMetadataEnumerateTagsUsingBlock(md, nil, [kCGImageMetadataEnumerateRecursively: true] as CFDictionary) { path, tag in
+            let p = path as String
+            let name = (CGImageMetadataTagCopyName(tag) as String?) ?? ""
+            if p.hasPrefix("Iptc4xmpExt:PersonInImage") && name == "PersonInImage" {
+                strings(tag).forEach { add($0) }
+            } else if p.hasPrefix("mwg-rs:Regions") && name == "Name" && (p.hasSuffix(".Name") || p.hasSuffix("/mwg-rs:Name")) {
+                add(text(tag))
+            } else if p == "xmpDM:scene" {
+                if scene == nil, let t = text(tag)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { scene = t }
+            }
+            return true
+        }
+        return (names.isEmpty ? nil : names, scene)
     }
 
     /// Camera, date taken and GPS from a video's own notes, without reading its picture.
@@ -184,12 +250,80 @@ enum FileFacts {
             }
         }
         fact.camera = cameraName(make: make, model: model)
+        let extra = await readVideoExtras(url, asset: asset)
+        fact.people = extra.people
+        fact.scene = extra.scene
         if fact.camera == nil || fact.taken == nil {
             let note = cameraNote(for: url)
             fact.camera = fact.camera ?? note.camera
             fact.taken = fact.taken ?? note.taken
         }
         return fact
+    }
+
+    /// Scene and people from the notes AVFoundation shows for a video. Unknown keys are ignored.
+    /// Scene: Blackmagic keys (with take, "Scene 3, take 2"), xmpDM:scene, com.apple.quicktime.scene.
+    /// People: XMP "person in image" if it is embedded.
+    static func readVideoExtras(_ url: URL, asset: AVURLAsset? = nil) async -> (people: [String]?, scene: String?) {
+        let asset = asset ?? AVURLAsset(url: url)
+        var items: [AVMetadataItem] = []
+        if let formats = try? await asset.load(.availableMetadataFormats) {
+            for f in formats { if let m = try? await asset.loadMetadata(for: f) { items += m } }
+        }
+        if items.isEmpty, let m = try? await asset.load(.metadata) { items = m }
+
+        var people: [String] = []
+        func addPerson(_ s: String) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty, !people.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) { people.append(t) }
+        }
+        var scene: String?, take: String?, bmScene: String?, xmpScene: String?, qtScene: String?
+        for item in items {
+            func squash(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+            let id = squash(item.identifier?.rawValue ?? "")
+            let key = squash((item.key as? String) ?? "")
+            let both = id + " " + key
+            var text = try? await item.load(.stringValue)
+            if text == nil, let n = try? await item.load(.numberValue) { text = n.stringValue }
+            guard let v = text?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { continue }
+            if both.contains("blackmagic") && both.contains("scene") { bmScene = bmScene ?? v }
+            else if both.contains("blackmagic") && both.contains("take") { take = take ?? v }
+            else if both.contains("xmpdm") && both.contains("scene") { xmpScene = xmpScene ?? v }
+            else if both.contains("quicktime") && both.contains("scene") { qtScene = qtScene ?? v }
+            else if both.contains("personinimage") {
+                if v.contains("<") {
+                    xmlItems(v, tag: "rdf:li").forEach(addPerson)
+                } else {
+                    v.split(whereSeparator: { "|;\n".contains($0) }).forEach { addPerson(String($0)) }
+                }
+            }
+            // A whole XMP packet kept as a note.
+            if v.contains("<x:xmpmeta") || v.contains("<rdf:RDF") {
+                if let r = v.range(of: "PersonInImage") {
+                    xmlItems(String(v[r.upperBound...].prefix(2000)), tag: "rdf:li").forEach(addPerson)
+                }
+                if xmpScene == nil, let s = xmlItems(v, tag: "xmpDM:scene").first { xmpScene = s }
+            }
+        }
+        if let b = bmScene {
+            scene = (take?.isEmpty == false) ? "Scene \(b.replacingOccurrences(of: "Scene ", with: "")), take \(take!)" : b
+        } else {
+            scene = xmpScene ?? qtScene
+        }
+        return (people.isEmpty ? nil : people, scene)
+    }
+
+    /// Text inside each <tag>…</tag> (simple, for small XMP snippets).
+    private static func xmlItems(_ s: String, tag: String) -> [String] {
+        var out: [String] = []
+        var rest = Substring(s)
+        while let a = rest.range(of: "<\(tag)"), let gt = rest[a.upperBound...].firstIndex(of: ">"),
+              let end = rest[gt...].range(of: "</\(tag)>") {
+            let t = rest[rest.index(after: gt)..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { out.append(t) }
+            rest = rest[end.upperBound...]
+        }
+        return out
     }
 
     /// Sony cameras (FX3, FX6, A7 series) keep the camera model in a small notes file beside each

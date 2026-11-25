@@ -167,14 +167,16 @@ struct Thumbnail: View {
     @State private var image: NSImage?
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image).resizable().scaledToFill()
-            } else {
-                Image(systemName: kind == .video ? "film" : "photo").font(Theme.font(size: 24)).foregroundStyle(Theme.muted)
+        // Takes the size it's given and fills it, so a wide video frame never pushes its tile wider.
+        Color.clear
+            .overlay {
+                if let image {
+                    Image(nsImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: kind == .video ? "film" : "photo").font(Theme.font(size: 24)).foregroundStyle(Theme.muted)
+                }
             }
-        }
-        .clipped()
+            .clipped()
         .task(id: url?.path ?? assetID) {
             if let assetID {
                 image = await PhotosLibrary.image(assetID, size: CGSize(width: 440, height: 280), quick: true)
