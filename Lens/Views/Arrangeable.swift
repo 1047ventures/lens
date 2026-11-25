@@ -151,20 +151,20 @@ struct ArrangeablePage: View {
 
     var body: some View {
         let list = shown
-        VStack(alignment: .leading, spacing: spacing) {
+        VStack(alignment: .leading, spacing: max(spacing - 2 * grabWidth, 0)) {
             ForEach(rows(list), id: \.first!.id) { row in
                 if row.count == 2 {
                     ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 16) {
+                        HStack(alignment: .top, spacing: pairGap) {
                             slot(row[0]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                             slot(row[1]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        VStack(alignment: .leading, spacing: 16) { slot(row[0]); slot(row[1]) }
+                        VStack(alignment: .leading, spacing: pairGap) { slot(row[0]); slot(row[1]) }
                     }
                 } else if row[0].half {
                     // A half box with no partner keeps its width, so it's clear it can take a neighbour.
-                    HStack(alignment: .top, spacing: 16) {
+                    HStack(alignment: .top, spacing: pairGap) {
                         slot(row[0]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                         Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
                     }
@@ -172,11 +172,12 @@ struct ArrangeablePage: View {
                     slot(row[0])
                 }
             }
-            if !hiddenBoxes.isEmpty { hiddenNote }
+            if !hiddenBoxes.isEmpty { hiddenNote.padding(.horizontal, grabWidth).padding(.top, grabWidth) }
         }
-        .padding(grabWidth)
-        .contentShape(Rectangle())
+        // Each box carries an invisible grab band inside its own space; pull the page out by the
+        // same amount so the boxes still line up with the page title.
         .padding(-grabWidth)
+        .contentShape(Rectangle())
         .overlay(alignment: .topLeading) { floating }
         .simultaneousGesture(pageDrag)
         .onChange(of: pressing) { _, now in
@@ -193,7 +194,9 @@ struct ArrangeablePage: View {
     }
 
     /// How far outside a box's edge she can grab it.
-    private let grabWidth: CGFloat = 14
+    private let grabWidth: CGFloat = 9
+    /// The gap between two boxes side by side, less the grab bands they each carry.
+    private var pairGap: CGFloat { max(16 - 2 * grabWidth, 0) }
 
     /// One box in its place: the box itself, or an outline where it will land while it's being dragged.
     /// Around it is a thin band she can grab: the pointer becomes a hand there, and right-click offers more.
@@ -209,17 +212,20 @@ struct ArrangeablePage: View {
                         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.teal.opacity(0.06)))
                 }
             }
+            .background(GeometryReader { g in
+                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .global)])
+            })
+            .padding(grabWidth)
             .overlay {
                 if ringFor == p.id && dragging == nil {
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Theme.teal.opacity(0.55), lineWidth: 1.5)
-                        .padding(-6)
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Theme.teal.opacity(0.6), lineWidth: 1.5)
+                        .padding(3)
                         .allowsHitTesting(false)
                 }
             }
-            .background {
+            .overlay {
                 Color.clear
-                    .padding(-grabWidth)
                     .contentShape(EdgeBand(width: grabWidth), eoFill: true)
                     .onHover { inside in
                         if inside {
@@ -239,9 +245,6 @@ struct ArrangeablePage: View {
                         Button("Put this page back how it was") { withAnimation { layouts.reset(key) } }
                     }
             }
-            .background(GeometryReader { g in
-                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .global)])
-            })
     }
 
     /// The box whose grab band holds this point: just outside a box, never inside one.
