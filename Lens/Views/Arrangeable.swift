@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Pages she can rearrange
 
@@ -28,15 +29,11 @@ struct BoxPlace: Codable, Equatable {
     var hidden: Bool?
 }
 
-/// Every page's arrangement, saved on this Mac (not in her business data), plus whether she's arranging now.
+/// Every page's arrangement, saved on this Mac (not in her business data).
 @MainActor
 final class PageLayouts: ObservableObject {
     static let shared = PageLayouts()
 
-    /// True while the page on screen shows its boxes as tiles to drag.
-    @Published var arranging = false
-    /// The page on screen that can be arranged, so the toolbar knows to offer Arrange.
-    @Published private(set) var current: String?
     @Published private var cache: [String: [BoxPlace]] = [:]
 
     private func defaultsKey(_ key: String) -> String { "layout." + key }
@@ -58,28 +55,13 @@ final class PageLayouts: ObservableObject {
         cache[key] = []
         UserDefaults.standard.removeObject(forKey: defaultsKey(key))
     }
-
-    /// Pages on screen, newest last. Pages can appear and disappear in either order when she
-    /// switches, so the newest one still showing is the one Arrange works on.
-    private var showing: [String] = []
-
-    func appeared(_ page: String) {
-        showing.append(page)
-        if current != page { arranging = false }
-        current = page
-    }
-
-    func disappeared(_ page: String) {
-        if let i = showing.lastIndex(of: page) { showing.remove(at: i) }
-        let now = showing.last
-        if now != current { arranging = false }
-        current = now
-    }
 }
 
-/// Lays out a page's boxes in her order. While arranging, each box becomes a tile she can drag,
-/// make wide or half (when `columns`), or hide. Boxes that aren't showing right now (say, the calendar
-/// before Google is connected) keep their place for when they come back.
+/// Lays out a page's boxes in her order. The thin band just outside each box is a grab area: the
+/// pointer turns into a hand there, and dragging moves the box while the others slide out of the way,
+/// like moving apps on a phone. Right-clicking the band makes a box half width (when `columns`) or hides it.
+/// Boxes that aren't showing right now (say, the calendar before Google is connected) keep their
+/// place for when they come back.
 struct ArrangeablePage: View {
     let page: String
     var columns = false
@@ -88,10 +70,17 @@ struct ArrangeablePage: View {
 
     @ObservedObject private var layouts = PageLayouts.shared
     @EnvironmentObject private var appearance: Appearance
-    @State private var target: String?
-    /// The tile being dragged, how far it has moved, and where every tile sits, to tell what it's over.
+
+    /// The box whose edge the pointer is on, ready to be picked up.
+    @State private var ringFor: String?
+    /// True for a drag that started inside a box (that's the box's own business, not a move).
+    @State private var ignoring = false
+    /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
-    @State private var offset: CGSize = .zero
+    @State private var pointer: CGPoint = .zero
+    @State private var grab: CGSize = .zero
+    /// The order while dragging, before it's saved.
+    @State private var live: [BoxPlace]?
     @State private var frames: [String: CGRect] = [:]
 
     init(_ page: String, columns: Bool = false, spacing: CGFloat = 22, boxes: [PageBox]) {
@@ -102,14 +91,6 @@ struct ArrangeablePage: View {
     }
 
     private var key: String { page + "." + (appearance.simple ? "simple" : "everything") }
-
-    var body: some View {
-        Group {
-            if layouts.arranging && layouts.current == page { arrangingView } else { pageView }
-        }
-        .onAppear { layouts.appeared(page) }
-        .onDisappear { layouts.disappeared(page) }
-    }
 
     // MARK: Order
 
@@ -127,17 +108,18 @@ struct ArrangeablePage: View {
     private struct Placed: Identifiable {
         let box: PageBox
         let half: Bool
-        let hidden: Bool
         var id: String { box.id }
     }
 
-    private func placed(includeHidden: Bool) -> [Placed] {
-        merged().compactMap { place in
-            guard let box = boxes.first(where: { $0.id == place.id }) else { return nil }
-            let hidden = place.hidden ?? false
-            if hidden && !includeHidden { return nil }
-            return Placed(box: box, half: columns && (place.half ?? box.half), hidden: hidden)
+    private var shown: [Placed] {
+        (live ?? merged()).compactMap { place in
+            guard !(place.hidden ?? false), let box = boxes.first(where: { $0.id == place.id }) else { return nil }
+            return Placed(box: box, half: columns && (place.half ?? box.half))
         }
+    }
+
+    private var hiddenBoxes: [PageBox] {
+        merged().filter { $0.hidden ?? false }.compactMap { p in boxes.first { $0.id == p.id } }
     }
 
     /// Two half boxes in a row share it; anything else gets a row to itself.
@@ -158,146 +140,203 @@ struct ArrangeablePage: View {
         var list = merged()
         guard let i = list.firstIndex(where: { $0.id == id }) else { return }
         edit(&list[i])
-        layouts.save(key, list)
-    }
-
-    private func move(_ id: String, to targetID: String?) {
-        var list = merged()
-        guard let from = list.firstIndex(where: { $0.id == id }) else { return }
-        let item = list.remove(at: from)
-        if let targetID, let to = merged().firstIndex(where: { $0.id == targetID }) {
-            // Dropped on a box: it takes that box's place (after it going down, before it going up).
-            list.insert(item, at: min(to, list.count))
-        } else {
-            list.append(item)
-        }
-        withAnimation(.easeInOut(duration: 0.2)) { layouts.save(key, list) }
+        withAnimation(.easeInOut(duration: 0.25)) { layouts.save(key, list) }
     }
 
     // MARK: The page
 
-    private var pageView: some View {
-        let list = placed(includeHidden: false)
-        return VStack(alignment: .leading, spacing: spacing) {
+    var body: some View {
+        let list = shown
+        VStack(alignment: .leading, spacing: spacing) {
             ForEach(rows(list), id: \.first!.id) { row in
                 if row.count == 2 {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 16) {
-                            row[0].box.view.frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
-                            row[1].box.view.frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                            slot(row[0]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                            slot(row[1]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        VStack(alignment: .leading, spacing: 16) { row[0].box.view; row[1].box.view }
+                        VStack(alignment: .leading, spacing: 16) { slot(row[0]); slot(row[1]) }
+                    }
+                } else if row[0].half {
+                    // A half box with no partner keeps its width, so it's clear it can take a neighbour.
+                    HStack(alignment: .top, spacing: 16) {
+                        slot(row[0]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
                     }
                 } else {
-                    row[0].box.view
+                    slot(row[0])
                 }
             }
-            if list.isEmpty && !boxes.isEmpty {
-                Text("Everything on this page is hidden. Click Arrange at the top to bring boxes back.")
-                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
-            }
+            if !hiddenBoxes.isEmpty { hiddenNote }
         }
+        .padding(grabWidth)
+        .contentShape(Rectangle())
+        .padding(-grabWidth)
+        .overlay(alignment: .topLeading) { floating }
+        .simultaneousGesture(pageDrag)
+        .coordinateSpace(name: coordinateSpace)
+        .onPreferenceChange(BoxFrames.self) { frames = $0 }
     }
 
-    // MARK: Arranging
+    private var coordinateSpace: String { "arrange." + page }
 
-    private var arrangingView: some View {
-        let list = placed(includeHidden: true)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "hand.draw").foregroundStyle(Theme.teal)
-                Text(columns ? "Drag the boxes into the order you want. Make any two half width to sit them side by side, and hide the ones you don't need."
-                             : "Drag the boxes into the order you want, and hide the ones you don't need.")
-                    .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 12)
-                Button("Back to how it was") { withAnimation { layouts.reset(key) } }
-                    .buttonStyle(SecondaryButtonStyle())
-                Button("Done") { layouts.arranging = false }
-                    .buttonStyle(PrimaryButtonStyle())
-            }
-            .panel(padding: 14)
+    /// How far outside a box's edge she can grab it.
+    private let grabWidth: CGFloat = 14
 
-            ForEach(rows(list), id: \.first!.id) { row in
-                HStack(spacing: 12) {
-                    ForEach(row) { tile($0) }
-                    if row.count == 1 && row[0].half { Color.clear.frame(maxWidth: .infinity, minHeight: 1) }
+    /// One box in its place: the box itself, or an outline where it will land while it's being dragged.
+    /// Around it is a thin band she can grab: the pointer becomes a hand there, and right-click offers more.
+    @ViewBuilder
+    private func slot(_ p: Placed) -> some View {
+        let isDragging = dragging == p.id
+        p.box.view
+            .opacity(isDragging ? 0 : 1)
+            .overlay {
+                if isDragging {
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Theme.teal.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.teal.opacity(0.06)))
                 }
             }
-            Text("Drop here to move a box to the bottom")
-                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(RoundedRectangle(cornerRadius: 12).stroke(target == "_end" ? Theme.teal : Theme.line,
-                                                                       style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: TileFrames.self, value: ["_end": g.frame(in: .named("arrange"))])
-                })
-        }
-        .coordinateSpace(name: "arrange")
-        .onPreferenceChange(TileFrames.self) { frames = $0 }
+            .overlay {
+                if ringFor == p.id && dragging == nil {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Theme.teal.opacity(0.55), lineWidth: 1.5)
+                        .padding(-6)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background {
+                Color.clear
+                    .padding(-grabWidth)
+                    .contentShape(EdgeBand(width: grabWidth), eoFill: true)
+                    .onHover { inside in
+                        if inside {
+                            ringFor = p.id
+                            NSCursor.openHand.set()
+                        } else if ringFor == p.id {
+                            ringFor = nil
+                            if dragging == nil { NSCursor.arrow.set() }
+                        }
+                    }
+                    .contextMenu {
+                        if columns {
+                            Button(p.half ? "Make it wide" : "Make it half width") { change(p.id) { $0.half = !p.half } }
+                        }
+                        Button("Hide \(p.box.title)") { change(p.id) { $0.hidden = true } }
+                        Divider()
+                        Button("Put this page back how it was") { withAnimation { layouts.reset(key) } }
+                    }
+            }
+            .background(GeometryReader { g in
+                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .named(coordinateSpace))])
+            })
     }
 
-    private func drag(_ id: String) -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("arrange"))
+    /// The box whose grab band holds this point: just outside a box, never inside one.
+    private func box(grabbedAt point: CGPoint) -> String? {
+        if frames.values.contains(where: { $0.contains(point) }) { return nil }
+        func gap(_ r: CGRect) -> CGFloat {
+            max(r.minX - point.x, point.x - r.maxX, 0) + max(r.minY - point.y, point.y - r.maxY, 0)
+        }
+        return frames.filter { $0.value.insetBy(dx: -grabWidth, dy: -grabWidth).contains(point) }
+            .min { gap($0.value) < gap($1.value) }?.key
+    }
+
+    /// One drag for the whole page, so it keeps going while boxes are moved around beneath it.
+    private var pageDrag: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(coordinateSpace))
             .onChanged { v in
-                dragging = id
-                offset = v.translation
-                target = frames.first { $0.key != id && $0.value.contains(v.location) }?.key
+                if dragging == nil {
+                    if ignoring { return }
+                    guard let id = box(grabbedAt: v.startLocation), let frame = frames[id] else { ignoring = true; return }
+                    grab = CGSize(width: v.startLocation.x - frame.minX, height: v.startLocation.y - frame.minY)
+                    live = merged()
+                    ringFor = nil
+                    dragging = id
+                    NSCursor.closedHand.set()
+                }
+                guard let id = dragging else { return }
+                pointer = v.location
+                reorder(id, at: v.location)
             }
             .onEnded { _ in
-                if let t = target { move(id, to: t == "_end" ? nil : t) }
-                dragging = nil
-                offset = .zero
-                target = nil
+                ignoring = false
+                guard dragging != nil else { return }
+                if let live { layouts.save(key, live) }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    dragging = nil
+                    live = nil
+                }
+                NSCursor.arrow.set()
             }
     }
 
-    private func tile(_ p: Placed) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "line.3.horizontal").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.muted)
-            RoundedRectangle(cornerRadius: 2).fill(p.box.color).frame(width: 4, height: 22)
-            Text(p.box.title).font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-            if p.hidden {
-                Text("Hidden").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-            }
-            Spacer(minLength: 8)
-            if columns {
-                Button { change(p.id) { $0.half = !p.half } } label: {
-                    Label(p.half ? "Make wide" : "Make half", systemImage: p.half ? "rectangle" : "rectangle.split.2x1")
-                        .font(Theme.font(size: 12))
-                }
-                .buttonStyle(.borderless)
-                .help(p.half ? "Give this box the whole row" : "Make this box half width, so it can sit beside another")
-            }
-            Button { change(p.id) { $0.hidden = !p.hidden } } label: {
-                Label(p.hidden ? "Show" : "Hide", systemImage: p.hidden ? "eye" : "eye.slash")
-                    .font(Theme.font(size: 12))
-            }
-            .buttonStyle(.borderless)
+    /// While dragging, the box takes the place of whichever box the pointer is over, and the rest slide along.
+    private func reorder(_ id: String, at point: CGPoint) {
+        guard var list = live,
+              let over = frames.first(where: { $0.key != id && $0.value.contains(point) })?.key,
+              let from = list.firstIndex(where: { $0.id == id }),
+              let to = list.firstIndex(where: { $0.id == over }) else { return }
+        let item = list.remove(at: from)
+        list.insert(item, at: to)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { live = list }
+    }
+
+    /// The box itself, following the pointer.
+    @ViewBuilder
+    private var floating: some View {
+        if let id = dragging, let box = boxes.first(where: { $0.id == id }), let frame = frames[id] {
+            box.view
+                .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+                .scaleEffect(1.02)
+                .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+                .offset(x: pointer.x - grab.width, y: pointer.y - grab.height)
+                .allowsHitTesting(false)
         }
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Theme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(target == p.id ? Theme.teal : Theme.line,
-                                                           lineWidth: target == p.id ? 2.5 : 1))
-        .opacity(p.hidden ? 0.55 : 1)
-        .background(GeometryReader { g in
-            Color.clear.preference(key: TileFrames.self, value: [p.id: g.frame(in: .named("arrange"))])
-        })
-        .contentShape(Rectangle())
-        .shadow(color: .black.opacity(dragging == p.id ? 0.25 : 0), radius: 12, y: 6)
-        .offset(dragging == p.id ? offset : .zero)
-        .zIndex(dragging == p.id ? 1 : 0)
-        .gesture(drag(p.id))
+    }
+
+    private var hiddenNote: some View {
+        let hidden = hiddenBoxes
+        return HStack(spacing: 8) {
+            Image(systemName: "eye.slash").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+            Menu {
+                ForEach(hidden) { box in
+                    Button("Show \(box.title)") { change(box.id) { $0.hidden = false } }
+                }
+                if hidden.count > 1 {
+                    Divider()
+                    Button("Show them all") {
+                        var list = merged()
+                        for i in list.indices { list[i].hidden = nil }
+                        withAnimation { layouts.save(key, list) }
+                    }
+                }
+            } label: {
+                Text("\(hidden.count) hidden on this page")
+                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
     }
 }
 
-/// Where each tile sits while arranging, so a drag knows what it's over.
-private struct TileFrames: PreferenceKey {
+/// Where each box sits, so a drag knows what it's over.
+private struct BoxFrames: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { $1 }
+    }
+}
+
+/// A band around the edge of a rectangle, `width` wide (filled even-odd, so the middle is left out).
+private struct EdgeBand: Shape {
+    var width: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addRect(rect)
+        path.addRect(rect.insetBy(dx: width, dy: width))
+        return path
     }
 }
