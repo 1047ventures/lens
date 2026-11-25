@@ -92,7 +92,7 @@ struct MorningCardsView: View {
                 .font(Theme.font(size: 12, weight: .bold)).tracking(1.2)
                 .foregroundStyle(.white.opacity(0.85))
             Text(item.title)
-                .font(Theme.font(size: 40, weight: .bold))
+                .font(Theme.display(size: 42))
                 .foregroundStyle(.white)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
