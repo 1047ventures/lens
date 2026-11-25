@@ -11,8 +11,11 @@ struct TodayNumbers {
     struct Month: Identifiable { let start: Date; let income: Double; let net: Double; var id: Date { start } }
     struct Step: Identifiable { let stage: ProjectStage; let count: Int; let value: Double; var id: Int { stage.rawValue } }
     struct Slice: Identifiable { let id: UUID; let name: String; let hours: Double }
+    struct Day: Identifiable { let date: Date; let income: Double; let count: Int; var id: Date { date } }
 
     let months: [Month]          // oldest first, this month last
+    let year: [Month]            // the last 12 months, oldest first, this month last
+    let days: [Day]              // every day of this month so far and to come
     let owed: Double
     let owedCount: Int
     let overdueCount: Int
@@ -36,13 +39,23 @@ struct TodayNumbers {
     init(money: MoneyStore, deals: DealStore, projects: ProjectStore, now: Date = Date()) {
         let cal = Calendar.current
         let monthStart = cal.dateInterval(of: .month, for: now)?.start ?? now
-        months = (0..<6).reversed().compactMap { back in
+        let twelve: [Month] = (0..<12).reversed().compactMap { back in
             guard let start = cal.date(byAdding: .month, value: -back, to: monthStart),
                   let end = cal.date(byAdding: .month, value: 1, to: start) else { return nil }
             let txns = money.txns.filter { $0.date >= start && $0.date < end }
             let income = txns.filter { $0.category.group == .income }.reduce(0) { $0 + $1.amount }
             let costs = txns.filter { $0.category.group == .direct || $0.category.group == .overhead }.reduce(0) { $0 + $1.amount }
             return Month(start: start, income: income, net: income + costs)
+        }
+        year = twelve
+        months = Array(twelve.suffix(6))
+        let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart) ?? now
+        let landed = money.txns.filter { $0.date >= monthStart && $0.date < monthEnd && $0.category.group == .income && $0.amount > 0 }
+        let byDay = Dictionary(grouping: landed) { cal.startOfDay(for: $0.date) }
+        days = (cal.range(of: .day, in: .month, for: now) ?? 1..<31).compactMap { n in
+            guard let date = cal.date(byAdding: .day, value: n - 1, to: monthStart) else { return nil }
+            let list = byDay[date] ?? []
+            return Day(date: date, income: list.reduce(0) { $0 + $1.amount }, count: list.count)
         }
 
         let unpaid = money.receivables.filter { $0.paidOn == nil }
@@ -217,6 +230,8 @@ struct DashCard<Content: View>: View {
     let title: String
     let color: Color
     var action: (() -> Void)? = nil
+    /// For cards with their own controls: only the arrow in the corner opens the home page.
+    var open: (() -> Void)? = nil
     /// One plain sentence under the title that says what the card means.
     var takeaway: String? = nil
     @ViewBuilder let content: Content
@@ -243,6 +258,17 @@ struct DashCard<Content: View>: View {
                     Image(systemName: "arrow.up.right")
                         .font(Theme.font(size: 11, weight: .semibold))
                         .foregroundStyle(hover ? color : Theme.muted.opacity(0.6))
+                } else if let open {
+                    Button(action: open) {
+                        Image(systemName: "arrow.up.right")
+                            .font(Theme.font(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open")
+                    .accessibilityLabel("Open")
                 }
             }
             if let takeaway, !takeaway.isEmpty {
@@ -352,14 +378,38 @@ struct Sparkline: View {
 
 struct MoneyInChart: View {
     let numbers: TodayNumbers
+    /// This month day by day, the last 6 months, or the last 12. Saved on this Mac.
+    @AppStorage("home.moneyIn.range") private var range = "6"
 
     var body: some View {
         if !numbers.hasMoney {
             DashEmpty("Your money in will show here, month by month. Bring in a bank statement on Money to start.")
         } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Show", selection: $range) {
+                    Text("This month").tag("month")
+                    Text("6 months").tag("6")
+                    Text("12 months").tag("12")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                switch range {
+                case "month": MoneyInCalendar(days: numbers.days)
+                case "12": bars(numbers.year, average: Self.average(numbers.year))
+                default: bars(numbers.months, average: numbers.averageIncome)
+                }
+            }
+        }
+    }
+
+    private static func average(_ list: [TodayNumbers.Month]) -> Double {
+        let past = list.dropLast().map(\.income).filter { $0 > 0 }
+        return past.isEmpty ? 0 : past.reduce(0, +) / Double(past.count)
+    }
+
+    private func bars(_ list: [TodayNumbers.Month], average: Double) -> some View {
             HStack(alignment: .center, spacing: 22) {
                 Chart {
-                    ForEach(numbers.months) { m in
+                    ForEach(list) { m in
                         let isNow = m.id == numbers.thisMonth?.id
                         BarMark(x: .value("Month", m.start, unit: .month), y: .value("In", max(0, m.income)))
                             .foregroundStyle(isNow ? Palette.lime : Palette.lime.opacity(0.35))
@@ -372,8 +422,8 @@ struct MoneyInChart: View {
                                 }
                             }
                     }
-                    if numbers.averageIncome > 0 {
-                        RuleMark(y: .value("Average", numbers.averageIncome))
+                    if average > 0 {
+                        RuleMark(y: .value("Average", average))
                             .foregroundStyle(Theme.muted.opacity(0.7))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                             .annotation(position: .top, alignment: .leading, spacing: 2) {
@@ -393,7 +443,56 @@ struct MoneyInChart: View {
                 GoalRing(now: numbers.thisMonth?.income ?? 0, best: numbers.bestMonth)
                     .frame(width: 130)
             }
+    }
+}
+
+/// This month as a calendar: each day shows what came in, darker the more it was.
+struct MoneyInCalendar: View {
+    let days: [TodayNumbers.Day]
+
+    private var cal: Calendar { Calendar.current }
+    /// Blank cells before the 1st, so days sit under the right weekday.
+    private var lead: Int {
+        guard let first = days.first else { return 0 }
+        return (cal.component(.weekday, from: first.date) - cal.firstWeekday + 7) % 7
+    }
+    private var most: Double { days.map(\.income).max() ?? 0 }
+    private var total: Double { days.reduce(0) { $0 + $1.income } }
+
+    var body: some View {
+        let names = (0..<7).map { cal.veryShortStandaloneWeekdaySymbols[(cal.firstWeekday - 1 + $0) % 7] }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 5), count: 7)
+        VStack(alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: columns, spacing: 5) {
+                ForEach(Array(names.enumerated()), id: \.offset) { _, name in
+                    Text(name).font(Theme.font(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
+                }
+                ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: 34) }
+                ForEach(days) { day in cell(day) }
+            }
+            Text(total > 0 ? "\(Money.short(total)) in so far this month" : "Nothing in yet this month")
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
         }
+    }
+
+    private func cell(_ day: TodayNumbers.Day) -> some View {
+        let today = cal.isDateInToday(day.date)
+        let future = day.date > Date()
+        let strength = most > 0 ? day.income / most : 0
+        return VStack(spacing: 1) {
+            Text("\(cal.component(.day, from: day.date))")
+                .font(Theme.font(size: 10)).foregroundStyle(day.income > 0 ? Theme.text : Theme.muted)
+            if day.income > 0 {
+                Text(Money.short(day.income)).font(Theme.font(size: 10, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 34)
+        .background(RoundedRectangle(cornerRadius: 6).fill(day.income > 0 ? Palette.lime.opacity(0.18 + 0.6 * strength) : Theme.track.opacity(future ? 0.25 : 0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(today ? Theme.text2 : .clear, lineWidth: 1.5))
+        .help(day.income > 0
+              ? "\(day.date.formatted(.dateTime.weekday(.wide).month().day())): \(Money.string(day.income)) from \(day.count) payment\(day.count == 1 ? "" : "s")"
+              : day.date.formatted(.dateTime.weekday(.wide).month().day()))
     }
 }
 

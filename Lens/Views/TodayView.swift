@@ -64,7 +64,7 @@ struct TodayView: View {
                 }
             },
             PageBox("moneyIn", "Money in", color: Palette.lime, half: true) {
-                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) },
+                DashCard(title: "Money in", color: Palette.lime, open: { navigator.open(.money) },
                          takeaway: numbers.moneyTakeaway) {
                     MoneyInChart(numbers: numbers)
                 }
@@ -76,7 +76,11 @@ struct TodayView: View {
                 }
             },
             PageBox("numbers", "Key numbers", color: Palette.lime) { tiles(numbers).padding(.top, 14) },
-            PageBox("autoFiled", "Filed by Lens this week", color: Theme.amber) {
+            PageBox("monthGoal", "This month's goal", color: Palette.lime, half: true,
+                    about: "How much you've kept this month next to a goal you set, and where the month is heading.") {
+                MonthGoalBox(money: money, navigator: navigator)
+            },
+            PageBox("autoFiled", "Filed by Lens this week", color: Theme.amber, half: true) {
                 AutoFiledToday().frame(maxWidth: 720, alignment: .leading)
             },
         ]
@@ -135,6 +139,9 @@ struct TodayView: View {
         let paid = JobSpeed.usual(JobSpeed.toPaid(projects.projects, money: money))
         let toMoney = { navigator.open(.money) }
         func signed(_ v: Double) -> String { v < 0 ? "-\(Money.short(-v))" : Money.short(v) }
+        let toDeliver = projects.active.filter { $0.stage == .edit || ($0.stage == .shoot && ($0.shootDate ?? now) < today) }
+        let quotesOut = deals.deals.filter { $0.stage == .proposalOut || $0.stage == .talking }
+        let quiet = quotesOut.filter { now.timeIntervalSince($0.lastTouch) >= 14 * 86_400 }
 
         let options: [TileOption] = [
             TileOption(id: "owed", label: "Owed to you", about: "Money clients still need to pay, and how much of it is late.") {
@@ -217,6 +224,16 @@ struct TodayView: View {
                          note: month.net > 0 ? "roughly a quarter of this month" : "Shows once you have a profit",
                          color: Palette.gold, action: toMoney)
             },
+            TileOption(id: "toDeliver", label: "To deliver", about: "Jobs that are shot and still need finishing and handing over.") {
+                StatTile(label: "To deliver", value: "\(toDeliver.count)",
+                         note: toDeliver.isEmpty ? "Nothing waiting" : toDeliver.count == 1 ? "\(toDeliver[0].name)" : "shot, not handed over yet",
+                         color: Palette.blue) { navigator.open(.projects) }
+            },
+            TileOption(id: "quotesOut", label: "Quotes out", about: "Quotes waiting for an answer, and how many have gone quiet for two weeks or more.") {
+                StatTile(label: "Quotes out", value: "\(quotesOut.count)",
+                         note: quotesOut.isEmpty ? "None waiting" : quiet.isEmpty ? "all heard from lately" : "\(quiet.count) quiet 2+ weeks, nudge them",
+                         color: Palette.violet, noteColor: quiet.isEmpty ? Theme.text3 : Theme.amber) { navigator.open(.projects) }
+            },
             TileOption(id: "daysToDeliver", label: "Days to deliver", about: "How long it usually takes from the shoot to handing the work over.") {
                 StatTile(label: "Days to deliver", value: deliver.map(JobSpeed.daysText) ?? "None yet",
                          note: deliver == nil ? "Shows once a job is marked delivered" : "usually, shoot to delivered",
@@ -228,7 +245,7 @@ struct TodayView: View {
                          color: Palette.gold) { navigator.open(.projects) }
             },
         ]
-        return ChoosableTiles(key: "today", options: options, defaults: ["owed", "kept", "openDeals", "hours", "winRate"])
+        return ChoosableTiles(key: "today", options: options, defaults: ["owed", "kept", "openDeals", "quotesOut", "toDeliver", "hours", "winRate"])
     }
 
     // MARK: - Pieces

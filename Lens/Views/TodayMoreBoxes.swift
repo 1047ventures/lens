@@ -9,10 +9,6 @@ import Charts
 enum TodayMore {
     static func boxes(projects: ProjectStore, deals: DealStore, money: MoneyStore, navigator: Navigator) -> [PageBox] {
         [
-            PageBox("monthGoal", "This month's goal", color: Palette.lime, half: true, off: true,
-                    about: "How much you've kept this month next to a goal you set, and where the month is heading.") {
-                MonthGoalBox(money: money, navigator: navigator)
-            },
             PageBox("weekChecks", "This week's checklist", color: Palette.mint, half: true, off: true,
                     about: "A few simple checks for the week, ticked off as you go, with what to do for any that aren't.") {
                 WeekChecklistBox(projects: projects, deals: deals, money: money, navigator: navigator)
@@ -803,7 +799,7 @@ struct GoalSetter: View {
     }
 }
 
-private struct MonthGoalBox: View {
+struct MonthGoalBox: View {
     @ObservedObject var money: MoneyStore
     let navigator: Navigator
     @State private var changing = false

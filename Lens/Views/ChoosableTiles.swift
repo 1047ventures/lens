@@ -43,11 +43,8 @@ struct ChoosableTiles: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 10) {
             let cards = Group { ForEach(shown) { $0.tile } }
-            // One row when there's room, otherwise they wrap.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 14) { cards.frame(minWidth: 170, maxWidth: .infinity) }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) { cards }
-            }
+            // Even rows: one row for six or fewer, otherwise two balanced rows; fewer per row when narrow.
+            EvenGrid(minimum: 170, most: shown.count <= 6 ? shown.count : (shown.count + 1) / 2, spacing: 14) { cards }
             Button { choosing = true } label: {
                 Label("Choose numbers", systemImage: "slider.horizontal.3")
                     .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)

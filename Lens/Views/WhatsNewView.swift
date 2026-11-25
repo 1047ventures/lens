@@ -14,6 +14,12 @@ enum WhatsNew {
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
         ("2.0.4", [
+            Item(icon: "target", title: "Your monthly goal on Home",
+                 detail: "On the Everything Home, a ring shows how much you've kept this month next to your goal, and what the month is on pace for. Set or change the goal right in the box. Don't want it? Hide it from Choose boxes."),
+            Item(icon: "calendar", title: "Money in, your way",
+                 detail: "The Money in box on Home now switches between this month, the last 6 months and the last 12. This month shows a calendar, each day shaded by what came in. Point at a day to see the amount."),
+            Item(icon: "number", title: "Two new numbers",
+                 detail: "To deliver counts the jobs that are shot and still need handing over. Quotes out counts the quotes waiting for an answer, and flags the ones that have gone quiet for two weeks. Pick which numbers show with Choose numbers."),
             Item(icon: "arrow.left.and.right", title: "Pages use the whole window",
                  detail: "Log-ins, People, Money, Gear, Home and each project now spread across the full window instead of a narrow column. On a wide screen, boxes sit side by side, and cards stretch to fill the row."),
             Item(icon: "text.quote", title: "Each project starts with a quick catch-up",
