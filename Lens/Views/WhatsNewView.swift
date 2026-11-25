@@ -14,6 +14,8 @@ enum WhatsNew {
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
         ("2.0.2", [
+            Item(icon: "arrow.down.right.circle.fill", title: "Pipeline is now part of Projects",
+                 detail: "Every inquiry is a project from the first message, sitting at Quoting. Its quote, options and proposal are right on the project page, with the same steps and buttons as every other project. Mark it as booked and it moves on to Planning. Past quotes and your rates are under Quotes on Projects."),
             Item(icon: "square.grid.2x2.fill", title: "Choose your boxes",
                  detail: "At the bottom of Today there's a new Choose boxes button. Pick from extras like a monthly goal, a weekly checklist, who owes you, your best clients, what you really earn per hour and more. Switch on the ones you like."),
             Item(icon: "number", title: "Pick your numbers",
@@ -23,7 +25,7 @@ enum WhatsNew {
             Item(icon: "chart.bar.fill", title: "Where your jobs are",
                  detail: "The jobs card on Today now shows each step in plain words, from Quoting to Wrapping up, with how many jobs are there and what they're worth. Rest the pointer on a step to see what it means."),
             Item(icon: "point.topleft.down.to.point.bottomright.curvepath.fill", title: "Click a step to step inside",
-                 detail: "The steps across the top of a project now open. Click Planning to see the plan, who's involved and the calls from then. Click Shooting for the footage, Getting paid for the money. Steps ahead show what's coming."),
+                 detail: "The steps across the top of a project now open. Click Planning to see the plan, who's involved and the calls from then. Click Shooting for the footage, Getting paid for the money. Steps ahead show what's coming. In the simple look, click a step to see a short summary of it."),
             Item(icon: "textformat", title: "The same words everywhere",
                  detail: "Every project step now has one name all over Lens: Quoting, Planning, Shooting, Editing, Getting paid, Wrapping up and Put away."),
             Item(icon: "magnifyingglass", title: "Find any project",

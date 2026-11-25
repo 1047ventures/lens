@@ -340,10 +340,10 @@ private struct LeadSourcesBox: View {
         let sources = found.values.sorted { ($0.leads, $0.booked) > ($1.leads, $1.booked) }
         let total = sources.reduce(0) { $0 + $1.leads }
         let biggest = Double(max(1, sources.first?.leads ?? 1))
-        return DashCard(title: "Where your leads come from", color: Palette.blue, action: { navigator.open(.pipeline) },
+        return DashCard(title: "Where your leads come from", color: Palette.blue, action: { navigator.open(.projects) },
                         takeaway: takeaway(sources, total: total)) {
             if sources.isEmpty {
-                DashEmpty("When you add a deal and note where it came from, you'll see which places bring you work.")
+                DashEmpty("When a new project notes where it came from, you'll see which places bring you work.")
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     ForEach(sources.prefix(5)) { s in
@@ -359,7 +359,7 @@ private struct LeadSourcesBox: View {
 
     private func takeaway(_ sources: [Source], total: Int) -> String? {
         guard let top = sources.first(where: { !$0.id.isEmpty }) else {
-            return total > 0 ? "Note where each deal came from on Pipeline and Lens will show which places work best." : nil
+            return total > 0 ? "Note where each deal came from in Projects and Lens will show which places work best." : nil
         }
         var line = "\(top.name) brings you the most leads, \(top.leads) of \(total)."
         if top.booked > 0 { line += top.booked == 1 ? " One of those booked." : " \(top.booked) of those booked." }
@@ -576,10 +576,10 @@ private struct QuotesWaitingBox: View {
             .map { (deal: $0, days: Ago.days(from: sent($0))) }
             .sorted { $0.days > $1.days }
         let worth = waiting.compactMap { deals.value(of: $0.deal) }.reduce(0, +)
-        return DashCard(title: "Quotes waiting for an answer", color: Palette.violet, action: { navigator.open(.pipeline) },
+        return DashCard(title: "Quotes waiting for an answer", color: Palette.violet, action: { navigator.open(.projects) },
                         takeaway: takeaway(waiting.map(\.days), worth: worth, anyQuiet: waiting.contains { $0.deal.isStale })) {
             if waiting.isEmpty {
-                DashEmpty("No quotes waiting right now. When you send one from Pipeline, it waits here until they answer.")
+                DashEmpty("No quotes waiting right now. When you send one from Projects, it waits here until they answer.")
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(waiting.prefix(5), id: \.deal.id) { w in
@@ -979,8 +979,8 @@ private struct WeekChecklistBox: View {
             list.append(Check(id: "inquiries", done: false,
                               text: slow.count == 1 ? "\(first.title) has waited \(Ago.daysText(first.daysSinceTouch())) for a reply."
                                                     : "\(slow.count) new inquiries are waiting on a reply.",
-                              fix: slow.count == 1 ? "Reply to them" : "Open Pipeline",
-                              go: slow.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.pipeline) }))
+                              fix: slow.count == 1 ? "Reply to them" : "Open Projects",
+                              go: slow.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.projects) }))
         } else {
             list.append(Check(id: "inquiries", done: true,
                               text: inquiries.isEmpty ? "No new inquiries waiting on a reply." : "Every new inquiry got an answer within 2 days."))
@@ -993,8 +993,8 @@ private struct WeekChecklistBox: View {
             list.append(Check(id: "quotes", done: false,
                               text: quiet.count == 1 ? "\(first.title) hasn't heard from you in \(Ago.daysText(first.daysSinceTouch())). A quick check-in could help."
                                                      : "\(quiet.count) quotes have gone a week without a follow-up. A quick check-in could help.",
-                              fix: quiet.count == 1 ? "Open the deal" : "Open Pipeline",
-                              go: quiet.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.pipeline) }))
+                              fix: quiet.count == 1 ? "Open the project" : "Open Projects",
+                              go: quiet.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.projects) }))
         } else {
             list.append(Check(id: "quotes", done: true,
                               text: quotes.isEmpty ? "No quotes waiting on a follow-up." : "Every quote out has been followed up within a week."))

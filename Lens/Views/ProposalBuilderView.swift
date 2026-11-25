@@ -176,7 +176,7 @@ struct ProposalBuilderView: View {
             Button {
                 navigator.builderDealID = nil
             } label: {
-                Label("Back to the deal", systemImage: "chevron.left")
+                Label("Back to the project", systemImage: "chevron.left")
                     .font(Theme.font(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.text3)
             }

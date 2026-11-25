@@ -67,6 +67,8 @@ struct ProjectStageView<Footage: View>: View {
     let stage: ProjectStage
     let books: ProjectBooks
     let footage: Footage
+    /// Only the summary at the top, for the simple page.
+    var briefOnly = false
     let open: (ProjectTab) -> Void
 
     @EnvironmentObject private var deals: DealStore
@@ -79,7 +81,7 @@ struct ProjectStageView<Footage: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             brief
-            if reached {
+            if reached && !briefOnly {
                 main
                 let cards = smallCards
                 if cards.isEmpty {
@@ -124,7 +126,13 @@ struct ProjectStageView<Footage: View>: View {
     }
 
     private var briefSentence: String {
-        if stage == project.stage { return SimpleProject.nextLine(project) }
+        if stage == project.stage {
+            if stage == .archived, let deal, deal.stage == .lost {
+                return (deal.lostReason.map { "Didn't book: \($0)." } ?? "Didn't book.") + " Reopen it from the button above if they come back."
+            }
+            if stage == .lead, let deal { return DealCard.nextMove(deal) + "." }
+            return SimpleProject.nextLine(project)
+        }
         if stage.rawValue > project.stage.rawValue {
             if stage == .shoot, let d = project.shootDate, d > Date() {
                 return "Shoot day is \(SimpleProject.when(d))\(project.location.isEmpty ? "" : " at \(project.location)"). " + stage.collects
@@ -160,27 +168,41 @@ struct ProjectStageView<Footage: View>: View {
         }
     }
 
-    private var quoteCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionLabel("The quote")
-            if let deal {
-                Text(deal.title).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
-                let price = books.price.map { Money.string($0) }
-                Text([deal.source.isEmpty ? nil : "Came in by \(deal.source.lowercased())",
-                      "asked \(deal.createdAt.formatted(.dateTime.month(.abbreviated).day()))",
-                      price.map { "booked at \($0)" }].compactMap { $0 }.joined(separator: " · "))
-                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
-                HStack(spacing: 10) {
-                    Button("Open the quote") { navigator.openDeal(deal.id) }.buttonStyle(SecondaryButtonStyle())
-                }
+    /// The quote, right here in the Quoting step: options, prices, the pitch and the plan.
+    @ViewBuilder private var quoteCard: some View {
+        if let deal {
+            if stage == project.stage {
+                DealDetailView(dealID: deal.id, embedded: true)
             } else {
-                Text("This project didn't come through Pipeline, so there's no quote on file.")
+                // Looking back once it's booked: what was quoted and how it came in.
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel("The quote")
+                    let price = books.price.map { Money.string($0) }
+                    Text([deal.source.isEmpty ? nil : "Came in by \(deal.source.lowercased())",
+                          "asked \(deal.createdAt.formatted(.dateTime.month(.abbreviated).day()))",
+                          price.map { "booked at \($0)" }].compactMap { $0 }.joined(separator: " · "))
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                    if let chosen = deal.chosenOption {
+                        Text("\(chosen.name) · \(chosen.tagline)").font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                    }
+                    Button("See the proposal") { navigator.openBuilder(deal.id) }.buttonStyle(SecondaryButtonStyle())
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .panel(padding: 22)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("The quote")
+                Text(project.client.isEmpty
+                     ? "No quote on this one. If someone's paying for it, start a quote and price it here."
+                     : "No quote yet. Start one to lay out the options and the price.")
                     .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                     .fixedSize(horizontal: false, vertical: true)
+                Button("Start a quote") { deals.startQuote(for: project) }.buttonStyle(PrimaryButtonStyle())
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel(padding: 22)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel(padding: 22)
     }
 
     private var wrapCard: some View {

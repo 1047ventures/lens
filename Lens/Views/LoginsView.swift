@@ -447,16 +447,16 @@ struct LoginsView: View {
                     "Make sure **Meeting summary** is on in Zoom's AI setting (link below), so every call gets one."]),
         .website: Info(
             name: "Website contact form", icon: "globe",
-            covers: "Form inquiries land in the pipeline on their own",
+            covers: "Form inquiries start a project at Quoting on their own",
             gets: ["Each form email becomes a new inquiry with a drafted reply and intake link"],
             never: "No website login needed.",
             steps: ["In your website builder (Squarespace, Wix, Showit…), set the contact form to email the Gmail connected above.",
                     "Send yourself a test inquiry once Google is connected."]),
         .social: Info(
             name: "Instagram + Facebook", icon: "camera.aperture",
-            covers: "Your DMs and Page messages, with real inquiries sent to Pipeline",
+            covers: "Your DMs and Page messages, with real inquiries added to Projects at Quoting",
             gets: ["Every Instagram DM and Facebook Page message, checked every hour",
-                   "Real inquiries show up on Pipeline, ready to add, tagged Instagram or Facebook",
+                   "Real inquiries show up in Projects at Quoting, ready to add, tagged Instagram or Facebook",
                    "Everyone who messages you goes in People"],
             never: "Read only: Lens never sends, deletes or marks a message as read. Your passwords stay with Meta.",
             steps: ["Meta makes this a one-time setup: a small private app on your own account. Click **Get help** below and Claude walks you through it, one click at a time.",
@@ -912,7 +912,7 @@ private struct DirectoryControls: View {
         let seen = Set(deals.deals.map(\.source) + gmail.suggestions.map(\.source))
         let found = Self.sources.filter(seen.contains)
         VStack(alignment: .leading, spacing: 10) {
-            Text(found.isEmpty ? "No leads from these sites yet. They'll show up on Pipeline as soon as one emails you."
+            Text(found.isEmpty ? "No leads from these sites yet. They'll show up in Projects as soon as one emails you."
                                : "Leads found from: " + found.joined(separator: ", "))
                 .font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
             if gmail.reviews.isEmpty {

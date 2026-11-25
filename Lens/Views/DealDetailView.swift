@@ -9,6 +9,8 @@ struct DealDetailView: View {
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
     let dealID: UUID
+    /// Shown inside its project's Quoting step: the project page has the name, the stage bar and the buttons.
+    var embedded = false
 
     @State private var selectedOptionID: UUID?
     @State private var showStory = false
@@ -20,7 +22,10 @@ struct DealDetailView: View {
     private var deal: Deal? { deals.deal(id: dealID) }
 
     var body: some View {
-        if navigator.builderDealID == dealID {
+        if embedded, let deal {
+            quote(deal)
+                .sheet(isPresented: $showStory) { StoryEditor(dealID: dealID) }
+        } else if navigator.builderDealID == dealID {
             ProposalBuilderView(dealID: dealID)
         } else if let deal {
             ScrollView {
@@ -36,32 +41,7 @@ struct DealDetailView: View {
 
                     header(deal)
                     actions(deal)
-                    checks(deal)
-                    QuotesPanel(projectID: deal.projectID, dealID: deal.id, client: deal.client)
-                    optionsSection(deal)
-                    if let option = selectedOption(deal) {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .top, spacing: 18) {
-                                budget(option).frame(minWidth: 380)
-                                workload(option).frame(minWidth: 380)
-                            }
-                            VStack(alignment: .leading, spacing: 18) {
-                                budget(option)
-                                workload(option)
-                            }
-                        }
-                    }
-                    storySection(deal)
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 18) {
-                            planColumn(deal).frame(minWidth: 380)
-                            peopleColumn(deal).frame(minWidth: 380)
-                        }
-                        VStack(alignment: .leading, spacing: 18) {
-                            planColumn(deal)
-                            peopleColumn(deal)
-                        }
-                    }
+                    quote(deal)
                 }
                 .padding(40)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -70,6 +50,38 @@ struct DealDetailView: View {
             .sheet(isPresented: $showFollowUp) { FollowUpSheet(dealID: dealID) }
             .sheet(isPresented: $showLost) { LostSheet(dealID: dealID) }
             .sheet(isPresented: $showWon) { WonSheet(dealID: dealID) }
+        }
+    }
+
+    /// The quote itself: checks, proposals, the options and their prices, the budget and workload, the pitch, the plan.
+    private func quote(_ deal: Deal) -> some View {
+        VStack(alignment: .leading, spacing: 26) {
+            checks(deal)
+            QuotesPanel(projectID: deal.projectID, dealID: deal.id, client: deal.client)
+            optionsSection(deal)
+            if let option = selectedOption(deal) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        budget(option).frame(minWidth: 380)
+                        workload(option).frame(minWidth: 380)
+                    }
+                    VStack(alignment: .leading, spacing: 18) {
+                        budget(option)
+                        workload(option)
+                    }
+                }
+            }
+            storySection(deal)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    planColumn(deal).frame(minWidth: 380)
+                    peopleColumn(deal).frame(minWidth: 380)
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    planColumn(deal)
+                    peopleColumn(deal)
+                }
+            }
         }
     }
 
@@ -864,13 +876,14 @@ struct FollowUpSheet: View {
 
 struct LostSheet: View {
     @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var projects: ProjectStore
     @Environment(\.dismiss) private var dismiss
     let dealID: UUID
     @State private var reason = "Went with someone cheaper"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Mark lost").font(Theme.font(size: 18, weight: .bold))
+            Text("Didn't book").font(Theme.font(size: 18, weight: .bold))
             Picker("Why", selection: $reason) {
                 ForEach(["Went with someone cheaper", "Budget fell through", "Dates didn't work", "Went quiet", "Not a fit"], id: \.self) { Text($0) }
             }
@@ -879,8 +892,8 @@ struct LostSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle())
-                Button("Mark lost") {
-                    if let d = deals.deal(id: dealID) { deals.markLost(d, reason: reason) }
+                Button("Didn't book") {
+                    if let d = deals.deal(id: dealID) { deals.markLost(d, reason: reason, projects: projects) }
                     dismiss()
                 }
                 .buttonStyle(PrimaryButtonStyle())
@@ -914,7 +927,7 @@ struct WonSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Book it").font(Theme.font(size: 18, weight: .bold))
+            Text("Mark as booked").font(Theme.font(size: 18, weight: .bold))
             if let deal = deals.deal(id: dealID) {
                 Text("Which option did they pick?").font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 ForEach(deal.options) { option in
@@ -935,21 +948,25 @@ struct WonSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                let open = projects.projects.filter { $0.stage != .archived }
+                let own = deal.projectID.flatMap { projects.project(id: $0) }
+                let open = projects.projects.filter { $0.stage != .archived && $0.id != own?.id }
                 if !open.isEmpty {
+                    // Usually it's this project; she can pick another if she'd already made one for the same job.
                     Picker("Project", selection: $existingProjectID) {
-                        Text("Make a new project").tag(UUID?.none)
+                        Text(own == nil ? "Make a new project" : "This project").tag(own?.id)
                         ForEach(open) { p in Text("Use \(p.name)").tag(UUID?.some(p.id)) }
                     }
                 }
-                Text(existingProjectID == nil
-                     ? "This creates the project at Booked, with this deal's emails, call notes, people and price."
-                     : "This books the deal into that project and brings its emails, call notes, people and price with it.")
+                Text(existingProjectID == own?.id
+                     ? "It moves on to Planning with this option's price."
+                     : existingProjectID == nil
+                     ? "This creates the project at Planning, with the emails, call notes, people and price."
+                     : "This books it into that project and brings its emails, call notes, people and price with it.")
                     .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 HStack {
                     Spacer()
                     Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle())
-                    Button("Book it") {
+                    Button("Mark as booked") {
                         guard let option = deal.options.first(where: { $0.id == optionID }) else { return }
                         if let existing = existingProjectID {
                             deals.link(deal, to: existing, option: option, projects: projects)
@@ -966,8 +983,8 @@ struct WonSheet: View {
                 }
                 .onAppear {
                     optionID = deal.chosenOptionID ?? (deal.options.count == 1 ? deal.options.first?.id : nil)
-                    // A project Emma already made for this job (same name or client) is picked for her.
-                    existingProjectID = projects.projects.first(where: { Self.sameJob($0, deal) })?.id
+                    // Its own project; or, for an older deal without one, a project Emma already made for this job.
+                    existingProjectID = deal.projectID ?? projects.projects.first(where: { Self.sameJob($0, deal) })?.id
                 }
             }
         }

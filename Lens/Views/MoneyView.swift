@@ -502,7 +502,7 @@ struct MoneyView: View {
         let spent = inc.totalDirect + inc.totalOverhead
         let biggestCost = costLines.max { $0.amount < $1.amount }
         let year = money.income(.thisYear)
-        // Pipeline
+        // Quotes
         let closed = deals.deals.filter { ($0.stage == .won || $0.stage == .lost) && $0.lastTouch >= range.start && $0.lastTouch < range.end }
         let won = closed.filter { $0.stage == .won }
         let wonValue = won.compactMap { deals.value(of: $0) }
@@ -530,7 +530,6 @@ struct MoneyView: View {
             }
         }
         let toMoney = { navigator.open(.money) }
-        let toPipeline = { navigator.open(.pipeline) }
         let toProjects = { navigator.open(.projects) }
         let toGear = { navigator.open(.gear) }
         func toProject(_ id: UUID?) -> () -> Void { { if let id { navigator.openProject(id) } else { navigator.open(.projects) } } }
@@ -570,22 +569,22 @@ struct MoneyView: View {
 
             tile("inPlay", "In play", "The value of deals you could still win.",
                  value: deals.open.isEmpty ? "None yet" : Money.short(inPlay),
-                 note: deals.open.isEmpty ? "Shows once you have an open deal" : "\(deals.open.count) open deals",
-                 color: Palette.violet, go: toPipeline),
+                 note: deals.open.isEmpty ? "Shows once you have an open quote" : "\(deals.open.count) open quotes",
+                 color: Palette.violet, go: toProjects),
             tile("winRate", "Win rate", "How often an inquiry turns into a booking.",
                  value: closed.isEmpty ? "None yet" : "\(Int((100 * Double(won.count) / Double(closed.count)).rounded()))%",
-                 note: closed.isEmpty ? "Shows once a deal is won or lost" : "\(won.count) won of \(closed.count) closed",
-                 color: Palette.violet, go: toPipeline),
+                 note: closed.isEmpty ? "Shows once a quote is booked or lost" : "\(won.count) won of \(closed.count) closed",
+                 color: Palette.violet, go: toProjects),
             tile("avgDeal", "Avg deal won", "The usual size of a booking.",
                  value: wonValue.isEmpty ? "None yet" : Money.short(wonValue.reduce(0, +) / Double(wonValue.count)),
-                 note: wonValue.isEmpty ? "Shows once a deal is won" : "this period", color: Palette.violet, go: toPipeline),
+                 note: wonValue.isEmpty ? "Shows once a quote is booked" : "this period", color: Palette.violet, go: toProjects),
             tile("daysToClose", "Days to close", "How long it takes from first hello to a booking.",
                  value: daysToClose.isEmpty ? "None yet" : "\(daysToClose.reduce(0, +) / daysToClose.count)",
-                 note: daysToClose.isEmpty ? "Shows once a deal is won" : "inquiry to booked", color: Palette.violet, go: toPipeline),
+                 note: daysToClose.isEmpty ? "Shows once a quote is booked" : "inquiry to booked", color: Palette.violet, go: toProjects),
             tile("bestSource", "Best source", "Where your best clients come from.",
                  value: bySource.max { $0.value < $1.value }?.key ?? "None yet",
-                 note: bySource.max { $0.value < $1.value }.map { "\(Money.short($0.value)) won, all time" } ?? "Shows once a deal is won",
-                 color: Palette.violet, go: toPipeline),
+                 note: bySource.max { $0.value < $1.value }.map { "\(Money.short($0.value)) won, all time" } ?? "Shows once a quote is booked",
+                 color: Palette.violet, go: toProjects),
 
             tile("active", "Active projects", "Jobs you are working on right now.",
                  value: "\(projects.active.count)", note: "\(delivered) delivered, awaiting payment", color: Palette.blue, go: toProjects),
@@ -594,7 +593,7 @@ struct MoneyView: View {
                  note: rev > 0 ? "\(Money.string(crew)) to collaborators" : soon, color: Palette.blue, go: toMoney),
             tile("yourRate", "Your rate", "What you take home per hour on booked quotes.",
                  value: rates.isEmpty ? "None yet" : "\(Money.string(rates.reduce(0, +) / Double(rates.count)))/hr",
-                 note: rates.isEmpty ? "Shows once a quote is booked" : "take-home, on booked quotes", color: Palette.blue, go: toPipeline),
+                 note: rates.isEmpty ? "Shows once a quote is booked" : "take-home, on booked quotes", color: Palette.blue, go: toProjects),
             tile("daysToDeliver", "Days to deliver", "How long it usually takes from the shoot to handing the work over.",
                  value: JobSpeed.usual(deliverDays).map(JobSpeed.daysText) ?? "None yet",
                  note: deliverDays.isEmpty ? "Shows once a job is marked delivered"

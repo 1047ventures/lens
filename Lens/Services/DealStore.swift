@@ -77,13 +77,67 @@ final class DealStore: ObservableObject {
         update(d)
     }
 
-    func markLost(_ deal: Deal, reason: String) {
+    /// She didn't get it: the deal closes and its project leaves the funnel as "Didn't book".
+    func markLost(_ deal: Deal, reason: String, projects: ProjectStore? = nil) {
         guard var d = self.deal(id: deal.id) else { return }
         d.stage = .lost
         d.lostReason = reason
         d.lastTouch = Date()
         d.events.append(ProjectEvent(text: reason.isEmpty ? "Lost" : "Lost: \(reason)"))
         update(d)
+        if let projects, let id = d.projectID, let p = projects.project(id: id), p.stage == .lead {
+            projects.setStage(.archived, for: p, note: reason.isEmpty ? "Didn't book" : "Didn't book: \(reason)")
+        }
+    }
+
+    /// Back into the funnel: the deal is open again and its project is back at Quoting.
+    func reopen(_ deal: Deal, projects: ProjectStore) {
+        setStage(.talking, for: deal, note: "Reopened")
+        if let id = deal.projectID, let p = projects.project(id: id), p.stage == .archived {
+            projects.setStage(.lead, for: p, note: "Back to quoting")
+        }
+    }
+
+    /// Whether this project left the funnel because she didn't get the job.
+    func didntBook(_ project: Project) -> Bool {
+        project.stage == .archived && deals.contains { $0.projectID == project.id && $0.stage == .lost }
+    }
+
+    /// The quote behind a project, if it has one.
+    func quote(for project: Project) -> Deal? {
+        deals.first { $0.projectID == project.id }
+    }
+
+    /// A project of her own gets a quote when she wants one: a deal tied to it, ready to price.
+    @discardableResult
+    func startQuote(for project: Project) -> Deal {
+        if let existing = quote(for: project) { return existing }
+        var d = Deal(client: project.client, title: project.name, source: "Added by hand", stage: .inquiry,
+                     location: project.location, eventDate: project.shootDate, lastTouch: Date(), createdAt: Date())
+        d.projectID = project.id
+        d.contacts = (project.people ?? []).map { Contact(name: $0.name, role: $0.role, email: $0.email) }
+        d.options = [ScopeOption.starter()]
+        d.events = [ProjectEvent(text: "Quote started")]
+        add(d)
+        return d
+    }
+
+    /// Every deal is a project from the moment it comes in, sitting at Quoting until it's booked.
+    /// This gives any deal that doesn't have one its project. Safe to run any number of times.
+    func giveEveryDealAProject(_ projects: ProjectStore) {
+        var changed = false
+        for i in deals.indices where deals[i].projectID == nil && deals[i].stage != .won {
+            let d = deals[i]
+            var p = Project(name: d.title.isEmpty ? d.client : d.title, client: d.client, shootDate: d.eventDate,
+                            location: d.location, stage: d.stage == .lost ? .archived : .lead)
+            p.events = d.events + (d.stage == .lost ? [ProjectEvent(text: "Didn't book")] : [])
+            let people = d.contacts.map { ProjectPerson(name: $0.name, email: $0.email, role: $0.role.isEmpty ? "Client" : $0.role) }
+            p.people = people.isEmpty ? nil : people
+            projects.add(p)
+            deals[i].projectID = p.id
+            changed = true
+        }
+        if changed { save() }
     }
 
     /// Books the gig: the deal becomes a project at "Booked", carrying the chosen option's
@@ -91,6 +145,11 @@ final class DealStore: ObservableObject {
     @discardableResult
     func markWon(_ deal: Deal, option: ScopeOption, projects: ProjectStore) -> UUID {
         guard var d = self.deal(id: deal.id) else { return UUID() }
+        // It already is a project (every deal is): book it right there.
+        if let own = d.projectID, projects.project(id: own) != nil {
+            link(d, to: own, option: option, projects: projects)
+            return own
+        }
         let estimate = self.estimate(option)
         var project = Project(name: d.title, client: d.client, shootDate: d.eventDate, location: d.location, stage: .booked)
         project.events = d.events
@@ -113,7 +172,13 @@ final class DealStore: ObservableObject {
     /// with that option, and its emails, call notes, people and price go onto the project.
     func link(_ deal: Deal, to projectID: UUID, option: ScopeOption?, projects: ProjectStore) {
         guard var d = self.deal(id: deal.id) else { return }
+        let ownProject = d.projectID == projectID
         let chosen = option ?? d.chosenOption ?? d.options.first
+        // Booked into a project she made herself: the deal's own Quoting project isn't needed any more.
+        if !ownProject, let old = d.projectID, let p = projects.project(id: old), p.stage == .lead,
+           (p.timeEntries ?? []).isEmpty, (p.documents ?? []).isEmpty {
+            projects.delete(p)
+        }
         d.projectID = projectID
         d.stage = .won
         if let chosen { d.chosenOptionID = chosen.id }
@@ -134,9 +199,18 @@ final class DealStore: ObservableObject {
             if p.client.isEmpty { p.client = d.client }
             if p.shootDate == nil { p.shootDate = d.eventDate }
         }
-        // The deal's emails go on the project when someone on the project is in them.
+        // The deal's emails go on the project when someone on the project is in them (all of them
+        // when it's the deal's own project), and a project still at Quoting moves on to Planning.
         if let p = projects.project(id: projectID) {
-            for t in d.emails ?? [] where ProjectRelevance.belongs(t, to: p) { projects.attachEmail(t, to: projectID) }
+            for t in d.emails ?? [] where ownProject || ProjectRelevance.belongs(t, to: p) { projects.attachEmail(t, to: projectID) }
+            if p.stage == .lead {
+                projects.edit(projectID) { p in
+                    p.stage = .booked
+                    p.events += d.milestones.map { ProjectEvent(text: "Planned: \($0.phase) · \($0.when)") }
+                    p.events.append(ProjectEvent(text: "Booked" + (chosen.map { ": \($0.name) (\($0.tagline))" } ?? "")
+                                                 + (price.map { " at \(Money.string($0))" } ?? "")))
+                }
+            }
         }
     }
 

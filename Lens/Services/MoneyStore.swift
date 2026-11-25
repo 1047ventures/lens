@@ -150,7 +150,7 @@ final class MoneyStore: ObservableObject {
     /// description) on that project by itself. Each line is only ever tagged once, so if Emma takes one off
     /// a project it stays off.
     func autoTagProjects(_ projects: [Project]) {
-        let open = projects.filter { $0.stage != .archived }
+        let open = projects.filter { $0.stage != .archived && $0.stage != .lead }  // not quotes that aren't booked yet
         guard !open.isEmpty else { return }
         let key = "money.autoTagged"
         var done = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])

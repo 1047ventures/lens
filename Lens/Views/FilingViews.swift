@@ -9,7 +9,7 @@ struct WhichProjectMenu: View {
     @EnvironmentObject private var deals: DealStore
     /// Lens's best guess, listed first.
     var guess: UUID?
-    /// Also offer open deals in Pipeline (for Zoom notes).
+    /// Also offer open quotes (for Zoom notes).
     var includeDeals = false
     let onPick: (UUID) -> Void
     var onPickDeal: ((UUID) -> Void)? = nil
@@ -37,7 +37,7 @@ struct WhichProjectMenu: View {
                 if includeDeals, let onPickDeal {
                     let pipeline = deals.deals.filter { $0.stage.isOpen && $0.projectID == nil }.sorted { $0.lastTouch > $1.lastTouch }
                     if !pipeline.isEmpty {
-                        Section("Pipeline") {
+                        Section("Quotes") {
                             ForEach(pipeline) { d in Button("\(d.client) · \(d.title)") { onPickDeal(d.id) } }
                         }
                     }

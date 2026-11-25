@@ -17,6 +17,14 @@ struct ProjectDetailView: View {
     @State private var moving = false
     @EnvironmentObject private var appearance: Appearance
     @State private var addingPerson = false
+    @EnvironmentObject private var quotes: QuoteStore
+    @State private var showWon = false
+    @State private var showLost = false
+    @State private var showFollowUp = false
+    /// The step chip she clicked on the simple page, to peek at what happened in it.
+    @State private var simplePeek: ProjectStage?
+    /// The quote behind this project, when it has one (every inquiry does).
+    private var quote: Deal? { deals.quote(for: project) }
 
     @ObservedObject private var index = LibraryIndex.shared
     @ObservedObject private var links = LibraryLinks.shared
@@ -25,12 +33,18 @@ struct ProjectDetailView: View {
 
     var body: some View {
         Group {
-            if appearance.simple { simpleBody } else { everythingBody }
+            if let quote, navigator.builderDealID == quote.id {
+                ProposalBuilderView(dealID: quote.id)
+            } else if appearance.simple { simpleBody } else { everythingBody }
         }
+        .sheet(isPresented: $showWon) { if let quote { WonSheet(dealID: quote.id) } }
+        .sheet(isPresented: $showLost) { if let quote { LostSheet(dealID: quote.id) } }
+        .sheet(isPresented: $showFollowUp) { if let quote { FollowUpSheet(dealID: quote.id) } }
         // Back where she left this project, even after visiting another section; a project she
         // hasn't opened yet starts on the step it's at.
         .onAppear { place = navigator.projectTabs[project.id] ?? .stage(project.stage) }
         .onChange(of: project.id) { _, id in
+            simplePeek = nil
             place = navigator.projectTabs[id] ?? .stage(projects.project(id: id)?.stage ?? .lead)
         }
         .onChange(of: place) { _, now in navigator.projectTabs[project.id] = now }
@@ -111,6 +125,7 @@ struct ProjectDetailView: View {
         .confirmationDialog("Delete \(project.name)?", isPresented: $confirmDelete) {
             Button("Delete project", role: .destructive) {
                 navigator.projectID = nil
+                if let quote, quote.stage != .won { deals.delete(quote) }
                 projects.delete(project)
             }
         } message: {
@@ -196,12 +211,19 @@ struct ProjectDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(project.name)
-                .font(Theme.font(size: 30, weight: .bold))
-                .foregroundStyle(Theme.text)
+            HStack(alignment: .firstTextBaseline) {
+                Text(project.name)
+                    .font(Theme.font(size: 30, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 20)
+                if let price = headerPrice { HeadlineNumber(text: price, size: 26) }
+            }
             let meta = [project.client,
                         project.shootDate?.formatted(date: .complete, time: .shortened) ?? "",
-                        project.location].filter { !$0.isEmpty }
+                        project.location,
+                        project.stage == .lead && !(quote?.source ?? "").isEmpty ? "came in by \(quote!.source.lowercased())" : ""]
+                .filter { !$0.isEmpty }
             if !meta.isEmpty {
                 Text(meta.joined(separator: " · "))
                     .font(Theme.font(size: 14))
@@ -210,19 +232,34 @@ struct ProjectDetailView: View {
         }
     }
 
+    /// The price: what's being quoted while it's at Quoting, what it's booked at after.
+    private var headerPrice: String? {
+        if project.stage == .lead, let quote {
+            let text = deals.valueText(of: quote)
+            return text == "No price yet" || text.isEmpty ? nil : text
+        }
+        return books.price.map { Money.short($0) }
+    }
+
     private var stageTrack: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Each step opens what happened in it (or what's coming); the bar is the way around a project.
             HStack(alignment: .top, spacing: 4) {
                 ForEach(ProjectStage.allCases) { step in
-                    StageStep(step: step, current: project.stage, selected: place == .stage(step)) {
+                    StageStep(step: step, current: project.stage, selected: place == .stage(step),
+                              name: step == .archived && deals.didntBook(project) ? "Didn't book" : step.label) {
                         place = .stage(step)
                     }
                 }
             }
 
             HStack(spacing: 10) {
-                if project.stage == .paid, project.folderPath != nil, !project.isOnServer {
+                if project.stage == .lead, let quote, quote.stage.isOpen {
+                    quotingActions(quote)
+                } else if let quote, quote.stage == .lost, project.stage == .archived {
+                    Button("Reopen") { deals.reopen(quote, projects: projects) }.buttonStyle(PrimaryButtonStyle())
+                        .help("They came back: put it back at Quoting")
+                } else if project.stage == .paid, project.folderPath != nil, !project.isOnServer {
                     Button(moving ? "Moving…" : "Move footage to the server") { moveToServer() }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(moving)
@@ -236,11 +273,42 @@ struct ProjectDetailView: View {
                    project.stage != .archived {
                     Button("Back to \(previous.label.lowercased())") {
                         projects.setStage(previous, for: project, note: "Moved back to \(previous.label)")
+                        // Back to quoting means the quote is open again.
+                        if previous == .lead, let quote, quote.stage == .won { deals.setStage(.talking, for: quote, note: "Back to quoting") }
                     }
                     .buttonStyle(SecondaryButtonStyle())
                 }
             }
         }
+    }
+
+    /// The buttons while it's at Quoting: the same spot every step's buttons sit in.
+    @ViewBuilder private func quotingActions(_ quote: Deal) -> some View {
+        let uploaded = quotes.uploadedProposal(dealID: quote.id, projectID: project.id) != nil
+        if quote.stage == .inquiry {
+            if uploaded {
+                Button("Open your proposal") { quotes.openProposal(for: quote, deals: deals, projects: projects) }
+                    .buttonStyle(PrimaryButtonStyle())
+            } else {
+                Button("Build proposal · \(BuilderStep.progress(quote))/\(BuilderStep.allCases.count)") { navigator.builderDealID = quote.id }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+            Button("Quote sent") { deals.setStage(.proposalOut, for: quote, note: "Quote sent") }
+                .buttonStyle(SecondaryButtonStyle())
+            Button("Mark as booked…") { showWon = true }.buttonStyle(SecondaryButtonStyle())
+                .help("They said yes: on to Planning")
+        } else {
+            Button("Mark as booked…") { showWon = true }.buttonStyle(PrimaryButtonStyle())
+                .help("They said yes: on to Planning")
+            if uploaded {
+                Button("Open your proposal") { quotes.openProposal(for: quote, deals: deals, projects: projects) }
+                    .buttonStyle(SecondaryButtonStyle())
+            } else {
+                Button("Proposal") { navigator.builderDealID = quote.id }.buttonStyle(SecondaryButtonStyle())
+            }
+        }
+        Button("Log a follow-up") { showFollowUp = true }.buttonStyle(SecondaryButtonStyle())
+        Button("Didn't book…") { showLost = true }.buttonStyle(SecondaryButtonStyle())
     }
 
     // MARK: - Footage
@@ -435,31 +503,21 @@ enum ServerFolder {
 // MARK: - Simple
 
 extension ProjectDetailView {
-    private var chips: [(String, ProjectStage)] {
-        [ProjectStage.booked, .shoot, .edit, .delivered, .paid].map { ($0.label, $0) }
-    }
+    /// The steps on the simple page. Put away folds into Wrapping up.
+    private var chips: [ProjectStage] { [.lead, .booked, .shoot, .edit, .delivered, .paid] }
 
-    /// Where the project sits in the five chips, or -1 for an inquiry.
-    private var chipIndex: Int {
-        switch project.stage {
-        case .lead: return -1
-        case .booked: return 0
-        case .shoot: return 1
-        case .edit: return 2
-        case .delivered: return 3
-        case .paid, .archived: return 4
-        }
-    }
+    /// The chip that lights up as where the project is now.
+    private var currentChip: ProjectStage { project.stage == .archived ? .paid : project.stage }
 
     private var stageSentence: String {
         switch project.stage {
-        case .lead: return "You're getting this one booked"
-        case .booked: return "You're booked"
+        case .lead: return "You're quoting"
+        case .booked: return "You're planning"
         case .shoot: return "You're shooting"
         case .edit: return "You're editing"
-        case .delivered: return "You've delivered"
-        case .paid: return "You're paid"
-        case .archived: return "This one's done"
+        case .delivered: return "You're getting paid"
+        case .paid: return "You're wrapping up"
+        case .archived: return deals.didntBook(project) ? "This one didn't book" : "This one's put away"
         }
     }
 
@@ -509,25 +567,38 @@ extension ProjectDetailView {
         VStack(alignment: .leading, spacing: 12) {
             Text(stageSentence).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
             HStack(spacing: 8) {
-                ForEach(Array(chips.enumerated()), id: \.offset) { i, chip in
-                    let current = i == chipIndex
-                    let past = i < chipIndex
-                    Text(chip.0)
-                        .font(Theme.font(size: 13, weight: current ? .bold : .medium))
-                        .foregroundStyle(current ? Theme.onTeal : past ? Theme.teal : Theme.muted)
-                        .padding(.horizontal, 14).padding(.vertical, 6)
-                        .background(current ? Theme.teal : past ? Theme.teal.opacity(0.14) : Color.clear)
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(current || past ? Color.clear : Theme.line))
+                ForEach(chips) { step in
+                    let current = step == currentChip
+                    let past = step.rawValue < currentChip.rawValue
+                    let peeking = simplePeek == step && !current
+                    Button {
+                        simplePeek = current || peeking ? nil : step
+                    } label: {
+                        Text(step.label)
+                            .font(Theme.font(size: 13, weight: current || peeking ? .bold : .medium))
+                            .foregroundStyle(current ? Theme.onTeal : past ? Theme.teal : Theme.muted)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(current ? Theme.teal : past ? Theme.teal.opacity(0.14) : Color.clear)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(peeking ? Theme.teal : current || past ? Color.clear : Theme.line,
+                                                      lineWidth: peeking ? 1.5 : 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(current ? "Where it is now" : step.rawValue > currentChip.rawValue ? "See what's coming in \(step.label.lowercased())" : "See \(step.label.lowercased())")
+                    .accessibilityLabel("\(step.label)\(current ? ", where it is now" : "")")
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(stageSentence)
+            // The same short summary the full page opens with; the step it's at is already in Next up.
+            if let step = simplePeek, step != currentChip {
+                ProjectStageView(project: project, stage: step, books: books, footage: EmptyView(), briefOnly: true) { _ in }
+            }
         }
     }
 
     private var nextSentence: String {
         var line = SimpleProject.nextLine(project)
+        if project.stage == .lead, let quote, quote.stage.isOpen { line = DealCard.nextMove(quote) + "." }
         if project.stage == .delivered,
            let due = money.receivables.filter({ $0.projectID == project.id && $0.paidOn == nil }).map(\.due).min() {
             line = "Delivered. The final payment is due \(SimpleProject.when(due))."
@@ -552,7 +623,20 @@ extension ProjectDetailView {
         let folder = project.folderURL
         switch project.stage {
         case .lead:
-            Button("Mark as booked") { projects.setStage(.booked, for: project) }.buttonStyle(PrimaryButtonStyle())
+            if let quote, quote.stage.isOpen {
+                HStack(spacing: 10) {
+                    if quote.stage == .inquiry {
+                        Button("Build the proposal") { navigator.builderDealID = quote.id }.buttonStyle(PrimaryButtonStyle())
+                        Button("Mark as booked") { showWon = true }.buttonStyle(SecondaryButtonStyle())
+                    } else {
+                        Button("Mark as booked") { showWon = true }.buttonStyle(PrimaryButtonStyle())
+                        Button("See the proposal") { navigator.builderDealID = quote.id }.buttonStyle(SecondaryButtonStyle())
+                    }
+                    Button("Didn't book") { showLost = true }.buttonStyle(SecondaryButtonStyle())
+                }
+            } else {
+                Button("Mark as booked") { projects.setStage(.booked, for: project) }.buttonStyle(PrimaryButtonStyle())
+            }
         case .booked:
             Button("Start shooting") { projects.setStage(.shoot, for: project) }.buttonStyle(PrimaryButtonStyle())
         case .shoot:
@@ -577,7 +661,9 @@ extension ProjectDetailView {
                     .buttonStyle(PrimaryButtonStyle()).disabled(moving)
             }
         case .archived:
-            EmptyView()
+            if let quote, quote.stage == .lost {
+                Button("Reopen") { deals.reopen(quote, projects: projects) }.buttonStyle(SecondaryButtonStyle())
+            }
         }
     }
 
@@ -687,6 +773,7 @@ private struct StageStep: View {
     let step: ProjectStage
     let current: ProjectStage
     let selected: Bool
+    var name: String
     let action: () -> Void
     @State private var hovering = false
 
@@ -696,7 +783,7 @@ private struct StageStep: View {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(step.rawValue < current.rawValue ? Theme.tealDim : step == current ? Theme.text : Theme.track)
                     .frame(height: 6)
-                Text(step.label)
+                Text(name)
                     .font(Theme.font(size: 12, weight: step == current || selected ? .bold : .medium))
                     .foregroundStyle(selected ? Theme.text : step.rawValue <= current.rawValue ? Theme.text2 : Theme.muted)
                     .lineLimit(1)
@@ -709,8 +796,8 @@ private struct StageStep: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(step.rawValue > current.rawValue ? "See what's coming in \(step.label.lowercased())" : "See \(step.label.lowercased())")
-        .accessibilityLabel("\(step.label)\(step == current ? ", where this project is now" : "")")
+        .help(step.rawValue > current.rawValue ? "See what's coming in \(name.lowercased())" : "See \(name.lowercased())")
+        .accessibilityLabel("\(name)\(step == current ? ", where this project is now" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

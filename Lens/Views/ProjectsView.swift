@@ -13,6 +13,8 @@ struct ProjectsView: View {
     @State private var editing: Project?
     @State private var creating = false
     @State private var importMessage: String?
+    @State private var showQuotes = false
+    @State private var showRates = false
     @AppStorage("projects.arrange") private var arrangeRaw = ProjectArrange.next.rawValue
 
     private var arrange: ProjectArrange { ProjectArrange(rawValue: arrangeRaw) ?? .next }
@@ -32,18 +34,51 @@ struct ProjectsView: View {
             }
         }
         .sheet(isPresented: $creating) {
-            ProjectEditor(initial: nil) { projects.add($0); navigator.projectID = $0.id }
+            ProjectEditor(initial: nil) { p in
+                projects.add(p)
+                // Client work at Quoting gets its quote right away, ready to price.
+                if p.stage == .lead && !p.client.trimmingCharacters(in: .whitespaces).isEmpty { deals.startQuote(for: p) }
+                navigator.projectID = p.id
+            }
         }
+        .sheet(isPresented: $showQuotes) { QuoteHistoryView() }
+        .sheet(isPresented: $showRates) { RateCardSheet() }
     }
 
-    /// The Everything groups in their usual order; she can rearrange or hide them.
+    /// The funnel, top to bottom: one group per step that has projects in it, then the ones that
+    /// didn't book and the ones put away. She can rearrange or hide them.
     private var everythingBoxes: [PageBox] {
-        var boxes = [PageBox("active", "Active", color: Theme.teal) { group(title: "Active", items: projects.active) }]
+        var boxes: [PageBox] = []
+        for step in ProjectStage.allCases where step != .archived {
+            let items = projects.active.filter { $0.stage == step }
+            guard !items.isEmpty else { continue }
+            var title = step.label
+            if step == .lead {
+                let total = items.compactMap { deals.quote(for: $0).flatMap { deals.value(of: $0) } }.reduce(0, +)
+                if total > 0 { title += " · up to \(Money.short(total))" }
+            }
+            boxes.append(PageBox("step.\(step.rawValue)", step.label, color: Theme.teal) { group(title: title, items: items) })
+        }
         let archived = projects.projects.filter { $0.stage == .archived }
-        if !archived.isEmpty {
-            boxes.append(PageBox("archived", "Put away", color: Palette.slate) { group(title: "Put away", items: archived) })
+        let lost = archived.filter { deals.didntBook($0) }
+        let away = archived.filter { !deals.didntBook($0) }
+        if !lost.isEmpty {
+            boxes.append(PageBox("didntBook", "Didn't book", color: Palette.slate) { group(title: "Didn't book", items: lost) })
+        }
+        if !away.isEmpty {
+            boxes.append(PageBox("archived", "Put away", color: Palette.slate) { group(title: "Put away", items: away) })
         }
         return boxes
+    }
+
+    /// Past quotes and her rates: what every quote is priced from.
+    private var quotesMenu: some View {
+        Menu("Quotes") {
+            Button("Past quotes") { showQuotes = true }
+            Button("Rates & profile") { showRates = true }
+        }
+        .menuStyle(.button)
+        .fixedSize()
     }
 
     private var list: some View {
@@ -66,6 +101,7 @@ struct ProjectsView: View {
                         }
                         .buttonStyle(SecondaryButtonStyle())
                     }
+                    quotesMenu
                     Button("New project") { creating = true }
                         .buttonStyle(PrimaryButtonStyle())
                 }
@@ -174,8 +210,8 @@ struct ProjectsView: View {
 
     /// The groups that have projects in them, in their usual order; she can rearrange or hide them.
     private func simpleBoxes(_ groups: [(String, [Project])], done: [Project]) -> [PageBox] {
-        let ids = ["Coming up": "comingUp", "Shooting": "shooting", "Editing": "editing", "Waiting on payment": "waitingPay"]
-        let colors: [String: Color] = ["Coming up": Palette.blue, "Shooting": Theme.coral, "Editing": Palette.orchid, "Waiting on payment": Theme.amber]
+        let ids = ["Quoting": "quoting", "Coming up": "comingUp", "Shooting": "shooting", "Editing": "editing", "Waiting on payment": "waitingPay"]
+        let colors: [String: Color] = ["Quoting": Palette.violet, "Coming up": Palette.blue, "Shooting": Theme.coral, "Editing": Palette.orchid, "Waiting on payment": Theme.amber]
         var boxes = groups.map { title, items in
             PageBox(ids[title] ?? title, title, color: colors[title] ?? Theme.teal) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -212,7 +248,8 @@ struct ProjectsView: View {
         func byDate(_ a: Project, _ b: Project) -> Bool {
             (a.shootDate ?? .distantFuture) < (b.shootDate ?? .distantFuture)
         }
-        let groups = simpleGroup("Coming up", all.filter { $0.stage == .lead || $0.stage == .booked }.sorted(by: byDate))
+        let groups = simpleGroup("Quoting", all.filter { $0.stage == .lead }.sorted { $0.createdAt > $1.createdAt })
+            + simpleGroup("Coming up", all.filter { $0.stage == .booked }.sorted(by: byDate))
             + simpleGroup("Shooting", all.filter { $0.stage == .shoot }.sorted(by: byDate))
             + simpleGroup("Editing", all.filter { $0.stage == .edit }.sorted(by: byDate))
             + simpleGroup("Waiting on payment", all.filter { $0.stage == .delivered }.sorted(by: byDate))
@@ -238,6 +275,7 @@ struct ProjectsView: View {
                     found(simple: true)
                 } else {
                 if !history.found.isEmpty { FoundWorkPanel() }
+                EmailSuggestionsPanel(place: .projects)
                 if all.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No projects yet")
@@ -268,14 +306,14 @@ struct ProjectsView: View {
                     if !project.client.isEmpty {
                         Text(project.client).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     }
-                    Text(SimpleProject.nextLine(project))
+                    Text(nextLine(project))
                         .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 2)
                 }
                 Spacer(minLength: 12)
                 VStack(alignment: .trailing, spacing: 8) {
-                    Text(SimpleProject.chipName(project.stage))
+                    Text(deals.didntBook(project) ? "Didn't book" : SimpleProject.chipName(project.stage))
                         .font(Theme.font(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.teal)
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -315,7 +353,7 @@ struct ProjectsView: View {
                             Spacer(minLength: 16)
                             glance(for: project)
                             VStack(alignment: .trailing, spacing: 6) {
-                                Text(project.stage.label)
+                                Text(deals.didntBook(project) ? "Didn't book" : project.stage.label)
                                     .font(Theme.font(size: 12, weight: .semibold))
                                     .foregroundStyle(project.stage == .delivered ? Theme.coral : Theme.text3)
                                 StageBar(stage: project.stage).frame(width: 170)
@@ -337,7 +375,14 @@ struct ProjectsView: View {
     /// Hours and what she keeps, at a glance.
     @ViewBuilder private func glance(for project: Project) -> some View {
         let books = ProjectBooks.make(project, money: money, deals: deals)
-        if books.hours > 0 || books.keep != nil || books.spent > 0 {
+        if deals.didntBook(project) {
+            EmptyView()
+        } else if project.stage == .lead, let q = deals.quote(for: project) {
+            Text(deals.valueText(of: q))
+                .font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(q.isStale ? Theme.amber : Theme.text2)
+                .frame(width: 130, alignment: .trailing)
+        } else if books.hours > 0 || books.keep != nil || books.spent > 0 {
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(spacing: 5) {
                     if project.isTiming { Circle().fill(Theme.coral).frame(width: 7, height: 7) }
@@ -358,9 +403,19 @@ struct ProjectsView: View {
         }
     }
 
+    /// What's next, in a line; at Quoting it's the quote's next move.
+    private func nextLine(_ project: Project) -> String {
+        if project.stage == .lead, let q = deals.quote(for: project), q.stage.isOpen { return DealCard.nextMove(q) + "." }
+        return SimpleProject.nextLine(project)
+    }
+
     private func subtitle(for project: Project) -> String {
         var parts: [String] = []
         if !project.client.isEmpty { parts.append(project.client) }
+        if project.stage == .lead, let q = deals.quote(for: project), q.stage.isOpen {
+            parts.append(DealCard.nextMove(q))
+            return parts.joined(separator: " · ")
+        }
         if let date = project.shootDate { parts.append(date.formatted(date: .abbreviated, time: .omitted)) }
         if project.isOnServer { parts.append("On the server") }
         else if project.folderPath == nil { parts.append("No footage folder") }
@@ -403,7 +458,7 @@ struct ProjectEditor: View {
                 TextField("Location", text: $location)
                 TextField("Keywords", text: $keywords, prompt: Text("CU, documentary"))
                     .help("Words that show a Zoom call or email is about this project, separated by commas")
-                TextField("Price", text: $priceText, prompt: Text("Leave empty to use the won deal's price"))
+                TextField("Price", text: $priceText, prompt: Text("Leave empty to use the quote's price"))
                 Toggle("Has a shoot date", isOn: $hasDate)
                 if hasDate {
                     DatePicker("Shoot date", selection: $shootDate)
@@ -501,7 +556,7 @@ struct FoundWorkPanel: View {
                 .disabled(looking)
             }
             if history.found.isEmpty {
-                Text("Lens reads your work email and call notes and adds your current and upcoming projects here by itself, with their people. Possible jobs go on Pipeline.")
+                Text("Lens reads your work email and call notes and adds your current and upcoming projects here by itself, with their people. Possible jobs start at Quoting.")
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(history.found) { item in
@@ -513,7 +568,7 @@ struct FoundWorkPanel: View {
                         }
                         .buttonStyle(.plain)
                         .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                        Text((item.isProject ? "Added as a project" : "Added to Pipeline") + (item.why.isEmpty ? "" : " · " + item.why))
+                        Text((item.isProject ? "Added as a project" : "Added at Quoting") + (item.why.isEmpty ? "" : " · " + item.why))
                             .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()

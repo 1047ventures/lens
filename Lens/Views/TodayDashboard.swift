@@ -67,11 +67,13 @@ struct TodayNumbers {
         }
 
         let active = projects.active
-        let leadValue = open.compactMap { deals.value(of: $0) }.reduce(0, +)
+        // Every open quote is a project at Quoting, so each step just counts its projects.
         funnel = ProjectStage.allCases.filter { $0 != .archived }.map { stage in
             let here = active.filter { $0.stage == stage }
-            let value = here.compactMap { ProjectBooks.make($0, money: money, deals: deals).base }.reduce(0, +)
-            if stage == .lead { return Step(stage: stage, count: here.count + open.count, value: value + leadValue) }
+            let value = here.compactMap { p in
+                stage == .lead ? deals.quote(for: p).flatMap { deals.value(of: $0) } ?? ProjectBooks.make(p, money: money, deals: deals).base
+                               : ProjectBooks.make(p, money: money, deals: deals).base
+            }.reduce(0, +)
             return Step(stage: stage, count: here.count, value: value)
         }
 

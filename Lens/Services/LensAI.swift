@@ -103,7 +103,7 @@ final class LensAI: ObservableObject {
     private static let workPrompt = """
     You help a freelance filmmaker and photographer (Emma) keep her business app (Lens) up to date. You get \
     summaries of her recent work email conversations, her recent call notes, and what's already in Lens \
-    (projects and pipeline deals, with their people and keywords). List each distinct job she has: one entry \
+    (projects, including quotes at the Quoting step, with their people and keywords). List each distinct job she has: one entry \
     per job, merging all the emails and calls about it. Give a short name as she would say it ("CEJ \
     documentary", "Parents Anonymous commercial photography", "Facial Aesthetics", "Jenna Shapiro shoot"), \
     the client, status (booked, ongoing, upcoming, potential, done), any shoot or event dates (YYYY-MM-DD), \
@@ -429,7 +429,7 @@ final class LensAI: ObservableObject {
 
     private static let emailPrompt = """
     You help a freelance filmmaker and videographer (the owner) keep their business app (Lens) in step with their email and Instagram and Facebook messages.
-    You get recent email conversations plus the deals (possible gigs) and projects (booked gigs) already in Lens.
+    You get recent email conversations plus the quotes (possible gigs, projects at the Quoting step) and projects (booked gigs) already in Lens.
     Sort every conversation into exactly one kind:
     - "inquiry": someone new asking about hiring the owner (a shoot, a film, a video, availability, a quote). Website
       contact-form emails and lead emails from directories (The Knot, WeddingWire, Thumbtack, Zola, Yelp, Google
@@ -739,7 +739,7 @@ final class LensAI: ObservableObject {
         switch tool {
         case "web_search": return "Searching the web…"
         case "web_fetch": return "Reading a web page…"
-        case "list_deals", "get_deal": return "Looking through the pipeline…"
+        case "list_deals", "get_deal": return "Looking through your quotes…"
         case "list_projects", "get_project": return "Checking projects…"
         case "get_money": return "Checking the books…"
         case "get_gear": return "Checking your gear…"
@@ -1161,8 +1161,14 @@ final class LensAI: ObservableObject {
     private func screenContext() -> String {
         guard let navigator else { return "" }
         var parts = ["Section: \(navigator.section?.rawValue ?? "Today")"]
-        if navigator.section == .pipeline, let deal = deals?.deal(id: navigator.dealID) {
-            parts.append("Looking at deal \"\(deal.title)\" (deal_id \(deal.id.uuidString))")
+        var openDeal: Deal? = nil
+        if navigator.section == .projects, let pid = navigator.projectID {
+            openDeal = deals?.deals.first { $0.projectID == pid }
+        } else if navigator.section == .pipeline {
+            openDeal = deals?.deal(id: navigator.dealID)
+        }
+        if let deal = openDeal {
+            parts.append("Looking at the quote \"\(deal.title)\" (deal_id \(deal.id.uuidString))")
             if navigator.builderDealID == deal.id { parts.append("in the proposal builder") }
         }
         if navigator.section == .people, let person = people?.person(id: navigator.personID) {
@@ -1391,7 +1397,7 @@ final class LensAI: ObservableObject {
 
     static let systemPrompt = """
     You are Lens, the assistant built into the owner's business app. The owner is a videographer and \
-    photographer. Lens runs their pipeline (inquiries to booked gigs), \
+    photographer. Lens runs their projects (inquiries start at the Quoting step and move to booked gigs), \
     proposals, projects, people (their clients, directors, interviewees, crew, vendors and leads), footage, money \
     and log-ins.
 
@@ -1434,7 +1440,7 @@ final class LensAI: ObservableObject {
     screenshot or to tell you what she sees: look at the picture. You can only see Lens, not other apps. \
     - Website forms and bookings (Squarespace, Acuity Scheduling, Wix, Showit, HoneyBook and others) need no \
     separate connection: they email her, and Lens reads those emails in Gmail and turns each one into an inquiry \
-    on Pipeline and a person in People. All she needs is the form or booking notifications going to her Gmail.
+    in Projects at Quoting and a person in People. All she needs is the form or booking notifications going to her Gmail.
     - Instagram DMs and Facebook Page messages: Lens reads them through a small private Meta app on her own \
     account. Setup, one step at a time: (1) developers.facebook.com/apps, sign in, register as a developer if \
     asked; (2) Create app, use case Other, type Business, name it Lens; (3) add the Instagram product, choose \
@@ -1467,7 +1473,7 @@ final class LensAI: ObservableObject {
         tool("search_meeting_notes", "Search every Zoom meeting summary Lens has (on deals, on projects, and not placed): overview, each topic, next steps and who was there. Give a few key words (a name, a topic like \"shoot schedule\"). The best matches come back in full; open others with get_meeting_note. With no query, lists the newest.",
              ["query": ["type": "string"], "limit": ["type": "integer", "description": "How many matches to return in full (default 6)"]], []),
         tool("get_meeting_note", "One meeting summary in full, by its note_id.", ["note_id": ["type": "string"]], ["note_id"]),
-        tool("list_deals", "List potential gigs in the pipeline. Optional stage filter: inquiry, proposal_out, talking, won, lost.",
+        tool("list_deals", "List quotes, the possible gigs (projects at the Quoting step). Optional stage filter: inquiry, proposal_out, talking, won, lost.",
              ["stage": ["type": "string"]], []),
         tool("get_deal", "Everything about one deal: discovery answers, options with prices and what the owner keeps, timeline, history, emails and Zoom call summaries (meeting_notes).",
              ["deal_id": ["type": "string"]], ["deal_id"]),
@@ -1480,7 +1486,7 @@ final class LensAI: ObservableObject {
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "the owner's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
-        tool("open_screen", "Show something in Lens: a person, a deal, a project, or a section (Today, Pipeline, People, Projects, Library, Gear, Money, Log-ins).",
+        tool("open_screen", "Show something in Lens: a person, a quote (opens its project), a project, or a section (Today, People, Projects, Library, Gear, Money, Log-ins).",
              ["person_id": ["type": "string"], "deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
         tool("list_people", "Everyone in People with tags, company, last time in touch, follow-up date, open deals and projects. All filters optional: query matches names, companies, notes, and also email subjects and Zoom notes (\"the festival\"); tag (Client, Director, Interviewee, Crew, Vendor, Lead); on = a deal or project name; quiet_days = not in touch for at least that many days; follow_up_due.",
              ["query": ["type": "string"], "tag": ["type": "string"], "on": ["type": "string"],
@@ -1504,7 +1510,7 @@ final class LensAI: ObservableObject {
              ["person_id": ["type": "string"], "note": ["type": "string"]], ["person_id", "note"]),
         tool("draft_email", "Show the user an email draft they can copy or open in Mail. Never sends anything.",
              ["to": ["type": "string"], "subject": ["type": "string"], "body": ["type": "string"]], ["subject", "body"]),
-        tool("create_inquiry", "Add a new inquiry to the pipeline (for example from a pasted DM or email). The user approves first.",
+        tool("create_inquiry", "Add a new inquiry as a project at Quoting (for example from a pasted DM or email). The user approves first.",
              ["client": ["type": "string"], "title": ["type": "string", "description": "What the job is"],
               "source": ["type": "string", "description": "Email, Website form, Instagram, Referral, Phone, The Knot…"],
               "location": ["type": "string"], "budget_hint": ["type": "string"], "event_date": ["type": "string", "description": "YYYY-MM-DD"],

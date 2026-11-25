@@ -28,9 +28,10 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         }
     }
 
-    static var main: [SidebarSection] { [.today, .pipeline, .people, .projects, .footage, .gear, .money, .logins] }
+    // Pipeline isn't its own place any more: a deal is a project at its Quoting step.
+    static var main: [SidebarSection] { [.today, .people, .projects, .footage, .gear, .money, .logins] }
     /// Simple mode keeps the list short: Gear and Log-ins live under "More".
-    static var simpleMain: [SidebarSection] { [.today, .pipeline, .people, .projects, .footage, .money] }
+    static var simpleMain: [SidebarSection] { [.today, .people, .projects, .footage, .money] }
     static var simpleMore: [SidebarSection] { [.gear, .logins] }
 }
 
@@ -68,20 +69,33 @@ final class Navigator: ObservableObject {
         touring = true
     }
 
+    /// Set once at launch, so a deal can be opened as the project it belongs to.
+    weak var deals: DealStore?
+    weak var projects: ProjectStore?
+
     func open(_ section: SidebarSection) {
-        self.section = section
+        self.section = section == .pipeline ? .projects : section
+        if section == .pipeline { projectID = nil }
     }
 
+    /// A deal is a project at its Quoting step: open that project there.
     func openDeal(_ id: UUID) {
-        dealID = id
         builderDealID = nil
-        section = .pipeline
+        openQuote(id)
     }
 
+    /// The proposal builder for a deal, on its project's page.
     func openBuilder(_ id: UUID) {
-        dealID = id
+        openQuote(id)
         builderDealID = id
-        section = .pipeline
+    }
+
+    private func openQuote(_ id: UUID) {
+        dealID = id
+        if let deals, let projects, deals.deal(id: id)?.projectID == nil { deals.giveEveryDealAProject(projects) }
+        guard let pid = deals?.deal(id: id)?.projectID else { section = .projects; return }
+        if projects?.project(id: pid)?.stage == .lead { projectTabs[pid] = .stage(.lead) }
+        openProject(pid)
     }
 
     func openPerson(_ id: UUID) {
@@ -138,7 +152,7 @@ struct ContentView: View {
             Group {
                 switch navigator.section ?? .today {
                 case .today: TodayView()
-                case .pipeline: PipelineView()
+                case .pipeline: ProjectsView()
                 case .people: PeopleView()
                 case .projects: ProjectsView()
                 case .footage: FootageView()
@@ -251,13 +265,17 @@ struct ContentView: View {
             ai.attachZoom(zoom)
             ai.attachLogins(logins)
             ai.attachQuotes(quotes)
-            // A deal that was attached to a project but never booked (an older way of linking): finish
-            // booking it, so its emails, people and price are on the project and it leaves Pipeline.
-            for d in deals.deals where d.stage != .won && d.stage != .lost {
-                if let pid = d.projectID, projects.project(id: pid) != nil {
+            // A deal that was attached to a project already past Quoting but never booked (an older way
+            // of linking): finish booking it, so its emails, people and price are on the project.
+            for d in deals.deals where d.stage.isOpen {
+                if let pid = d.projectID, let p = projects.project(id: pid), p.stage != .lead, p.stage != .archived {
                     deals.link(d, to: pid, option: nil, projects: projects)
                 }
             }
+            // Every deal is a project from the moment it comes in, at Quoting until it's booked.
+            navigator.deals = deals
+            navigator.projects = projects
+            deals.giveEveryDealAProject(projects)
             // Once: each project keeps only emails with its own people, and people Lens added come off.
             ProjectRelevance.me = logins.ownerEmail
             ProjectRelevance.tidy(projects)
@@ -299,6 +317,10 @@ struct ContentView: View {
         .onReceive(deals.$deals) { list in
             people.sync(deals: list, projects: projects.projects)
             DealHistory.pull(list, gmail: gmail)
+            // A new inquiry (from Gmail, Ask Lens or by hand) becomes a project at Quoting right away.
+            if list.contains(where: { $0.projectID == nil && $0.stage != .won }) {
+                DispatchQueue.main.async { deals.giveEveryDealAProject(projects) }
+            }
         }
         .onReceive(projects.$projects) { list in
             people.sync(deals: deals.deals, projects: list)
@@ -340,8 +362,8 @@ struct Sidebar: View {
     @AppStorage("sidebarMoreOpen") private var moreOpen = false
 
     private func row(_ section: SidebarSection) -> some View {
-        Label(section == .pipeline && appearance.simple ? "Inquiries" : section.rawValue, systemImage: section.systemImage)
-            .badge(section == .pipeline ? deals.open.filter(\.isStale).count
+        Label(section.rawValue, systemImage: section.systemImage)
+            .badge(section == .projects ? deals.open.filter(\.isStale).count
                    : section == .people ? people.followUpsDue.count
                    : section == .logins ? logins.progress.total - logins.progress.done : 0)
             .tag(section)

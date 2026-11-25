@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "From your email": new inquiries (on Pipeline) or booked work (on Projects) that Lens spotted in Gmail.
+/// "From your email": new inquiries (new projects at Quoting) or booked work (on Projects) that Lens spotted in Gmail.
 /// Inquiries wait for Add or Ignore. On Projects, new work offers Add project (filled in), and emails Lens
 /// wasn't sure about ask "Which project is this for?". Ones it's sure about are filed by themselves.
 struct EmailSuggestionsPanel: View {
@@ -13,8 +13,9 @@ struct EmailSuggestionsPanel: View {
     @State private var teaching = false
 
     private var items: [EmailSuggestion] {
+        // On Projects: everything, since an inquiry is a project at Quoting too.
         place == .pipeline ? gmail.suggestions(for: [.inquiry, .attach], deals: true)
-                           : gmail.suggestions(for: [.project, .attach], deals: false)
+                           : gmail.suggestions.filter { [.inquiry, .project, .attach].contains($0.kind) }
     }
 
     var body: some View {
@@ -22,7 +23,7 @@ struct EmailSuggestionsPanel: View {
             HStack(spacing: 12) {
                 Image(systemName: "envelope").foregroundStyle(Palette.blue)
                 Text(place == .pipeline ? "Sign in with Google in Log-ins and Lens will bring new inquiries in from your email."
-                                        : "Sign in with Google in Log-ins and Lens will spot booked work in your email.")
+                                        : "Sign in with Google in Log-ins and Lens will bring new inquiries and booked work in from your email.")
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 Spacer()
                 Button("Open Log-ins") { navigator.open(.logins) }.buttonStyle(SecondaryButtonStyle())

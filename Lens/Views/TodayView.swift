@@ -27,7 +27,7 @@ struct TodayView: View {
         var icon: String {
             switch actionTitle {
             case "Build proposal": return "doc.text"
-            case "Open deal": return "envelope"
+            case "Open project": return "envelope"
             case "Open person": return "person"
             case "Open project": return kicker.contains("payment") ? "dollarsign.circle" : "camera"
             default: return "sparkles"
@@ -173,17 +173,17 @@ struct TodayView: View {
             TileOption(id: "openDeals", label: "Open deals", about: "What the deals you could still win are worth.") {
                 StatTile(label: "Open deals", value: Money.short(n.openDealsValue),
                          note: n.openDealsCount == 0 ? "No deals in play" : "\(n.openDealsCount) in play",
-                         color: Palette.blue) { navigator.open(.pipeline) }
+                         color: Palette.blue) { navigator.open(.projects) }
             },
             TileOption(id: "hours", label: "Hours this week", about: "Hours you've logged this week, with the last 8 weeks as a trend.") {
                 StatTile(label: "Hours this week", value: Hours.short(hoursNow),
                          note: n.weeksHours.dropLast().isEmpty ? "" : "8 week trend", color: Palette.orchid,
                          trend: n.weeksHours) { navigator.open(.projects) }
             },
-            TileOption(id: "winRate", label: "Win rate", about: "How often a deal turns into a booking.") {
+            TileOption(id: "winRate", label: "Win rate", about: "How often a quote turns into a booking.") {
                 StatTile(label: "Win rate", value: n.winRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "None yet",
-                         note: n.winRate == nil ? "Shows once a deal is won or lost" : "\(n.won) won, \(n.lost) lost",
-                         color: Palette.mint) { navigator.open(.pipeline) }
+                         note: n.winRate == nil ? "Shows once a quote books or doesn't" : "\(n.won) won, \(n.lost) lost",
+                         color: Palette.mint) { navigator.open(.projects) }
             },
             TileOption(id: "onPace", label: "On pace for", about: "What you'll keep this month if it carries on the way it's going.") {
                 StatTile(label: "On pace for",
@@ -435,7 +435,7 @@ struct TodayView: View {
 
     /// Simple: "What do I do today, and is my week okay?" A greeting, the day in time order, the few things
     /// that need her (each with one button), the rest of the week, and a way to ask Lens. Numbers and charts
-    /// live in Money and Pipeline.
+    /// live in Money and Projects.
     private var simpleToday: some View {
         let all = items.filter { !$0.admin }
         return ScrollView {
@@ -629,7 +629,7 @@ struct TodayView: View {
         }
 
         for project in projects.active {
-            if let date = project.shootDate, isSoon(date), project.stage.rawValue <= ProjectStage.shoot.rawValue {
+            if let date = project.shootDate, isSoon(date), project.stage != .lead, project.stage.rawValue <= ProjectStage.shoot.rawValue {
                 result.append(Item(tone: .soon, kicker: relativeDay(date), title: project.name,
                                    detail: project.location.isEmpty ? "Shoot day" : "Shoot at \(project.location)",
                                    actionTitle: "Open project") { navigator.openProject(project.id) })
@@ -659,7 +659,7 @@ struct TodayView: View {
         for deal in deals.open.filter({ $0.isStale && !($0.stage == .inquiry && $0.proposalDue != nil) }).sorted(by: { (deals.value(of: $0) ?? 0) > (deals.value(of: $1) ?? 0) }) {
             result.append(Item(tone: .soon, kicker: "\(deal.stage.label) · \(deals.valueText(of: deal))", title: deal.title,
                                detail: DealCard.nextMove(deal),
-                               actionTitle: "Open deal") { navigator.openDeal(deal.id) })
+                               actionTitle: "Open project") { navigator.openDeal(deal.id) })
         }
 
         for person in people.followUpsDue {
@@ -702,7 +702,7 @@ struct TodayView: View {
 
     private var briefing: String {
         var parts: [String] = []
-        let soon = projects.active.filter { isSoon($0.shootDate) && $0.stage.rawValue <= ProjectStage.shoot.rawValue }
+        let soon = projects.active.filter { isSoon($0.shootDate) && $0.stage != .lead && $0.stage.rawValue <= ProjectStage.shoot.rawValue }
         if let next = soon.first, let date = next.shootDate {
             parts.append("\(next.name) shoots \(relativeDay(date).lowercased()).")
         }
@@ -718,7 +718,7 @@ struct TodayView: View {
         let nudges = deals.open.filter(\.isStale)
         if let top = nudges.max(by: { (deals.value(of: $0) ?? 0) < (deals.value(of: $1) ?? 0) }) {
             parts.append(nudges.count == 1 ? "\(top.title) has gone quiet for \(top.daysSinceTouch()) days, worth a nudge."
-                                           : "\(nudges.count) deals need a nudge, starting with \(top.title).")
+                                           : "\(nudges.count) quotes need a nudge, starting with \(top.title).")
         }
         let due = people.followUpsDue
         if !due.isEmpty {

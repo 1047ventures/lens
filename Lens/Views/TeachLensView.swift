@@ -148,8 +148,8 @@ struct TeachLensView: View {
     private func takeText(_ take: GmailSync.TeachCard.Take) -> String {
         switch take {
         case .onProject(_, let name): return "Put it on the project \(name)."
-        case .onDeal(_, let name): return "Put it on \(name) in Pipeline."
-        case .waiting(.inquiry, _): return "Suggested it as a new inquiry. It's waiting for you in Pipeline."
+        case .onDeal(_, let name): return "Put it on \(name) in Projects at Quoting."
+        case .waiting(.inquiry, _): return "Suggested it as a new inquiry. It's waiting for you in Projects at Quoting."
         case .waiting(.project, _): return "Suggested it as booked work. It's waiting for you in Projects."
         case .waiting(.attach, let name):
             return name.map { "Thinks it might belong to \($0), and is asking you." } ?? "Thinks it's work, and is asking which job it's for."
@@ -179,7 +179,7 @@ struct TeachLensView: View {
                 Text("Thanks, that's all of them.").font(Theme.font(size: 18, weight: .semibold)).foregroundStyle(Theme.text)
                 Text(summary).font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Lens sorts your email by these answers from now on. Anything you said is work is waiting for you in Pipeline or Projects.")
+                Text("Lens sorts your email by these answers from now on. Anything you said is work is waiting for you in Projects.")
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }

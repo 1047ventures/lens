@@ -307,7 +307,7 @@ struct PeopleView: View {
                         TagChip(text: d.title, color: ProjectStage.lead.color, selected: onID == d.id) {
                             onID = onID == d.id ? nil : d.id
                         }
-                        .help("Open deal · show everyone on it")
+                        .help("Open the project · show everyone on it")
                     }
                 }
             }

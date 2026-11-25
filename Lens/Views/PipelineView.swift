@@ -324,9 +324,9 @@ struct DealCard: View {
             }
             return "Last heard \(ago)" + (deal.isStale ? ". Nudge them" : "")
         case .won:
-            return "Won · now a project"
+            return "Booked"
         case .lost:
-            return deal.lostReason.map { "Lost: \($0)" } ?? "Lost"
+            return deal.lostReason.map { "Didn't book: \($0)" } ?? "Didn't book"
         }
     }
 }
