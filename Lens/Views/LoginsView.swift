@@ -25,9 +25,9 @@ struct LoginsView: View {
 
     private let groups = [
         Group(id: "Google account", color: Palette.blue, note: "One sign-in covers most of what Lens reads.", items: [.google, .calendar, .drive]),
-        Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes your calls.", items: [.zoom]),
         Group(id: "Where clients find you", color: Palette.orchid, note: "Every way a new inquiry can arrive.", items: [.website, .social, .directories]),
         Group(id: "Money", color: Palette.lime, note: "You log in on their own sites. Lens only reads statements.", items: [.freshbooks, .bank, .paypal, .venmo]),
+        Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes your calls.", items: [.zoom]),
         Group(id: "Lens itself", color: Palette.violet, note: "Ask Lens, and sending feature ideas.", items: [.claude, .github]),
         Group(id: "Coming later", color: Palette.slate, note: "", items: [.homeServer]),
     ]
@@ -58,11 +58,11 @@ struct LoginsView: View {
                     Text("The accounts Lens reads so it can see the whole business. Lens never sees your passwords.")
                         .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 }
-                ArrangeablePage("logins", spacing: 28, boxes: groups.filter { !$0.items.allSatisfy { logins.status($0).isLater } }.map { group in
-                    PageBox(Self.boxID(group), group.id, color: group.color) {
+                ArrangeablePage("logins", columns: true, spacing: 28, boxes: groups.filter { !$0.items.allSatisfy { logins.status($0).isLater } }.map { group in
+                    PageBox(Self.boxID(group), group.id, color: group.color, half: group.items.filter { !logins.status($0).isLater }.count <= 2) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(group.id).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                            EvenGrid(minimum: 260) {
                                 ForEach(group.items.filter { !logins.status($0).isLater }) { simpleCard($0) }
                             }
                         }
@@ -70,7 +70,6 @@ struct LoginsView: View {
                 })
             }
             .padding(40)
-            .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(item: $setupID) { id in
@@ -110,7 +109,7 @@ struct LoginsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .leading)
         .panel()
     }
 
@@ -118,8 +117,8 @@ struct LoginsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 header
-                ArrangeablePage("logins", spacing: 26, boxes: groups.map { group in
-                    PageBox(Self.boxID(group), group.id, color: group.color) {
+                ArrangeablePage("logins", columns: true, spacing: 26, boxes: groups.map { group in
+                    PageBox(Self.boxID(group), group.id, color: group.color, half: true) {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
                                 ColorLabel(group.id, group.color)
@@ -135,7 +134,6 @@ struct LoginsView: View {
                     .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             .padding(40)
-            .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -177,6 +175,7 @@ struct LoginsView: View {
                     Text("Next: \(info.name)").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Text(next == .google ? "This one unlocks email, Calendar and project folders." : info.covers)
                         .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    Spacer(minLength: 8)
                     Button("Open") { expanded.insert(next) }.buttonStyle(SecondaryButtonStyle())
                 }
                 .padding(12)

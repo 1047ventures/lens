@@ -430,9 +430,8 @@ struct TodayView: View {
                     Text(all.isEmpty ? "enjoy the quiet" : "you've got this")
                         .font(Theme.script(size: 26)).foregroundStyle(Palette.violet)
                 }
-                ArrangeablePage("today", spacing: 30, boxes: simpleBoxes(all))
+                ArrangeablePage("today", columns: true, spacing: 30, boxes: simpleBoxes(all))
             }
-            .frame(maxWidth: 1180, alignment: .leading)
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
             .frame(maxWidth: .infinity)
@@ -442,8 +441,8 @@ struct TodayView: View {
 
     private func simpleBoxes(_ all: [Item]) -> [PageBox] {
         var boxes: [PageBox] = []
-        if logins.googleCalendarReady { boxes.append(PageBox("yourDay", "Your day", color: Palette.blue) { yourDay }) }
-        boxes.append(PageBox("things", "A few things for you", color: Theme.coral) { thingsForYou(all) })
+        if logins.googleCalendarReady { boxes.append(PageBox("yourDay", "Your day", color: Palette.blue, half: true) { yourDay }) }
+        boxes.append(PageBox("things", "A few things for you", color: Theme.coral, half: logins.googleCalendarReady) { thingsForYou(all) })
         boxes.append(PageBox("week", "Your week", color: Theme.teal) { restOfWeek })
         boxes.append(PageBox("ask", "Ask Lens", color: Palette.violet) { askBar })
         return boxes

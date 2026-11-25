@@ -46,7 +46,7 @@ struct GearView: View {
                     PageBox("kind-" + kind.rawValue, kind.label, color: Palette.gold) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(kind.label).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                            EvenGrid(minimum: 250) {
                                 ForEach(items.filter { $0.kind == kind }) { simpleCard($0) }
                             }
                         }
@@ -54,7 +54,6 @@ struct GearView: View {
                 })
             }
             .padding(40)
-            .frame(maxWidth: 1000, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(item: $editing) { item in GearEditor(item: item) }
@@ -197,7 +196,6 @@ struct GearView: View {
                 ArrangeablePage("gear", spacing: 20, boxes: fullBoxes(items: items, worth: worth, paid: paid, service: service))
             }
             .padding(36)
-            .frame(maxWidth: 1100, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(item: $editing) { item in GearEditor(item: item) }

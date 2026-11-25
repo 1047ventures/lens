@@ -93,12 +93,11 @@ struct PipelineView: View {
                     }
                     .panel(padding: 22)
                 }
-                ArrangeablePage("inquiries", spacing: 28, boxes: simpleBoxes(needReply: needReply, needQuote: needQuote,
+                ArrangeablePage("inquiries", columns: true, spacing: 28, boxes: simpleBoxes(needReply: needReply, needQuote: needQuote,
                                                                            waiting: waiting, booked: booked, lost: lost))
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
-            .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(isPresented: $showNew) { NewDealSheet() }

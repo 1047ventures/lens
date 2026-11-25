@@ -398,3 +398,56 @@ extension View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.isStudio ? cornerRadius : Theme.radius))
     }
 }
+
+/// Cards in even columns that always fill the row: as many columns as fit (at least `minimum` wide,
+/// at most `most`), but never more than there are cards, so two cards share the width instead of
+/// sitting small on the left. Cards in a row get the same height.
+struct EvenGrid: Layout {
+    var minimum: CGFloat = 280
+    var most: Int = 4
+    var spacing: CGFloat = 16
+
+    private func columns(_ width: CGFloat, _ count: Int) -> Int {
+        guard width.isFinite, width > 0 else { return max(1, min(count, most)) }
+        return max(1, min(count, most, Int((width + spacing) / (minimum + spacing))))
+    }
+
+    /// The width to lay out in: what's offered, or the natural width when it's open-ended.
+    private func usable(_ offered: CGFloat?, _ count: Int) -> CGFloat {
+        if let offered, offered.isFinite, offered > 0 { return offered }
+        let cols = CGFloat(max(1, min(count, most)))
+        return minimum * cols + spacing * (cols - 1)
+    }
+
+    private func rows(_ width: CGFloat, _ subviews: Subviews) -> (width: CGFloat, rows: [(range: Range<Int>, height: CGFloat)]) {
+        let cols = columns(width, subviews.count)
+        let colWidth = (width - spacing * CGFloat(cols - 1)) / CGFloat(cols)
+        let rows = stride(from: 0, to: subviews.count, by: cols).map { start -> (range: Range<Int>, height: CGFloat) in
+            let range = start..<min(start + cols, subviews.count)
+            let height = range.map { subviews[$0].sizeThatFits(ProposedViewSize(width: colWidth, height: nil)).height }.max() ?? 0
+            return (range, height)
+        }
+        return (colWidth, rows)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let width = usable(proposal.width, subviews.count)
+        let laid = rows(width, subviews)
+        let height = laid.rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(laid.rows.count - 1, 0))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let laid = rows(usable(bounds.width, subviews.count), subviews)
+        var y = bounds.minY
+        for row in laid.rows {
+            for (i, index) in row.range.enumerated() {
+                subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(i) * (laid.width + spacing), y: y),
+                                      proposal: ProposedViewSize(width: laid.width, height: row.height))
+            }
+            y += row.height + spacing
+        }
+    }
+}

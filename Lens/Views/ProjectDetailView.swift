@@ -67,12 +67,13 @@ struct ProjectDetailView: View {
     private var simpleBoxes: [PageBox] {
         var boxes: [PageBox] = [
             PageBox("stage", "Where it's at", color: Theme.teal) { simpleStageLine },
-            PageBox("next", "Next up", color: Theme.coral) { simpleNextUp },
-            PageBox("people", "Who's on it", color: Palette.orchid) { simplePeople },
+            PageBox("next", "Next up", color: Theme.coral, half: true) { simpleNextUp },
+            PageBox("people", "Who's on it", color: Palette.orchid, half: true) { simplePeople },
         ]
-        if !moneySentences.isEmpty { boxes.append(PageBox("money", "Money", color: Palette.lime) { simpleMoney }) }
-        if !(project.emails ?? []).isEmpty {
-            boxes.append(PageBox("emails", "Latest emails", color: Palette.blue) { simpleEmails })
+        let hasMoney = !moneySentences.isEmpty, hasEmails = !(project.emails ?? []).isEmpty
+        if hasMoney { boxes.append(PageBox("money", "Money", color: Palette.lime, half: hasEmails) { simpleMoney }) }
+        if hasEmails {
+            boxes.append(PageBox("emails", "Latest emails", color: Palette.blue, half: hasMoney) { simpleEmails })
         }
         boxes.append(PageBox("more", "Where to find the rest", color: Theme.muted) { simpleFooter })
         return boxes
@@ -535,11 +536,10 @@ extension ProjectDetailView {
                 .buttonStyle(.plain)
 
                 simpleHeader
-                ArrangeablePage("project", spacing: 26, boxes: simpleBoxes)
+                ArrangeablePage("project", columns: true, spacing: 26, boxes: simpleBoxes)
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 32)
-            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(isPresented: $addingPerson) {

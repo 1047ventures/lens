@@ -36,7 +36,6 @@ struct MoneyView: View {
                 ArrangeablePage("money", columns: true, spacing: 20, boxes: everythingBoxes)
             }
             .padding(36)
-            .frame(maxWidth: 1240, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .overlay(alignment: .bottom) {
@@ -83,7 +82,7 @@ struct MoneyView: View {
         let bank = money.balance(.thisMonth).totalCash
         let sortCount = money.unsortedCount
         var boxes: [PageBox] = []
-        boxes.append(PageBox("cameIn", "Came in this month", color: Palette.lime) {
+        boxes.append(PageBox("cameIn", "Came in this month", color: Palette.lime, half: true) {
         simplePanel("Came in this month") {
             HeadlineNumber(text: dollars(cameIn), size: 44)
             if let usual = usualMonth {
@@ -93,7 +92,7 @@ struct MoneyView: View {
             }
         }
         })
-        boxes.append(PageBox("owed", "Waiting to be paid", color: Theme.amber) {
+        boxes.append(PageBox("owed", "Waiting to be paid", color: Theme.amber, half: true) {
         simplePanel("Waiting to be paid") {
             HeadlineNumber(text: dollars(owed), size: 44)
             if unpaid.isEmpty {
@@ -131,7 +130,7 @@ struct MoneyView: View {
         }
         })
         if hasMonthActivity {
-            boxes.append(PageBox("kept", "What you kept", color: Palette.violet) {
+            boxes.append(PageBox("kept", "What you kept", color: Palette.violet, half: hasBank) {
                     simplePanel("What you kept") {
                         HeadlineNumber(text: dollars(inc.net), size: 44)
                         Text(inc.net >= 0 ? "After costs you kept \(dollars(inc.net)) this month."
@@ -141,7 +140,7 @@ struct MoneyView: View {
             })
         }
         if hasBank {
-            boxes.append(PageBox("bank", "In the bank", color: Palette.blue) {
+            boxes.append(PageBox("bank", "In the bank", color: Palette.blue, half: hasMonthActivity) {
                     simplePanel("In the bank") {
                         HeadlineNumber(text: dollars(bank), size: 44)
                         Text("Across your accounts and cash on hand.")
@@ -209,7 +208,7 @@ struct MoneyView: View {
                         .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 }
 
-                ArrangeablePage("money", spacing: 22, boxes: simpleBoxes)
+                ArrangeablePage("money", columns: true, spacing: 22, boxes: simpleBoxes)
 
                 HStack(spacing: 0) {
                     Text("Statements, charts and every transaction are in ")
@@ -221,7 +220,6 @@ struct MoneyView: View {
                 }
                 .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             }
-            .frame(maxWidth: 760, alignment: .leading)
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
             .frame(maxWidth: .infinity)

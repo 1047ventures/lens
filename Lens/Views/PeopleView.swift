@@ -74,10 +74,10 @@ struct PeopleView: View {
     private func simpleBoxes(now: [Person], rest: [Person], stands: [UUID: Standing]) -> [PageBox] {
         var boxes: [PageBox] = []
         if !now.isEmpty {
-            boxes.append(PageBox("now", "Working with now", color: Theme.teal) { simpleGroup("Working with now", now, stands) })
+            boxes.append(PageBox("now", "Working with now", color: Theme.teal, half: !rest.isEmpty) { simpleGroup("Working with now", now, stands) })
         }
         if !rest.isEmpty {
-            boxes.append(PageBox("rest", "Everyone else", color: Palette.slate) { simpleGroup(now.isEmpty ? "Everyone" : "Everyone else", rest, stands) })
+            boxes.append(PageBox("rest", "Everyone else", color: Palette.slate, half: !now.isEmpty) { simpleGroup(now.isEmpty ? "Everyone" : "Everyone else", rest, stands) })
         }
         return boxes
     }
@@ -118,11 +118,10 @@ struct PeopleView: View {
                 } else if visible.isEmpty {
                     Text("No one matches that.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted).panel()
                 }
-                ArrangeablePage("people", spacing: 28, boxes: simpleBoxes(now: now, rest: rest, stands: stands))
+                ArrangeablePage("people", columns: true, spacing: 28, boxes: simpleBoxes(now: now, rest: rest, stands: stands))
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
-            .frame(maxWidth: 1000, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
