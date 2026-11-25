@@ -77,8 +77,12 @@ struct ArrangeablePage: View {
     @State private var ignoring = false
     /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
-    @State private var pointer: CGPoint = .zero
-    @State private var grab: CGSize = .zero
+    /// Where the pointer is lives outside the page's own state, so moving the mouse only
+    /// redraws the floating box, not every chart on the page.
+    @State private var tracker = DragTracker()
+    /// The box she swapped places with last, so it doesn't flip back and forth on a boundary.
+    @State private var lastOver: String?
+    @GestureState private var pressing = false
     /// The order while dragging, before it's saved.
     @State private var live: [BoxPlace]?
     @State private var frames: [String: CGRect] = [:]
@@ -175,11 +179,18 @@ struct ArrangeablePage: View {
         .padding(-grabWidth)
         .overlay(alignment: .topLeading) { floating }
         .simultaneousGesture(pageDrag)
-        .coordinateSpace(name: coordinateSpace)
-        .onPreferenceChange(BoxFrames.self) { frames = $0 }
+        .onChange(of: pressing) { _, now in
+            // If the Mac cancels the drag (it can when boxes move under the pointer), still put the box down.
+            if !now { finish() }
+        }
+        .background(GeometryReader { g in
+            Color.clear.preference(key: BoxFrames.self, value: ["_page": g.frame(in: .global)])
+        })
+        .onPreferenceChange(BoxFrames.self) { all in
+            tracker.origin = all["_page"]?.origin ?? .zero
+            frames = all.filter { !$0.key.hasPrefix("_") }
+        }
     }
-
-    private var coordinateSpace: String { "arrange." + page }
 
     /// How far outside a box's edge she can grab it.
     private let grabWidth: CGFloat = 14
@@ -229,7 +240,7 @@ struct ArrangeablePage: View {
                     }
             }
             .background(GeometryReader { g in
-                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .named(coordinateSpace))])
+                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .global)])
             })
     }
 
@@ -245,54 +256,65 @@ struct ArrangeablePage: View {
 
     /// One drag for the whole page, so it keeps going while boxes are moved around beneath it.
     private var pageDrag: some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .named(coordinateSpace))
+        DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .updating($pressing) { _, state, _ in state = true }
             .onChanged { v in
                 if dragging == nil {
                     if ignoring { return }
                     guard let id = box(grabbedAt: v.startLocation), let frame = frames[id] else { ignoring = true; return }
-                    grab = CGSize(width: v.startLocation.x - frame.minX, height: v.startLocation.y - frame.minY)
+                    tracker.grab = CGSize(width: v.startLocation.x - frame.minX, height: v.startLocation.y - frame.minY)
+                    tracker.size = frame.size
+                    tracker.pointer = v.location
                     live = merged()
+                    lastOver = nil
                     ringFor = nil
                     dragging = id
                     NSCursor.closedHand.set()
                 }
                 guard let id = dragging else { return }
-                pointer = v.location
+                tracker.pointer = v.location
                 reorder(id, at: v.location)
             }
-            .onEnded { _ in
-                ignoring = false
-                guard dragging != nil else { return }
-                if let live { layouts.save(key, live) }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    dragging = nil
-                    live = nil
-                }
-                NSCursor.arrow.set()
-            }
+            .onEnded { _ in finish() }
+    }
+
+    /// Put the box down where it is now and save the order.
+    private func finish() {
+        ignoring = false
+        guard dragging != nil else { return }
+        if let live { layouts.save(key, live) }
+        withAnimation(.easeOut(duration: 0.18)) {
+            dragging = nil
+            live = nil
+        }
+        lastOver = nil
+        NSCursor.arrow.set()
     }
 
     /// While dragging, the box takes the place of whichever box the pointer is over, and the rest slide along.
     private func reorder(_ id: String, at point: CGPoint) {
-        guard var list = live,
-              let over = frames.first(where: { $0.key != id && $0.value.contains(point) })?.key,
+        // Only swap once the pointer is well inside another box, and not with the one just swapped.
+        let over = frames.first { key, frame in
+            key != id && frame.insetBy(dx: frame.width * 0.15, dy: frame.height * 0.15).contains(point)
+        }?.key
+        guard let over else {
+            if !(frames.first { $0.value.contains(point) } != nil) { lastOver = nil }
+            return
+        }
+        guard over != lastOver, var list = live,
               let from = list.firstIndex(where: { $0.id == id }),
               let to = list.firstIndex(where: { $0.id == over }) else { return }
         let item = list.remove(at: from)
         list.insert(item, at: to)
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { live = list }
+        lastOver = over
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { live = list }
     }
 
     /// The box itself, following the pointer.
     @ViewBuilder
     private var floating: some View {
-        if let id = dragging, let box = boxes.first(where: { $0.id == id }), let frame = frames[id] {
-            box.view
-                .frame(width: frame.width, height: frame.height, alignment: .topLeading)
-                .scaleEffect(1.02)
-                .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
-                .offset(x: pointer.x - grab.width, y: pointer.y - grab.height)
-                .allowsHitTesting(false)
+        if let id = dragging, let box = boxes.first(where: { $0.id == id }) {
+            FloatingBox(tracker: tracker, content: box.view)
         }
     }
 
@@ -338,5 +360,31 @@ private struct EdgeBand: Shape {
         path.addRect(rect)
         path.addRect(rect.insetBy(dx: width, dy: width))
         return path
+    }
+}
+
+/// Where the pointer is during a drag. Only the floating box watches it.
+@MainActor
+private final class DragTracker: ObservableObject {
+    @Published var pointer: CGPoint = .zero
+    var grab: CGSize = .zero
+    var size: CGSize = .zero
+    /// Where the page itself sits on screen, to place the floating box within it.
+    var origin: CGPoint = .zero
+}
+
+/// The box being moved, following the pointer. Its own view, so mouse moves redraw only this.
+private struct FloatingBox: View {
+    @ObservedObject var tracker: DragTracker
+    let content: AnyView
+
+    var body: some View {
+        content
+            .frame(width: tracker.size.width, height: tracker.size.height, alignment: .topLeading)
+            .scaleEffect(1.02)
+            .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+            .offset(x: tracker.pointer.x - tracker.grab.width - tracker.origin.x,
+                    y: tracker.pointer.y - tracker.grab.height - tracker.origin.y)
+            .allowsHitTesting(false)
     }
 }
