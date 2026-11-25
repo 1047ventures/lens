@@ -8,7 +8,7 @@ struct ProjectDetailView: View {
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var zoom: ZoomNotes
-    @State private var tab: ProjectTab = .overview
+    @State private var place: ProjectPlace = .tab(.overview)
     @EnvironmentObject private var viewModel: ScanViewModel
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var money: MoneyStore
@@ -27,10 +27,15 @@ struct ProjectDetailView: View {
         Group {
             if appearance.simple { simpleBody } else { everythingBody }
         }
-        // Back on the same tab she left this project on, even after visiting another section.
-        .onAppear { tab = navigator.projectTabs[project.id] ?? .overview }
-        .onChange(of: project.id) { _, id in tab = navigator.projectTabs[id] ?? .overview }
-        .onChange(of: tab) { _, now in navigator.projectTabs[project.id] = now }
+        // Back where she left this project, even after visiting another section; a project she
+        // hasn't opened yet starts on the step it's at.
+        .onAppear { place = navigator.projectTabs[project.id] ?? .stage(project.stage) }
+        .onChange(of: project.id) { _, id in
+            place = navigator.projectTabs[id] ?? .stage(projects.project(id: id)?.stage ?? .lead)
+        }
+        .onChange(of: place) { _, now in navigator.projectTabs[project.id] = now }
+        // When she moves the project on, follow it if she was looking at the step it left.
+        .onChange(of: project.stage) { old, new in if place == .stage(old) { place = .stage(new) } }
     }
 
     /// Overview's boxes in their usual order; she can rearrange, resize or hide them.
@@ -74,20 +79,22 @@ struct ProjectDetailView: View {
                 header
                 stageTrack
                 tabBar
-                switch tab {
-                case .overview:
+                switch place {
+                case .stage(let step):
+                    ProjectStageView(project: project, stage: step, books: books, footage: footagePanel) { place = .tab($0) }
+                case .tab(.overview):
                     ArrangeablePage("project", columns: true, spacing: 28, boxes: overviewBoxes)
-                case .people:
+                case .tab(.people):
                     ProjectPeopleTab(project: project)
-                case .notes: ProjectNotesTab(project: project)
-                case .emails: ProjectEmailsTab(project: project)
-                case .proposal: ProjectProposalTab(project: project)
-                case .hours:
+                case .tab(.notes): ProjectNotesTab(project: project)
+                case .tab(.emails): ProjectEmailsTab(project: project)
+                case .tab(.proposal): ProjectProposalTab(project: project)
+                case .tab(.hours):
                     VStack(alignment: .leading, spacing: 28) {
                         ProjectTimePanel(project: project, books: books)
                         ProjectHoursTab(project: project)
                     }
-                case .money:
+                case .tab(.money):
                     VStack(alignment: .leading, spacing: 28) {
                         ProjectMoneyPanel(project: project, books: books)
                         ProjectMoneyTab(project: project)
@@ -130,8 +137,9 @@ struct ProjectDetailView: View {
                 ForEach(ProjectTab.allCases) { t in
                     let label = count(t).map { "\(t.rawValue) · \($0)" } ?? t.rawValue
                     let waiting = t == .notes ? zoom.waiting(for: project.id).count : 0
+                    let on = place == .tab(t)
                     Button {
-                        tab = t
+                        place = .tab(t)
                     } label: {
                         HStack(spacing: 6) {
                             Text(label)
@@ -144,16 +152,16 @@ struct ProjectDetailView: View {
                                     .clipShape(Capsule())
                             }
                         }
-                        .font(Theme.font(size: 13, weight: tab == t ? .semibold : .medium))
-                        .foregroundStyle(tab == t ? Theme.text : Theme.muted)
+                        .font(Theme.font(size: 13, weight: on ? .semibold : .medium))
+                        .foregroundStyle(on ? Theme.text : Theme.muted)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(tab == t ? Theme.raised : Color.clear)
+                        .background(on ? Theme.raised : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(tab == t ? .isSelected : [])
+                    .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
         }
@@ -168,7 +176,7 @@ struct ProjectDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel("In this project")
             ForEach([ProjectTab.people, .notes, .emails, .proposal]) { t in
-                Button { tab = t } label: {
+                Button { place = .tab(t) } label: {
                     HStack {
                         Text(t.rawValue).foregroundStyle(Theme.text2)
                         Spacer()
@@ -204,22 +212,14 @@ struct ProjectDetailView: View {
 
     private var stageTrack: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 6) {
+            // Each step opens what happened in it (or what's coming); the bar is the way around a project.
+            HStack(alignment: .top, spacing: 4) {
                 ForEach(ProjectStage.allCases) { step in
-                    VStack(alignment: .leading, spacing: 8) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(step.rawValue < project.stage.rawValue ? Theme.tealDim
-                                  : step == project.stage ? Theme.text : Theme.track)
-                            .frame(height: 6)
-                        Text(step.label)
-                            .font(Theme.font(size: 12, weight: step == project.stage ? .bold : .medium))
-                            .foregroundStyle(step.rawValue <= project.stage.rawValue ? Theme.text2 : Theme.muted)
+                    StageStep(step: step, current: project.stage, selected: place == .stage(step)) {
+                        place = .stage(step)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(project.stage.rawValue + 1) of 7, \(project.stage.label)")
 
             HStack(spacing: 10) {
                 if project.stage == .paid, project.folderPath != nil, !project.isOnServer {
@@ -227,7 +227,7 @@ struct ProjectDetailView: View {
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(moving)
                 } else if let next = project.stage.next, next != .archived {
-                    Button("Mark as \(next.label.lowercased())") {
+                    Button(next.moveLabel) {
                         projects.setStage(next, for: project)
                     }
                     .buttonStyle(PrimaryButtonStyle())
@@ -436,7 +436,7 @@ enum ServerFolder {
 
 extension ProjectDetailView {
     private var chips: [(String, ProjectStage)] {
-        [("Booked", .booked), ("Shot", .shoot), ("Editing", .edit), ("Delivered", .delivered), ("Paid", .paid)]
+        [ProjectStage.booked, .shoot, .edit, .delivered, .paid].map { ($0.label, $0) }
     }
 
     /// Where the project sits in the five chips, or -1 for an inquiry.
@@ -679,5 +679,38 @@ extension ProjectDetailView {
         }
         .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
         .padding(.top, 8)
+    }
+}
+
+/// One step on a project's stage bar: its progress line and name, clickable to open that step.
+private struct StageStep: View {
+    let step: ProjectStage
+    let current: ProjectStage
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(step.rawValue < current.rawValue ? Theme.tealDim : step == current ? Theme.text : Theme.track)
+                    .frame(height: 6)
+                Text(step.label)
+                    .font(Theme.font(size: 12, weight: step == current || selected ? .bold : .medium))
+                    .foregroundStyle(selected ? Theme.text : step.rawValue <= current.rawValue ? Theme.text2 : Theme.muted)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6).padding(.top, 6).padding(.bottom, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Theme.raised : hovering ? Theme.raised.opacity(0.5) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(step.rawValue > current.rawValue ? "See what's coming in \(step.label.lowercased())" : "See \(step.label.lowercased())")
+        .accessibilityLabel("\(step.label)\(step == current ? ", where this project is now" : "")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

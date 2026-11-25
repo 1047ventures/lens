@@ -98,7 +98,7 @@ final class Navigator: ObservableObject {
     /// when the Library is put away, so this is what's put back on return.
     var librarySaved: [FootageRoute] = []
     /// The tab each project was last on, so a project opens where she left it.
-    var projectTabs: [UUID: ProjectTab] = [:]
+    var projectTabs: [UUID: ProjectPlace] = [:]
 
     func openShoot(_ id: UUID) {
         footageRoute = .shoot(id)

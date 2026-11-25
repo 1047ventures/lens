@@ -7,15 +7,55 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
 
     var id: Int { rawValue }
 
+    /// The step's name everywhere in Lens, read as what's happening now.
     var label: String {
         switch self {
-        case .lead: return "Lead"
-        case .booked: return "Booked"
-        case .shoot: return "Shoot"
-        case .edit: return "Edit"
-        case .delivered: return "Delivered"
-        case .paid: return "Paid"
-        case .archived: return "Archived"
+        case .lead: return "Quoting"
+        case .booked: return "Planning"
+        case .shoot: return "Shooting"
+        case .edit: return "Editing"
+        case .delivered: return "Getting paid"
+        case .paid: return "Wrapping up"
+        case .archived: return "Put away"
+        }
+    }
+
+    /// What the step means, in one plain sentence.
+    var meaning: String {
+        switch self {
+        case .lead: return "Someone asked about it and it isn't booked yet. Quotes and first conversations live here."
+        case .booked: return "They said yes, and the shoot hasn't happened yet."
+        case .shoot: return "Being filmed or photographed now."
+        case .edit: return "Shot, and you're editing it."
+        case .delivered: return "They have it, and you're waiting to be paid."
+        case .paid: return "Paid, and not put away on the server yet."
+        case .archived: return "Finished and put away on the server."
+        }
+    }
+
+    /// What gathers in this step, for a step that hasn't started or has nothing in it yet.
+    var collects: String {
+        switch self {
+        case .lead: return "The inquiry, your quote, and the first emails and calls land here."
+        case .booked: return "The shoot date and place, who's involved, the contract, call sheets and planning calls land here."
+        case .shoot: return "Shoot day: the photos and videos, and the hours you spend shooting."
+        case .edit: return "The footage sorted by scene, camera or person, and the hours you spend editing."
+        case .delivered: return "What you delivered, the invoice, and anything still owed."
+        case .paid: return "Payments in, what you kept, a testimonial, and moving the footage to the server."
+        case .archived: return "Where the footage went, and the final numbers."
+        }
+    }
+
+    /// The button that moves a project into this step.
+    var moveLabel: String {
+        switch self {
+        case .lead: return "Back to quoting"
+        case .booked: return "Mark as booked"
+        case .shoot: return "Start shooting"
+        case .edit: return "Start editing"
+        case .delivered: return "Mark as delivered"
+        case .paid: return "Mark as paid"
+        case .archived: return "Put it away"
         }
     }
 
@@ -27,7 +67,8 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
         if t.hasPrefix("moved to ") { t.removeFirst(9) }
         let starts: [(String, ProjectStage)] = [
             ("paid", .paid), ("deliver", .delivered), ("shot", .shoot), ("shoot", .shoot),
-            ("edit", .edit), ("booked", .booked), ("lead", .lead), ("inquiry", .lead), ("archiv", .archived)
+            ("edit", .edit), ("booked", .booked), ("lead", .lead), ("inquiry", .lead), ("archiv", .archived),
+            ("quoting", .lead), ("planning", .booked), ("getting paid", .delivered), ("wrapping up", .paid), ("put away", .archived)
         ]
         return starts.first { t.hasPrefix($0.0) }?.1
     }

@@ -41,7 +41,7 @@ struct ProjectsView: View {
         var boxes = [PageBox("active", "Active", color: Theme.teal) { group(title: "Active", items: projects.active) }]
         let archived = projects.projects.filter { $0.stage == .archived }
         if !archived.isEmpty {
-            boxes.append(PageBox("archived", "Archived", color: Palette.slate) { group(title: "Archived", items: archived) })
+            boxes.append(PageBox("archived", "Put away", color: Palette.slate) { group(title: "Put away", items: archived) })
         }
         return boxes
     }
@@ -543,17 +543,7 @@ enum SimpleProject {
         }
     }
 
-    static func chipName(_ stage: ProjectStage) -> String {
-        switch stage {
-        case .lead: return "Inquiry"
-        case .booked: return "Booked"
-        case .shoot: return "Shooting"
-        case .edit: return "Editing"
-        case .delivered: return "Delivered"
-        case .paid: return "Paid"
-        case .archived: return "Done"
-        }
-    }
+    static func chipName(_ stage: ProjectStage) -> String { stage.label }
 
     /// One plain sentence about what comes next.
     static func nextLine(_ p: Project) -> String {

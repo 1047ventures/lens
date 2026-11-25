@@ -474,31 +474,11 @@ struct StageFunnel: View {
         return step.value > 0 ? jobs + " · " + Money.short(step.value) : jobs
     }
 
-    /// The step names in this chart, all read as what's happening now. The rest of Lens keeps `ProjectStage.label`.
-    static func name(_ stage: ProjectStage) -> String {
-        switch stage {
-        case .lead: return "Quoting"
-        case .booked: return "Planning"
-        case .shoot: return "Shooting"
-        case .edit: return "Editing"
-        case .delivered: return "Getting paid"
-        case .paid: return "Wrapping up"
-        case .archived: return "Put away"
-        }
-    }
+    /// The step names: the same words Lens uses everywhere.
+    static func name(_ stage: ProjectStage) -> String { stage.label }
 
     /// What each step means, shown when she rests the pointer on it.
-    static func meaning(_ stage: ProjectStage) -> String {
-        switch stage {
-        case .lead: return "Quoting: people who asked about a job and haven't booked yet. The money is what you've quoted them."
-        case .booked: return "Planning: they said yes, and the shoot hasn't happened yet."
-        case .shoot: return "Shooting: being filmed or photographed now."
-        case .edit: return "Editing: shot, and you're editing it."
-        case .delivered: return "Getting paid: they have it, and you're waiting to be paid."
-        case .paid: return "Wrapping up: paid, and not put away on the server yet."
-        case .archived: return "Put away on the server."
-        }
-    }
+    static func meaning(_ stage: ProjectStage) -> String { "\(stage.label): \(stage.meaning)" }
 }
 
 // MARK: - Hours donut
