@@ -81,6 +81,8 @@ struct ArrangeablePage: View {
     @State private var hoverFor: String?
     /// The "Choose boxes" sheet is open.
     @State private var choosing = false
+    /// How wide the page is, to decide whether two half boxes fit side by side.
+    @State private var pageWidth: CGFloat = 0
     /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
     /// Where the pointer is lives outside the page's own state, so moving the mouse only
@@ -163,12 +165,14 @@ struct ArrangeablePage: View {
         VStack(alignment: .leading, spacing: max(spacing - 2 * grabWidth, 0)) {
             ForEach(rows(list), id: \.first!.id) { row in
                 if row.count == 2 {
-                    ViewThatFits(in: .horizontal) {
+                    // Side by side whenever the page is wide enough for two, however long their sentences are.
+                    if pageWidth == 0 || pageWidth >= 2 * 340 + pairGap {
                         HStack(alignment: .top, spacing: pairGap) {
-                            slot(row[0]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
-                            slot(row[1]).frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                            slot(row[0]).frame(maxWidth: .infinity, alignment: .topLeading)
+                            slot(row[1]).frame(maxWidth: .infinity, alignment: .topLeading)
                         }
                         .fixedSize(horizontal: false, vertical: true)
+                    } else {
                         VStack(alignment: .leading, spacing: pairGap) { slot(row[0]); slot(row[1]) }
                     }
                 } else if row[0].half {
@@ -193,6 +197,11 @@ struct ArrangeablePage: View {
         .coordinateSpace(name: space)
         .onDisappear { finish() }
         .onPreferenceChange(BoxFrames.self) { frames = $0 }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { pageWidth = g.size.width }
+                .onChange(of: g.size.width) { _, w in pageWidth = w }
+        })
     }
 
     /// How far outside a box's edge she can grab it.

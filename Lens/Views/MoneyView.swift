@@ -513,6 +513,8 @@ struct MoneyView: View {
         let crew = list.filter { $0.category == .crew }.reduce(0) { $0 - $1.amount }
         let delivered = projects.active.filter { $0.stage == .delivered }.count
         let rates = deals.deals.filter { $0.stage == .won }.compactMap { $0.chosenOption }.map { deals.estimate($0).takeHomePerHour }
+        let deliverDays = JobSpeed.toDeliver(projects.projects)
+        let paidDays = JobSpeed.toPaid(projects.projects, money: money)
         // Cash
         let bal = money.balance(range)
         let openBills = money.receivables.filter { $0.paidOn == nil }
@@ -593,6 +595,16 @@ struct MoneyView: View {
             tile("yourRate", "Your rate", "What you take home per hour on booked quotes.",
                  value: rates.isEmpty ? "None yet" : "\(Money.string(rates.reduce(0, +) / Double(rates.count)))/hr",
                  note: rates.isEmpty ? "Shows once a quote is booked" : "take-home, on booked quotes", color: Palette.blue, go: toPipeline),
+            tile("daysToDeliver", "Days to deliver", "How long it usually takes from the shoot to handing the work over.",
+                 value: JobSpeed.usual(deliverDays).map(JobSpeed.daysText) ?? "None yet",
+                 note: deliverDays.isEmpty ? "Shows once a job is marked delivered"
+                    : "usually, from \(deliverDays.count) job\(deliverDays.count == 1 ? "" : "s")",
+                 color: Palette.blue, go: toProjects),
+            tile("daysToPaid", "Days to get paid", "How long it usually takes from delivering a job to being paid for it.",
+                 value: JobSpeed.usual(paidDays).map(JobSpeed.daysText) ?? "None yet",
+                 note: paidDays.isEmpty ? "Shows once a delivered job is paid"
+                    : "usually, from \(paidDays.count) job\(paidDays.count == 1 ? "" : "s")",
+                 color: Palette.blue, go: toProjects),
 
             tile("cash", "Cash on hand", "What is in your accounts right now.",
                  value: money.data.openings.isEmpty && !hasMoney ? "None yet" : Money.short(bal.totalCash),

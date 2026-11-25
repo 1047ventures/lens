@@ -165,4 +165,6 @@ struct MoneyData: Codable {
     var rules: [CategoryRule] = []
     var receivables: [Receivable] = []
     var gear: [GearItem] = []
+    /// What she'd like to keep each month, after costs. Optional so older books still load.
+    var monthlyGoal: Double?
 }

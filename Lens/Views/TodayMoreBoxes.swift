@@ -9,6 +9,14 @@ import Charts
 enum TodayMore {
     static func boxes(projects: ProjectStore, deals: DealStore, money: MoneyStore, navigator: Navigator) -> [PageBox] {
         [
+            PageBox("monthGoal", "This month's goal", color: Palette.lime, half: true, off: true,
+                    about: "How much you've kept this month next to a goal you set, and where the month is heading.") {
+                MonthGoalBox(money: money, navigator: navigator)
+            },
+            PageBox("weekChecks", "This week's checklist", color: Palette.mint, half: true, off: true,
+                    about: "A few simple checks for the week, ticked off as you go, with what to do for any that aren't.") {
+                WeekChecklistBox(projects: projects, deals: deals, money: money, navigator: navigator)
+            },
             PageBox("next30", "Shoots in the next 30 days", color: Theme.teal, half: true, off: true,
                     about: "Every shoot coming up in the next month, with its date.") {
                 ShootsAheadBox(projects: projects, navigator: navigator)
@@ -755,5 +763,341 @@ private struct DriveSpaceBox: View {
         let pct = Int((d.fractionUsed * 100).rounded())
         if d.fractionUsed >= 0.85 { return "\(d.name) is \(pct)% full. Library can show you what's safe to clear." }
         return "All your drives have room to spare. The fullest, \(d.name), is \(pct)% full."
+    }
+}
+
+// MARK: - 12. This month's goal
+
+/// A number field and Save for the monthly goal. The goal box is its home; the goal tile on Today
+/// opens the same field when there's no goal yet.
+struct GoalSetter: View {
+    @ObservedObject var money: MoneyStore
+    var onDone: () -> Void = {}
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    private var amount: Double? { MoneyStore.parseAmount(text).flatMap { $0 > 0 ? $0 : nil } }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("$").font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text3)
+            TextField("5000", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 110)
+                .focused($focused)
+                .onSubmit(save)
+            Button("Save", action: save)
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(amount == nil)
+                .opacity(amount == nil ? 0.5 : 1)
+        }
+        .onAppear {
+            if let goal = money.monthlyGoal { text = String(Int(goal)) }
+        }
+    }
+
+    private func save() {
+        guard let amount else { return }
+        money.setMonthlyGoal(amount)
+        onDone()
+    }
+}
+
+private struct MonthGoalBox: View {
+    @ObservedObject var money: MoneyStore
+    let navigator: Navigator
+    @State private var changing = false
+
+    var body: some View {
+        let m = MonthPace(money: money)
+        let editing = m.goal == nil || changing
+        let open: (() -> Void)? = editing ? nil : { navigator.open(.money) }
+        DashCard(title: "This month's goal", color: Palette.lime, action: open, takeaway: takeaway(m)) {
+            if let goal = m.goal, !changing {
+                HStack(alignment: .center, spacing: 22) {
+                    GoalRing(now: max(0, m.kept), best: goal, caption: "of goal",
+                             footer: m.reached ? "Goal reached" : "\(Money.short(m.left)) to go")
+                        .frame(width: 130)
+                    VStack(alignment: .leading, spacing: 12) {
+                        line("Kept so far", signedShort(m.kept))
+                        line("On pace for", m.ready ? Money.short(m.pace) : "Early days",
+                             note: m.ready ? "if the month carries on like this" : "shows from the 5th")
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            line("Your goal", Money.short(goal))
+                            Button("Change goal") { changing = true }
+                                .buttonStyle(.plain)
+                                .font(Theme.font(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.teal)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 2)
+            } else if m.goal != nil {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("What would you like to keep each month, after costs?")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
+                    GoalSetter(money: money) { changing = false }
+                    HStack(spacing: 16) {
+                        Button("Keep it as it was") { changing = false }
+                        Button("Take the goal away") {
+                            money.setMonthlyGoal(nil)
+                            changing = false
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(Theme.font(size: 12))
+                    .foregroundStyle(Theme.muted)
+                }
+                .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 12) {
+                    Text("Pick an amount you'd like to keep each month, after costs. Lens will show how the month is going and what's left to reach it.")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    GoalSetter(money: money)
+                }
+                .frame(maxWidth: .infinity, minHeight: 90)
+            }
+        }
+    }
+
+    private func line(_ label: String, _ value: String, note: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(Theme.font(size: 10, weight: .bold)).tracking(0.7).foregroundStyle(Theme.muted)
+            Text(value)
+                .font(Theme.font(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            if let note {
+                Text(note).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+        }
+    }
+
+    private func takeaway(_ m: MonthPace) -> String? {
+        guard let goal = m.goal else {
+            return m.kept > 0 ? "You've kept \(Money.short(m.kept)) so far this month." : nil
+        }
+        if changing { return nil }
+        let g = Money.short(goal)
+        if m.reached { return "You've reached this month's \(g) goal. Well done." }
+        if !m.ready {
+            return m.kept > 0 ? "Early days. You've kept \(Money.short(m.kept)) toward your \(g) goal."
+                              : "A fresh month. Your goal is to keep \(g)."
+        }
+        if m.pace >= goal { return "You're on pace to reach your \(g) goal. \(Money.short(m.left)) to go." }
+        return "\(Money.short(m.left)) more this month and you'll reach your \(g) goal."
+    }
+}
+
+// MARK: - 13. This week's checklist
+
+private struct WeekChecklistBox: View {
+    @ObservedObject var projects: ProjectStore
+    @ObservedObject var deals: DealStore
+    @ObservedObject var money: MoneyStore
+    let navigator: Navigator
+    @ObservedObject private var index = LibraryIndex.shared
+    @ObservedObject private var links = LibraryLinks.shared
+    @ObservedObject private var catalog = DriveCatalog.shared
+
+    private struct Check: Identifiable {
+        let id: String
+        let done: Bool
+        let text: String
+        var fix: String? = nil
+        var go: (() -> Void)? = nil
+    }
+
+    var body: some View {
+        let checks = self.checks
+        let done = checks.filter(\.done).count
+        DashCard(title: "This week's checklist", color: Palette.mint, takeaway: checks.isEmpty ? nil : takeaway(done, of: checks.count)) {
+            if checks.isEmpty {
+                DashEmpty("Once you have a few deals and jobs in Lens, a short checklist for the week shows up here.")
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 4) {
+                        ForEach(checks) { c in
+                            Capsule().fill(c.done ? Palette.mint : Theme.track.opacity(0.5)).frame(height: 5)
+                        }
+                    }
+                    ForEach(checks) { c in row(c) }
+                }
+            }
+        }
+        .onAppear { index.start() }
+    }
+
+    private func row(_ c: Check) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: c.done ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(c.done ? Palette.mint : Theme.muted)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(c.text)
+                    .font(Theme.font(size: 13, weight: c.done ? .regular : .medium))
+                    .foregroundStyle(c.done ? Theme.text3 : Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !c.done, let fix = c.fix, let go = c.go {
+                    Button(action: go) {
+                        HStack(spacing: 4) {
+                            Text(fix)
+                            Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold))
+                        }
+                        .font(Theme.font(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.teal)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func takeaway(_ done: Int, of total: Int) -> String {
+        if done == total { return total == 1 ? "All done. A great week." : "All \(total) done. A great week." }
+        if done == 0 { return "A few small jobs this week. Each one below says what to do." }
+        if total - done == 1 { return "\(done) of \(total) done. Nice week, just one left." }
+        return "\(done) of \(total) done. Nice week so far."
+    }
+
+    private var checks: [Check] {
+        let cal = Calendar.current
+        let now = Date()
+        let today = cal.startOfDay(for: now)
+        var list: [Check] = []
+        guard !deals.deals.isEmpty || !projects.projects.isEmpty else { return [] }
+
+        // New inquiries answered within 2 days.
+        let inquiries = deals.open.filter { $0.stage == .inquiry }
+        let slow = inquiries.filter { $0.daysSinceTouch() >= 2 }.sorted { $0.daysSinceTouch() > $1.daysSinceTouch() }
+        if let first = slow.first {
+            list.append(Check(id: "inquiries", done: false,
+                              text: slow.count == 1 ? "\(first.title) has waited \(Ago.daysText(first.daysSinceTouch())) for a reply."
+                                                    : "\(slow.count) new inquiries are waiting on a reply.",
+                              fix: slow.count == 1 ? "Reply to them" : "Open Pipeline",
+                              go: slow.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.pipeline) }))
+        } else {
+            list.append(Check(id: "inquiries", done: true,
+                              text: inquiries.isEmpty ? "No new inquiries waiting on a reply." : "Every new inquiry got an answer within 2 days."))
+        }
+
+        // Quotes followed up within a week.
+        let quotes = deals.open.filter { $0.stage == .proposalOut || $0.stage == .talking }
+        let quiet = quotes.filter { $0.daysSinceTouch() >= 7 }.sorted { $0.daysSinceTouch() > $1.daysSinceTouch() }
+        if let first = quiet.first {
+            list.append(Check(id: "quotes", done: false,
+                              text: quiet.count == 1 ? "\(first.title) hasn't heard from you in \(Ago.daysText(first.daysSinceTouch())). A quick check-in could help."
+                                                     : "\(quiet.count) quotes have gone a week without a follow-up. A quick check-in could help.",
+                              fix: quiet.count == 1 ? "Open the deal" : "Open Pipeline",
+                              go: quiet.count == 1 ? { navigator.openDeal(first.id) } : { navigator.open(.pipeline) }))
+        } else {
+            list.append(Check(id: "quotes", done: true,
+                              text: quotes.isEmpty ? "No quotes waiting on a follow-up." : "Every quote out has been followed up within a week."))
+        }
+
+        // Invoices: only once she has invoices in Lens (they come in from FreshBooks).
+        if !money.receivables.isEmpty {
+            let delivered = projects.active.filter { $0.stage == .delivered }
+            let missing = delivered.filter { !hasInvoice($0) }
+            if let first = missing.first {
+                list.append(Check(id: "invoices", done: false,
+                                  text: missing.count == 1 ? "\(first.name) is delivered but doesn't have an invoice yet."
+                                                           : "\(missing.count) delivered jobs don't have an invoice yet.",
+                                  fix: missing.count == 1 ? "Open the project" : "Open Projects",
+                                  go: missing.count == 1 ? { navigator.openProject(first.id) } : { navigator.open(.projects) }))
+            } else {
+                list.append(Check(id: "invoices", done: true,
+                                  text: delivered.isEmpty ? "No delivered jobs waiting on an invoice." : "Every delivered job has an invoice out."))
+            }
+
+            let late = money.receivables.filter { $0.paidOn == nil && $0.due < today }.sorted { $0.due < $1.due }
+            if let first = late.first {
+                let who = first.client.isEmpty ? first.label : first.client
+                list.append(Check(id: "overdue", done: false,
+                                  text: late.count == 1 ? "\(who)'s \(Money.short(first.amount)) is \(Ago.daysText(Ago.days(from: first.due))) late. A friendly reminder could help."
+                                                        : "\(late.count) payments are late, \(Money.short(late.reduce(0) { $0 + $1.amount })) in all. A friendly reminder could help.",
+                                  fix: late.count == 1 && first.projectID != nil ? "Open the project" : "Open Money",
+                                  go: late.count == 1 && first.projectID != nil ? { navigator.openProject(first.projectID!) } : { navigator.open(.money) }))
+            } else {
+                list.append(Check(id: "overdue", done: true, text: "Nobody is late paying you."))
+            }
+        }
+
+        // Hours: only if she tracks her time.
+        let all = projects.projects
+        if all.contains(where: { !$0.times.isEmpty || $0.timerStartedAt != nil }) {
+            let week = cal.dateInterval(of: .weekOfYear, for: now)
+            let start = week?.start ?? today
+            let end = week?.end ?? now
+            let hours = all.flatMap(\.times).filter { $0.date >= start && $0.date < end }.reduce(0) { $0 + $1.hours }
+                + all.compactMap(\.timerStartedAt).reduce(0) { $0 + now.timeIntervalSince(max($1, start)) / 3600 }
+            list.append(hours > 0.05
+                        ? Check(id: "hours", done: true, text: "You've logged \(Hours.short(hours)) this week.")
+                        : Check(id: "hours", done: false, text: "No hours logged yet this week. Start a timer on a job when you work on it.",
+                                fix: "Open Projects", go: { navigator.open(.projects) }))
+        }
+
+        // New footage filed to a shoot: only with drives added and looked through.
+        let skip = Set(catalog.drives.filter { $0.isPhotos || $0.isWebsite }.map(\.id))
+        let hasDrives = catalog.drives.contains { !$0.isPhotos && !$0.isWebsite }
+        if hasDrives && !index.folders.isEmpty {
+            let since = cal.date(byAdding: .day, value: -14, to: today) ?? today
+            let shelf = index.shelf(projects: all, links: links, catalog: catalog)
+            let loose = shelf.unsorted
+                .compactMap { index.folders.indices.contains($0) ? index.folders[$0] : nil }
+                .filter { !$0.isPhotosDay && !skip.contains($0.driveID) && $0.last >= since }
+            list.append(loose.isEmpty
+                        ? Check(id: "footage", done: true, text: "New footage from the last two weeks is all filed to a shoot.")
+                        : Check(id: "footage", done: false,
+                                text: loose.count == 1 ? "One new folder of footage isn't filed to a shoot yet."
+                                                       : "\(loose.count) new folders of footage aren't filed to a shoot yet.",
+                                fix: "Open Library", go: { navigator.open(.footage) }))
+        }
+        return list
+    }
+
+    /// An invoice on the project, or one for the same client that's still open or came after the shoot.
+    private func hasInvoice(_ p: Project) -> Bool {
+        let client = p.client.trimmingCharacters(in: .whitespaces).lowercased()
+        let since = p.shootDate ?? p.createdAt
+        return money.receivables.contains { r in
+            if r.projectID == p.id { return true }
+            guard r.projectID == nil, !client.isEmpty,
+                  r.client.trimmingCharacters(in: .whitespaces).lowercased() == client else { return false }
+            return r.paidOn == nil || r.due >= since
+        }
+    }
+}
+
+/// The "Goal so far" number on Today. With no goal yet, clicking it opens the same goal field as the box.
+struct GoalTile: View {
+    @ObservedObject var money: MoneyStore
+    let navigator: Navigator
+    @State private var setting = false
+
+    var body: some View {
+        let m = MonthPace(money: money)
+        if let goal = m.goal {
+            StatTile(label: "Goal so far", value: "\(Int((m.fraction * 100).rounded()))%",
+                     note: m.reached ? "Reached your \(Money.short(goal)) goal" : "\(Money.short(max(0, m.kept))) of \(Money.short(goal))",
+                     color: Palette.lime, noteColor: m.reached ? Palette.lime : Theme.text3) { navigator.open(.money) }
+        } else {
+            StatTile(label: "Goal so far", value: "No goal yet", note: "Click to set a monthly goal",
+                     color: Palette.lime) { setting = true }
+                .popover(isPresented: $setting, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("What would you like to keep each month, after costs?")
+                            .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                        GoalSetter(money: money) { setting = false }
+                    }
+                    .padding(16)
+                    .frame(width: 320, alignment: .leading)
+                }
+        }
     }
 }

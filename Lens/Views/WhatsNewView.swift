@@ -14,8 +14,14 @@ enum WhatsNew {
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
         ("2.0.2", [
+            Item(icon: "square.grid.2x2.fill", title: "Choose your boxes",
+                 detail: "At the bottom of Today there's a new Choose boxes button. Pick from extras like a monthly goal, a weekly checklist, who owes you, your best clients, what you really earn per hour and more. Switch on the ones you like."),
+            Item(icon: "number", title: "Pick your numbers",
+                 detail: "The number tiles on Today and Money now have Choose numbers under them, so you can keep the ones you care about and add new ones like profit margin and days to get paid."),
+            Item(icon: "sun.max.fill", title: "A kinder Today",
+                 detail: "Everything now opens with a few things for you, the rest folded away for later, and a plain sentence on each chart saying what it means."),
             Item(icon: "chart.bar.fill", title: "Where your jobs are",
-                 detail: "The Today card that used to say Lead to paid now spells out how many jobs are at each step and what they're worth. Rest the pointer on a step to see what it means."),
+                 detail: "The jobs card on Today now shows each step in plain words, from Quoting to Wrapping up, with how many jobs are there and what they're worth. Rest the pointer on a step to see what it means."),
         ]),
         ("2.0.1", [
             Item(icon: "photo.on.rectangle.angled", title: "A project's photos and videos, right there",

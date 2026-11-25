@@ -128,6 +128,86 @@ extension TodayNumbers {
     }
 }
 
+// MARK: - This month's pace
+
+/// Money kept so far this month and where that puts the month if it carries on the same way.
+@MainActor
+struct MonthPace {
+    let kept: Double
+    let day: Int
+    let daysInMonth: Int
+    let goal: Double?
+
+    init(money: MoneyStore, now: Date = Date()) {
+        let cal = Calendar.current
+        kept = money.income(.thisMonth).net
+        day = max(1, cal.component(.day, from: now))
+        daysInMonth = cal.range(of: .day, in: .month, for: now)?.count ?? 30
+        goal = money.monthlyGoal
+    }
+
+    /// The first few days are too few to guess the whole month from.
+    var ready: Bool { day >= 5 }
+    /// Kept so far per day, times the days in the month.
+    var pace: Double { max(0, kept) / Double(day) * Double(daysInMonth) }
+    var left: Double { max(0, (goal ?? 0) - kept) }
+    var reached: Bool { goal.map { kept >= $0 } ?? false }
+    /// How far along the goal she is, 0 to 1.
+    var fraction: Double { goal.map { $0 > 0 ? min(1, max(0, kept / $0)) : 0 } ?? 0 }
+}
+
+// MARK: - How long jobs take
+
+/// Worked out from the project's own history: the day she marked it delivered, and the first sign it was
+/// paid after that (marked paid, money in linked to it, or its invoice paid).
+@MainActor
+enum JobSpeed {
+    static func deliveredOn(_ p: Project) -> Date? {
+        p.events.first { $0.text.lowercased().hasPrefix("moved to delivered") }?.date
+    }
+
+    static func paidOn(_ p: Project, money: MoneyStore) -> Date? {
+        guard let delivered = deliveredOn(p) else { return nil }
+        let day = Calendar.current.startOfDay(for: delivered)
+        var seen: [Date] = p.events.filter { $0.text.lowercased().hasPrefix("moved to paid") && $0.date >= delivered }.map(\.date)
+        seen += money.txns.filter { $0.projectID == p.id && $0.category.group == .income && $0.amount > 0 && $0.date >= day }.map(\.date)
+        seen += money.receivables.filter { $0.projectID == p.id }.compactMap(\.paidOn).filter { $0 >= day }
+        return seen.min()
+    }
+
+    /// Days from the shoot to delivered, one per job that has both.
+    static func toDeliver(_ projects: [Project]) -> [Int] {
+        projects.compactMap { p in
+            guard let shoot = p.shootDate, let done = deliveredOn(p) else { return nil }
+            let d = days(shoot, done)
+            return d >= 0 ? d : nil
+        }
+    }
+
+    /// Days from delivered to paid, one per job that has both.
+    static func toPaid(_ projects: [Project], money: MoneyStore) -> [Int] {
+        projects.compactMap { p in
+            guard let done = deliveredOn(p), let paid = paidOn(p, money: money) else { return nil }
+            return max(0, days(done, paid))
+        }
+    }
+
+    /// The usual number: the middle one, so one slow job doesn't skew it.
+    static func usual(_ list: [Int]) -> Int? {
+        guard !list.isEmpty else { return nil }
+        let sorted = list.sorted()
+        let mid = sorted.count / 2
+        return sorted.count % 2 == 1 ? sorted[mid] : Int((Double(sorted[mid - 1] + sorted[mid]) / 2).rounded())
+    }
+
+    static func daysText(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
+
+    private static func days(_ from: Date, _ to: Date) -> Int {
+        let cal = Calendar.current
+        return cal.dateComponents([.day], from: cal.startOfDay(for: from), to: cal.startOfDay(for: to)).day ?? 0
+    }
+}
+
 // MARK: - Shared card
 
 /// A dashboard card: coloured heading, content, and the whole thing opens its home page.
@@ -141,36 +221,43 @@ struct DashCard<Content: View>: View {
     @State private var hover = false
 
     var body: some View {
-        Button { action?() } label: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    ColorLabel(title, color)
-                    Spacer()
-                    if action != nil {
-                        Image(systemName: "arrow.up.right")
-                            .font(Theme.font(size: 11, weight: .semibold))
-                            .foregroundStyle(hover ? color : Theme.muted.opacity(0.6))
-                    }
-                }
-                if let takeaway, !takeaway.isEmpty {
-                    Text(takeaway)
-                        .font(Theme.font(size: 13.5, weight: .medium))
-                        .foregroundStyle(Theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, -6)
-                }
-                content
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(hover && action != nil ? Theme.raised : Theme.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(hover && action != nil ? color.opacity(0.5) : Theme.line))
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+        // Without a place to go it isn't a button, so fields and links inside work normally.
+        if let action {
+            Button(action: action) { card }
+                .buttonStyle(.plain)
+                .onHover { hover = $0 }
+                .animation(.easeOut(duration: 0.15), value: hover)
+        } else {
+            card
         }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-        .animation(.easeOut(duration: 0.15), value: hover)
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                ColorLabel(title, color)
+                Spacer()
+                if action != nil {
+                    Image(systemName: "arrow.up.right")
+                        .font(Theme.font(size: 11, weight: .semibold))
+                        .foregroundStyle(hover ? color : Theme.muted.opacity(0.6))
+                }
+            }
+            if let takeaway, !takeaway.isEmpty {
+                Text(takeaway)
+                    .font(Theme.font(size: 13.5, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, -6)
+            }
+            content
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(hover && action != nil ? Theme.raised : Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(hover && action != nil ? color.opacity(0.5) : Theme.line))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -312,6 +399,9 @@ struct MoneyInChart: View {
 struct GoalRing: View {
     let now: Double
     let best: Double
+    /// The small word under the percent, and the line under the ring (worked out from `best` when nil).
+    var caption = "of best"
+    var footer: String? = nil
 
     private var fraction: Double { best > 0 ? min(1, max(0, now / best)) : (now > 0 ? 1 : 0) }
 
@@ -328,11 +418,11 @@ struct GoalRing: View {
                     Text("\(Int((fraction * 100).rounded()))%")
                         .font(Theme.font(size: 24, weight: .light)).monospacedDigit()
                         .foregroundStyle(Theme.text)
-                    Text("of best").font(Theme.font(size: 10.5)).foregroundStyle(Theme.muted)
+                    Text(caption).font(Theme.font(size: 10.5)).foregroundStyle(Theme.muted)
                 }
             }
             .frame(width: 104, height: 104)
-            Text(best > 0 ? (now >= best ? "Best month yet" : "\(Money.short(best - now)) to beat it") : "This month")
+            Text(footer ?? (best > 0 ? (now >= best ? "Best month yet" : "\(Money.short(best - now)) to beat it") : "This month"))
                 .font(Theme.font(size: 11.5, weight: .semibold))
                 .foregroundStyle(now >= best && best > 0 ? Palette.lime : Theme.text3)
         }
@@ -352,10 +442,10 @@ struct StageFunnel: View {
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(steps) { step in
                     HStack(spacing: 10) {
-                        Text(step.stage.label)
+                        Text(Self.name(step.stage))
                             .font(Theme.font(size: 12, weight: .semibold))
                             .foregroundStyle(step.count > 0 ? step.stage.color : Theme.muted)
-                            .frame(width: 68, alignment: .leading)
+                            .frame(width: 88, alignment: .leading)
                         GeometryReader { geo in
                             let w = step.count == 0 ? 6 : max(10, geo.size.width * CGFloat(step.count) / CGFloat(maxCount))
                             ZStack(alignment: .leading) {
@@ -384,15 +474,28 @@ struct StageFunnel: View {
         return step.value > 0 ? jobs + " · " + Money.short(step.value) : jobs
     }
 
+    /// The step names in this chart, all read as what's happening now. The rest of Lens keeps `ProjectStage.label`.
+    static func name(_ stage: ProjectStage) -> String {
+        switch stage {
+        case .lead: return "Quoting"
+        case .booked: return "Planning"
+        case .shoot: return "Shooting"
+        case .edit: return "Editing"
+        case .delivered: return "Getting paid"
+        case .paid: return "Wrapping up"
+        case .archived: return "Put away"
+        }
+    }
+
     /// What each step means, shown when she rests the pointer on it.
     static func meaning(_ stage: ProjectStage) -> String {
         switch stage {
-        case .lead: return "Leads: people who asked about a job but haven't booked yet. The money is what you've quoted them."
-        case .booked: return "Booked: they said yes, and the shoot hasn't happened yet."
-        case .shoot: return "Shoot: being filmed or photographed now."
-        case .edit: return "Edit: shot, and you're editing it."
-        case .delivered: return "Delivered: they have it, and you're waiting to be paid."
-        case .paid: return "Paid: done and paid, not put away on the server yet."
+        case .lead: return "Quoting: people who asked about a job and haven't booked yet. The money is what you've quoted them."
+        case .booked: return "Planning: they said yes, and the shoot hasn't happened yet."
+        case .shoot: return "Shooting: being filmed or photographed now."
+        case .edit: return "Editing: shot, and you're editing it."
+        case .delivered: return "Getting paid: they have it, and you're waiting to be paid."
+        case .paid: return "Wrapping up: paid, and not put away on the server yet."
         case .archived: return "Put away on the server."
         }
     }

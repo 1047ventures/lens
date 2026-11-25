@@ -13,6 +13,7 @@ final class MoneyStore: ObservableObject {
     var txns: [Txn] { data.txns }
     var gear: [GearItem] { data.gear }
     var receivables: [Receivable] { data.receivables }
+    var monthlyGoal: Double? { data.monthlyGoal }
 
     // MARK: - Periods
 
@@ -244,6 +245,12 @@ final class MoneyStore: ObservableObject {
 
     func addReceivable(_ r: Receivable) {
         data.receivables.append(r)
+        save()
+    }
+
+    /// Sets what she'd like to keep each month. Nil (or zero) takes the goal away.
+    func setMonthlyGoal(_ amount: Double?) {
+        data.monthlyGoal = amount.flatMap { $0 > 0 ? $0.rounded() : nil }
         save()
     }
 

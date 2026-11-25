@@ -134,33 +134,123 @@ struct TodayView: View {
         }
     }
 
+    /// Today's key numbers: the usual five, and more she can pick from.
     private func tiles(_ n: TodayNumbers) -> some View {
         let profit = n.thisMonth?.net ?? 0
         let last = n.months.dropLast().last?.net
         let hoursNow = n.weeksHours.last ?? 0
-        let cards = Group {
-            StatTile(label: "Owed to you", value: Money.short(n.owed),
-                     note: n.owedCount == 0 ? "Nobody owes you" : n.overdueCount > 0 ? "\(n.overdueCount) overdue of \(n.owedCount)" : "\(n.owedCount) on the way",
-                     color: Palette.gold, noteColor: n.overdueCount > 0 ? Theme.coral : Theme.text3) { navigator.open(.money) }
-            StatTile(label: "Kept this month", value: profit < 0 ? "-\(Money.short(-profit))" : Money.short(profit),
-                     note: last.map { profit >= $0 ? "Up from \(Money.short($0)) last month" : "Down from \(Money.short($0)) last month" } ?? "After costs",
-                     color: Palette.lime, trend: n.months.map(\.net),
-                     noteColor: last.map { profit >= $0 ? Palette.lime : Theme.text3 } ?? Theme.text3) { navigator.open(.money) }
-            StatTile(label: "Open deals", value: Money.short(n.openDealsValue),
-                     note: n.openDealsCount == 0 ? "No deals in play" : "\(n.openDealsCount) in play",
-                     color: Palette.blue) { navigator.open(.pipeline) }
-            StatTile(label: "Hours this week", value: Hours.short(hoursNow),
-                     note: n.weeksHours.dropLast().isEmpty ? "" : "8 week trend", color: Palette.orchid,
-                     trend: n.weeksHours) { navigator.open(.projects) }
-            StatTile(label: "Win rate", value: n.winRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "None yet",
-                     note: n.winRate == nil ? "Shows once a deal is won or lost" : "\(n.won) won, \(n.lost) lost",
-                     color: Palette.mint) { navigator.open(.pipeline) }
-        }
-        // One row of five when there's room, otherwise they wrap.
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) { cards.frame(minWidth: 170, maxWidth: .infinity) }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) { cards }
-        }
+        let pace = MonthPace(money: money)
+        let cal = Calendar.current
+        let now = Date()
+        let today = cal.startOfDay(for: now)
+        let week = cal.dateInterval(of: .weekOfYear, for: now)
+        let keptWeek = money.income((start: week?.start ?? today, end: week?.end ?? now)).net
+        let unpaid = money.receivables.filter { $0.paidOn == nil }
+        let onTheWay = unpaid.filter { $0.due >= today }
+        let late = unpaid.filter { $0.due < today }.sorted { $0.due < $1.due }
+        let hasBooks = !money.data.openings.isEmpty || !money.txns.isEmpty
+        let cash = money.balance(.thisMonth).totalCash
+        let month = money.income(.thisMonth)
+        let year = money.income(.thisYear)
+        let hasMonth = !money.txns(in: .thisMonth).isEmpty
+        let deliver = JobSpeed.usual(JobSpeed.toDeliver(projects.projects))
+        let paid = JobSpeed.usual(JobSpeed.toPaid(projects.projects, money: money))
+        let toMoney = { navigator.open(.money) }
+        func signed(_ v: Double) -> String { v < 0 ? "-\(Money.short(-v))" : Money.short(v) }
+
+        let options: [TileOption] = [
+            TileOption(id: "owed", label: "Owed to you", about: "Money clients still need to pay, and how much of it is late.") {
+                StatTile(label: "Owed to you", value: Money.short(n.owed),
+                         note: n.owedCount == 0 ? "Nobody owes you" : n.overdueCount > 0 ? "\(n.overdueCount) overdue of \(n.owedCount)" : "\(n.owedCount) on the way",
+                         color: Palette.gold, noteColor: n.overdueCount > 0 ? Theme.coral : Theme.text3, action: toMoney)
+            },
+            TileOption(id: "kept", label: "Kept this month", about: "What you've kept this month after costs, next to last month.") {
+                StatTile(label: "Kept this month", value: signed(profit),
+                         note: last.map { profit >= $0 ? "Up from \(Money.short($0)) last month" : "Down from \(Money.short($0)) last month" } ?? "After costs",
+                         color: Palette.lime, trend: n.months.map(\.net),
+                         noteColor: last.map { profit >= $0 ? Palette.lime : Theme.text3 } ?? Theme.text3, action: toMoney)
+            },
+            TileOption(id: "openDeals", label: "Open deals", about: "What the deals you could still win are worth.") {
+                StatTile(label: "Open deals", value: Money.short(n.openDealsValue),
+                         note: n.openDealsCount == 0 ? "No deals in play" : "\(n.openDealsCount) in play",
+                         color: Palette.blue) { navigator.open(.pipeline) }
+            },
+            TileOption(id: "hours", label: "Hours this week", about: "Hours you've logged this week, with the last 8 weeks as a trend.") {
+                StatTile(label: "Hours this week", value: Hours.short(hoursNow),
+                         note: n.weeksHours.dropLast().isEmpty ? "" : "8 week trend", color: Palette.orchid,
+                         trend: n.weeksHours) { navigator.open(.projects) }
+            },
+            TileOption(id: "winRate", label: "Win rate", about: "How often a deal turns into a booking.") {
+                StatTile(label: "Win rate", value: n.winRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "None yet",
+                         note: n.winRate == nil ? "Shows once a deal is won or lost" : "\(n.won) won, \(n.lost) lost",
+                         color: Palette.mint) { navigator.open(.pipeline) }
+            },
+            TileOption(id: "onPace", label: "On pace for", about: "What you'll keep this month if it carries on the way it's going.") {
+                StatTile(label: "On pace for",
+                         value: !hasMonth ? "None yet" : pace.ready ? Money.short(pace.pace) : "Early days",
+                         note: !hasMonth ? "Shows once money comes in" : !pace.ready ? "Shows from the 5th of the month"
+                            : pace.goal.map { pace.pace >= $0 ? "Ahead of your \(Money.short($0)) goal" : "Your goal is \(Money.short($0))" } ?? "this month, at this rate",
+                         color: Palette.lime,
+                         noteColor: pace.ready && pace.goal.map { pace.pace >= $0 } == true ? Palette.lime : Theme.text3, action: toMoney)
+            },
+            TileOption(id: "goal", label: "Goal so far", about: "How far you are toward the monthly goal you set.") {
+                GoalTile(money: money, navigator: navigator)
+            },
+            TileOption(id: "perHourWeek", label: "Per hour this week", about: "What you kept this week for every hour you logged.") {
+                StatTile(label: "Per hour this week",
+                         value: hoursNow > 0.05 ? "\(signed(keptWeek / hoursNow))/hr" : "None yet",
+                         note: hoursNow > 0.05 ? "\(signed(keptWeek)) kept over \(Hours.short(hoursNow))" : "Shows once you log hours this week",
+                         color: Palette.orchid) { navigator.open(.projects) }
+            },
+            TileOption(id: "onTheWay", label: "On the way", about: "Money you're owed that isn't late yet, next to what's already in hand.") {
+                StatTile(label: "On the way", value: onTheWay.isEmpty ? "None" : Money.short(onTheWay.reduce(0) { $0 + $1.amount }),
+                         note: hasBooks ? "\(Money.short(cash)) already in hand" : onTheWay.isEmpty ? "Nothing waiting right now" : "\(onTheWay.count) not due yet",
+                         color: Palette.gold, action: toMoney)
+            },
+            TileOption(id: "cash", label: "In hand", about: "What is in your accounts right now.") {
+                StatTile(label: "In hand", value: hasBooks ? Money.short(cash) : "None yet",
+                         note: hasBooks ? "checking, Venmo, PayPal" : "Shows once you add an account",
+                         color: Theme.amber, action: toMoney)
+            },
+            TileOption(id: "overdue", label: "Overdue", about: "Money that should already have been paid.") {
+                StatTile(label: "Overdue", value: late.isEmpty ? "None" : Money.short(late.reduce(0) { $0 + $1.amount }),
+                         note: late.isEmpty ? "nothing late" : late.map(\.client).filter { !$0.isEmpty }.joined(separator: ", "),
+                         color: late.isEmpty ? Theme.amber : Theme.coral, noteColor: late.isEmpty ? Theme.text3 : Theme.coral) {
+                    if let id = late.first?.projectID { navigator.openProject(id) } else { navigator.open(.money) }
+                }
+            },
+            TileOption(id: "cameIn", label: "Came in this month", about: "Everything clients paid you this month, before costs.") {
+                StatTile(label: "Came in this month", value: hasMonth ? Money.short(month.totalRevenue) : "None yet",
+                         note: hasMonth ? "before costs" : "Shows once money comes in", color: Palette.lime, action: toMoney)
+            },
+            TileOption(id: "margin", label: "Profit margin", about: "How many cents of every dollar you keep after costs, this month.") {
+                StatTile(label: "Profit margin",
+                         value: month.totalRevenue > 0 ? "\(Int((100 * month.net / month.totalRevenue).rounded()))%" : "None yet",
+                         note: month.totalRevenue > 0 ? "this month" : "Shows once money comes in", color: Palette.lime, action: toMoney)
+            },
+            TileOption(id: "yearToDate", label: "Kept this year", about: "What you have kept so far this calendar year.") {
+                StatTile(label: "Kept this year",
+                         value: year.totalRevenue > 0 || year.totalDirect + year.totalOverhead > 0 ? signed(year.net) : "None yet",
+                         note: year.totalRevenue > 0 ? "\(Money.short(year.totalRevenue)) came in" : "Shows once money comes in",
+                         color: Palette.violet, action: toMoney)
+            },
+            TileOption(id: "taxSetAside", label: "About set aside for tax", about: "A rough guess at what to put away for taxes this month. Ask your accountant for the real number.") {
+                StatTile(label: "About set aside for tax", value: month.net > 0 ? "About \(Money.short(month.net * 0.25))" : "None yet",
+                         note: month.net > 0 ? "roughly a quarter of this month" : "Shows once you have a profit",
+                         color: Palette.gold, action: toMoney)
+            },
+            TileOption(id: "daysToDeliver", label: "Days to deliver", about: "How long it usually takes from the shoot to handing the work over.") {
+                StatTile(label: "Days to deliver", value: deliver.map(JobSpeed.daysText) ?? "None yet",
+                         note: deliver == nil ? "Shows once a job is marked delivered" : "usually, shoot to delivered",
+                         color: Palette.blue) { navigator.open(.projects) }
+            },
+            TileOption(id: "daysToPaid", label: "Days to get paid", about: "How long it usually takes from delivering a job to being paid for it.") {
+                StatTile(label: "Days to get paid", value: paid.map(JobSpeed.daysText) ?? "None yet",
+                         note: paid == nil ? "Shows once a delivered job is paid" : "usually, delivered to paid",
+                         color: Palette.gold) { navigator.open(.projects) }
+            },
+        ]
+        return ChoosableTiles(key: "today", options: options, defaults: ["owed", "kept", "openDeals", "hours", "winRate"])
     }
 
     // MARK: - Pieces
