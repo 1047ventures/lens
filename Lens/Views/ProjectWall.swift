@@ -67,9 +67,42 @@ struct ProjectWall: View {
     private var away: [Project] { archived.filter { !deals.didntBook($0) } }
     private var waiting: [Project] { projects.active.filter { WallAttention.reason($0, deals: deals) != nil } }
 
+    /// Pictures (the wall) or Board (a column per step, left to right). Saved on this Mac.
+    @AppStorage("projects.view") private var view = "wall"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            chips
+            HStack(alignment: .center, spacing: 16) {
+                if view == "board" {
+                    Text("Every live project, by the step it's at. Click one to open it.")
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                } else {
+                    chips
+                }
+                Spacer(minLength: 0)
+                Picker("View", selection: $view) {
+                    Label("Pictures", systemImage: "square.grid.2x2").tag("wall")
+                    Label("Board", systemImage: "rectangle.split.3x1").tag("board")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .help("See projects as pictures, or as a board with a column for each step")
+            }
+            if view == "board" {
+                ProjectBoard(columns: ProjectStage.allCases.filter { $0 != .archived }.map { step in
+                    let items = sorted(projects.active.filter { $0.stage == step })
+                    return (step, title(for: step, items), items)
+                })
+            } else {
+                wall
+            }
+        }
+        .onAppear {
+            // A filter that empties out goes back to everything.
+            if case .needsYou = filter, waiting.isEmpty { filterKey = "all" }
+        }
+    }
+
+    @ViewBuilder private var wall: some View {
             switch filter {
             case .all:
                 ForEach(ProjectStage.allCases.filter { $0 != .archived }) { step in
@@ -85,11 +118,6 @@ struct ProjectWall: View {
             case .putAway:
                 shown(away, empty: "Nothing put away yet.")
             }
-        }
-        .onAppear {
-            // A filter that empties out goes back to everything.
-            if case .needsYou = filter, waiting.isEmpty { filterKey = "all" }
-        }
     }
 
     @ViewBuilder private func shown(_ items: [Project], empty: String) -> some View {
@@ -392,5 +420,143 @@ struct CoverCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .offset(x: 14, y: -10)
         }
+    }
+}
+
+// MARK: - Board
+
+/// Every live project in a column for its step, left to right, so the whole flow shows at a glance.
+struct ProjectBoard: View {
+    let columns: [(step: ProjectStage, title: String, items: [Project])]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row(width: nil)
+            ScrollView(.horizontal, showsIndicators: true) { row(width: 236).padding(.bottom, 10) }
+        }
+    }
+
+    private func row(width: CGFloat?) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            ForEach(columns, id: \.step) { column in
+                BoardColumn(title: column.title, count: column.items.count, items: column.items)
+                    .frame(minWidth: width ?? 190, idealWidth: width, maxWidth: width ?? .infinity, alignment: .top)
+            }
+        }
+    }
+}
+
+private struct BoardColumn: View {
+    let title: String
+    let count: Int
+    let items: [Project]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).font(Theme.font(size: 14, weight: .bold)).foregroundStyle(Theme.text)
+                    .lineLimit(1).minimumScaleFactor(0.85)
+                Spacer(minLength: 4)
+                Text("\(count)").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Theme.line.opacity(0.6)).clipShape(Capsule())
+            }
+            .padding(.horizontal, 4)
+            if items.isEmpty {
+                Text("Nothing here right now")
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
+            } else {
+                ForEach(items) { BoardCard(project: $0) }
+            }
+        }
+        .padding(10)
+        .background(Theme.panel.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// A small card on the board: a strip of the cover picture, the name, and what's next.
+private struct BoardCard: View {
+    let project: Project
+    @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var money: MoneyStore
+    @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var appearance: Appearance
+    @State private var hovering = false
+    @AppStorage("topbar.pins") private var pinsRaw = ""
+
+    private var reason: String? { WallAttention.reason(project, deals: deals) }
+
+    var body: some View {
+        Button {
+            navigator.projectID = project.id
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                ProjectCoverView(project: project)
+                    .frame(height: 74)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .overlay(alignment: .topTrailing) {
+                        if !appearance.simple, let worth {
+                            Text(worth)
+                                .font(Theme.font(size: 11, weight: .semibold)).foregroundStyle(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(.black.opacity(0.45)).clipShape(Capsule())
+                                .padding(7)
+                        }
+                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.name)
+                        .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(line)
+                        .font(Theme.font(size: 12, weight: reason == nil ? .regular : .semibold))
+                        .foregroundStyle(reason == nil ? Theme.text3 : Theme.amber)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Theme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(reason != nil ? Theme.amber : Theme.line, lineWidth: reason != nil ? 2 : 1)
+            }
+            .shadow(color: .black.opacity(hovering ? 0.18 : 0.06), radius: hovering ? 10 : 4, y: 3)
+            .scaleEffect(hovering ? 1.015 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
+        .help(reason.map { "Needs you: \($0)" } ?? project.name)
+        .contextMenu {
+            Button("Open") { navigator.projectID = project.id }
+            if TopBarPins.isShown(project, in: projects) {
+                Button("Take off the top bar") { TopBarPins.unpin(project, in: projects) }
+            } else {
+                Button("Pin to the top bar") { TopBarPins.pin(project, in: projects) }
+            }
+        }
+        .accessibilityLabel("\(project.name), \(project.stage.label)\(reason.map { ", needs you: \($0)" } ?? "")")
+    }
+
+    private var line: String {
+        if let reason { return reason }
+        var parts: [String] = [project.client.isEmpty ? "Your own idea" : project.client]
+        if project.stage == .lead, let q = deals.quote(for: project), q.stage.isOpen {
+            parts.append(DealCard.nextMove(q))
+        } else if let d = project.shootDate {
+            parts.append(SimpleProject.when(d))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var worth: String? {
+        if project.stage == .lead, let q = deals.quote(for: project), deals.value(of: q) != nil { return deals.valueText(of: q) }
+        return ProjectBooks.make(project, money: money, deals: deals).price.map { Money.short($0) }
     }
 }

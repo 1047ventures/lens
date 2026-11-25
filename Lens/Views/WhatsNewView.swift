@@ -16,6 +16,8 @@ enum WhatsNew {
         ("2.0.4", [
             Item(icon: "text.quote", title: "Each project starts with a quick catch-up",
                  detail: "At the top of every project, a few lines say what it is, how it came to you, and where it stands now. Lens writes them from your emails, call notes and people, and keeps them fresh when something new comes in. Everything else is still in the tabs below."),
+            Item(icon: "rectangle.split.3x1", title: "Projects as a board",
+                 detail: "On Projects, switch from Pictures to Board to see every project in a column for the step it's at, Quoting through Wrapping up, so the whole flow shows at a glance. Ones waiting on you have an amber edge."),
         ]),
         ("2.0.2", [
             Item(icon: "sunrise.fill", title: "Good morning cards",
