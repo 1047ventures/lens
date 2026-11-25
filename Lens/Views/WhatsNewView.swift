@@ -15,11 +15,11 @@ enum WhatsNew {
     static let notes: [(since: String, items: [Item])] = [
         ("2.0.2", [
             Item(icon: "sunrise.fill", title: "Good morning cards",
-                 detail: "The first time you open Lens each day, you get a few big cards, one thing on each: a shoot coming up, someone waiting on you, a proposal due. Tap the button to deal with it, or Later to move on. Then you land on your projects. Today is still there under the sun at the top right."),
+                 detail: "The first time you open Lens each day, you get a few big cards, one thing on each: a shoot coming up, someone waiting on you, a proposal due. Swipe or click through them, use the button to deal with one, or Later to move on. Then you land on Home: today, this week and this month at a glance."),
             Item(icon: "magnifyingglass", title: "Find anything with Command K",
                  detail: "Press Command and K from anywhere, type a name, a place or a job, and jump straight there. It finds projects, people and every page of Lens, and the last line asks Lens your question. Ask Lens is now Command J."),
             Item(icon: "rectangle.topthird.inset.filled", title: "More room for your work",
-                 detail: "The list down the left is gone, so every page gets the whole window. Projects and the ones you're working on are at the top left. Today, People, Library, Money and Gear are the small icons at the top right. Log-ins, Settings and Style are behind your picture. Right-click any project picture to pin it to the top."),
+                 detail: "The list down the left is gone, so every page gets the whole window. Home, Projects and the ones you're working on are at the top left. People, Library, Money and Gear are the small icons at the top right. Log-ins, Settings and Style are behind your picture. Right-click any project picture to pin it to the top."),
             Item(icon: "photo.on.rectangle.angled", title: "Projects as pictures",
                  detail: "Projects is now a wall of big pictures, one per project, using a photo from its footage folder. Ones waiting on you glow, and Needs you at the top shows just those. To change a picture, drag a photo onto it or right-click and choose Choose cover picture."),
             Item(icon: "arrow.down.right.circle.fill", title: "Pipeline is now part of Projects",

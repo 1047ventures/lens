@@ -38,7 +38,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 /// Shared navigation state, so any screen can jump to a section or open a project.
 @MainActor
 final class Navigator: ObservableObject {
-    @Published var section: SidebarSection? = .projects
+    @Published var section: SidebarSection? = .today
     /// "Style" is open.
     @Published var choosingStyle = false
     @Published var projectID: UUID?
@@ -156,10 +156,9 @@ struct ContentView: View {
         withAnimation(.easeOut(duration: 0.25)) { morning = things }
     }
 
-    /// Done or skipped: she lands on the wall of projects (a card's own button goes where it says).
+    /// Done or skipped: she lands on Home, the day, week and month at a glance (a card's own button goes where it says).
     private func finishMorning() {
-        navigator.open(.projects)
-        navigator.projectID = nil
+        navigator.open(.today)
         withAnimation(.easeOut(duration: 0.25)) { morning = nil }
     }
 
@@ -167,7 +166,7 @@ struct ContentView: View {
         // No sidebar: the bar across the top gets her everywhere, and the page gets the whole width.
         VStack(spacing: 0) {
             Group {
-                switch navigator.section ?? .projects {
+                switch navigator.section ?? .today {
                 case .today: TodayView()
                 case .pipeline: ProjectsView()
                 case .people: PeopleView()

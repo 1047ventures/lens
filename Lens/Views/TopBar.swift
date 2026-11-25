@@ -54,26 +54,23 @@ struct TopBarLeading: View {
     @AppStorage("topbar.pins") private var pinsRaw = ""
 
     private var onWall: Bool { navigator.section == .projects && navigator.projectID == nil }
+    private var onHome: Bool { navigator.section == .today }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
+        HStack(spacing: 6) {
+            place(on: onHome, help: "Home: what's happening today, this week and this month") {
+                Image("LensMark").resizable().frame(width: 22, height: 22)
+                Text("Home")
+            } action: {
+                navigator.open(.today)
+            }
+            place(on: onWall, help: "All your projects") {
+                Image(systemName: "square.grid.2x2").font(.system(size: 13))
+                Text("Projects")
+            } action: {
                 navigator.open(.projects)
                 navigator.projectID = nil
-            } label: {
-                HStack(spacing: 7) {
-                    Image("LensMark").resizable().frame(width: 22, height: 22)
-                    Text("Projects")
-                        .font(Theme.font(size: 13, weight: .semibold))
-                        .foregroundStyle(onWall ? Theme.text : Theme.text3)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(onWall ? Theme.teal.opacity(0.16) : .clear)
-                .clipShape(Capsule())
-                .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
-            .help("All your projects")
 
             let pins = TopBarPins.shown(projects)
             if !pins.isEmpty {
@@ -82,6 +79,20 @@ struct TopBarLeading: View {
             }
         }
         .id(pinsRaw)
+    }
+
+    private func place<Label: View>(on: Bool, help: String, @ViewBuilder label: () -> Label, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) { label() }
+                .font(Theme.font(size: 13, weight: .semibold))
+                .foregroundStyle(on ? Theme.text : Theme.text3)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(on ? Theme.teal.opacity(0.16) : .clear)
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 
@@ -134,7 +145,7 @@ struct TopBarPlaces: View {
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var people: PeopleStore
 
-    private let places: [SidebarSection] = [.today, .people, .footage, .money, .gear]
+    private let places: [SidebarSection] = [.people, .footage, .money, .gear]
 
     var body: some View {
         HStack(spacing: 2) {

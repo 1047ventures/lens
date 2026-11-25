@@ -25,12 +25,61 @@ struct MorningCardsView: View {
     let items: [TodayItem]
     let done: () -> Void
     @EnvironmentObject private var projects: ProjectStore
-    @State private var index = 0
+    /// The card showing. Swiping, scrolling, the arrows, the arrow keys and the dashes all move it.
+    @State private var current: Int? = 0
 
-    private var item: TodayItem { items[min(index, items.count - 1)] }
-    private var project: Project? { projects.project(id: item.projectID) }
+    private var index: Int { min(max(current ?? 0, 0), items.count - 1) }
 
-    private var tint: Color {
+    var body: some View {
+        ZStack {
+            Theme.ground.ignoresSafeArea()
+            // One card per page, side by side: swipe or scroll sideways on a trackpad or mouse.
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(items.indices, id: \.self) { i in
+                        page(i)
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .id(i)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $current)
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                top
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 36).padding(.top, 24)
+
+            HStack {
+                arrow("chevron.left", show: index > 0) { go(index - 1) }
+                Spacer()
+                arrow("chevron.right", show: true) { next() }
+            }
+            .padding(.horizontal, 16)
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.rightArrow) { next(); return .handled }
+        .onKeyPress(.leftArrow) { go(index - 1); return .handled }
+        .onKeyPress(.space) { next(); return .handled }
+        .onExitCommand { done() }
+    }
+
+    private func go(_ i: Int) {
+        guard items.indices.contains(i) else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { current = i }
+    }
+
+    /// The next card, or Home after the last one.
+    private func next() {
+        if index + 1 < items.count { go(index + 1) } else { done() }
+    }
+
+    private func tint(_ item: TodayItem) -> Color {
         switch item.tone {
         case .overdue: return Theme.coral
         case .soon: return Palette.violet
@@ -38,55 +87,75 @@ struct MorningCardsView: View {
         }
     }
 
-    var body: some View {
-        ZStack {
-            background
-            VStack(spacing: 0) {
-                top
-                Spacer(minLength: 0)
-                content
+    private func page(_ i: Int) -> some View {
+        let item = items[i]
+        let project = projects.project(id: item.projectID)
+        return ZStack(alignment: .bottomLeading) {
+            ZStack {
+                if let project {
+                    ProjectCoverView(project: project)
+                    Color.black.opacity(0.2)
+                } else {
+                    LinearGradient(colors: [tint(item).opacity(0.85), Theme.ground], startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
+                LinearGradient(colors: [.black.opacity(0.5), .clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom)
             }
-            .padding(36)
-        }
-        .onExitCommand { done() }
-    }
+            .background(Theme.ground)
+            // Click the picture to see the next card.
+            .contentShape(Rectangle())
+            .onTapGesture { next() }
 
-    @ViewBuilder private var background: some View {
-        ZStack {
-            if let project {
-                ProjectCoverView(project: project)
-                Color.black.opacity(0.25)
-            } else {
-                LinearGradient(colors: [tint.opacity(0.85), Theme.ground], startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
-            LinearGradient(colors: [.black.opacity(0.55), .clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom)
+            content(item, isLast: i == items.count - 1)
+                .padding(.horizontal, 72).padding(.bottom, 56)
         }
-        .background(Theme.ground)
-        .ignoresSafeArea()
+        .clipped()
     }
 
     private var top: some View {
         VStack(spacing: 12) {
             HStack(spacing: 5) {
                 ForEach(0..<items.count, id: \.self) { i in
-                    Capsule().fill(.white.opacity(i <= index ? 0.95 : 0.3)).frame(height: 4)
+                    Button { go(i) } label: {
+                        Capsule().fill(.white.opacity(i <= index ? 0.95 : 0.3)).frame(height: 4)
+                            .padding(.vertical, 6).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Card \(i + 1)")
                 }
             }
             HStack {
                 Text("\(index + 1) of \(items.count)")
                     .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
                 Spacer()
-                Button("Skip all", action: done)
-                    .buttonStyle(.plain)
-                    .font(Theme.font(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(.black.opacity(0.25)).clipShape(Capsule())
+                Button(action: done) {
+                    Text("Skip to Home")
+                        .font(Theme.font(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(.black.opacity(0.3)).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private var content: some View {
+    private func arrow(_ icon: String, show: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.3))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.25)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .opacity(show ? 1 : 0)
+        .disabled(!show)
+    }
+
+    private func content(_ item: TodayItem, isLast: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(item.kicker.uppercased())
                 .font(Theme.font(size: 12, weight: .bold)).tracking(1.2)
@@ -108,15 +177,8 @@ struct MorningCardsView: View {
                     Text(item.actionTitle).font(Theme.font(size: 15, weight: .bold)).padding(.horizontal, 10)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .keyboardShortcut(.defaultAction)
-                Button {
-                    if index + 1 < items.count {
-                        index += 1
-                    } else {
-                        done()
-                    }
-                } label: {
-                    Text("Later").font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 14)
+                Button { next() } label: {
+                    Text(isLast ? "On to my day" : "Later").font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 14)
                         .frame(minHeight: 36)
                         .background(.white.opacity(0.18)).clipShape(Capsule())
                 }
@@ -125,7 +187,5 @@ struct MorningCardsView: View {
             .padding(.top, 6)
         }
         .frame(maxWidth: 640, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 24)
     }
 }
