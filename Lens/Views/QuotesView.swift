@@ -11,6 +11,9 @@ struct QuotesPanel: View {
     @EnvironmentObject private var ai: LensAI
     @EnvironmentObject private var projects: ProjectStore
     @EnvironmentObject private var deals: DealStore
+    @EnvironmentObject private var navigator: Navigator
+    @State private var drafting = false
+    @State private var draftNote: String?
 
     private var list: [Quote] {
         quotes.quotes.filter { q in
@@ -22,7 +25,9 @@ struct QuotesPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel("Proposals and quotes · \(list.count)")
             if list.isEmpty {
-                Text("Upload the proposal or quote you sent. Lens keeps the file here, reads the price and what it covered, and remembers it for pricing future jobs.")
+                Text(dealID == nil
+                     ? "Upload the proposal or quote you sent. Lens keeps the file here, reads the price and what it covered, and remembers it for pricing future jobs."
+                     : "Upload your own proposal or quote, or let Lens make one for you from your usual prices. You can change anything before it goes out.")
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(list) { q in QuoteRow(quote: q) }
@@ -31,16 +36,48 @@ struct QuotesPanel: View {
                     quotes.upload(projectID: projectID, dealID: dealID, client: client, ai: ai, projects: projects, deals: deals)
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                if dealID != nil {
+                    Button(drafting ? "Lens is writing it…" : "Have Lens make one") { draft() }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(drafting || !ai.hasKey)
+                        .help(ai.hasKey
+                              ? "Lens drafts the proposal from the emails, calls and notes on this job, sized like your past work and priced from your rate card. Anything you already wrote stays."
+                              : "Connect Claude in Log-ins first")
+                }
+                if drafting { ProgressView().controlSize(.small) }
                 if let reading = quotes.reading {
                     ProgressView().controlSize(.small)
                     Text(reading).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
+            }
+            if let draftNote {
+                Text(draftNote + " Change anything in the proposal before you send it.")
+                    .font(Theme.font(size: 12)).foregroundStyle(Theme.text3).fixedSize(horizontal: false, vertical: true)
             }
             if let problem = quotes.problem {
                 Text(problem).font(Theme.font(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
             }
         }
         .panel(padding: 22)
+    }
+
+    /// Lens writes the proposal, then opens it so she can look it over.
+    private func draft() {
+        guard let id = dealID, let deal = deals.deal(id: id) else { return }
+        drafting = true
+        quotes.problem = nil
+        draftNote = nil
+        Task {
+            do {
+                let result = try await ai.draftProposal(deal, history: quotes.history(deals: deals))
+                deals.update(result.deal)
+                draftNote = result.priceNote
+                navigator.builderDealID = id
+            } catch {
+                quotes.problem = error.localizedDescription
+            }
+            drafting = false
+        }
     }
 }
 

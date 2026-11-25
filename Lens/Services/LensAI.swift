@@ -1587,3 +1587,118 @@ extension LensAI {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 }
+
+// MARK: - Lens drafts a proposal
+
+extension LensAI {
+    /// What came back from drafting: the deal with its blanks filled in, and a sentence on the price.
+    struct ProposalDraft {
+        let deal: Deal
+        let priceNote: String
+    }
+
+    /// Drafts a proposal for one inquiry from what Lens knows about it (emails, Zoom calls, call notes,
+    /// the budget they mentioned) and Emma's past quotes. Claude only sizes the job (days, crew, film length,
+    /// extras) and writes the words; every price comes from her rate card through the Estimator, so it
+    /// matches her usual pricing. Only blank parts are filled in: anything she already wrote stays.
+    func draftProposal(_ deal: Deal, history: [Quote]) async throws -> ProposalDraft {
+        guard let deals else { throw AIError("Lens isn't ready yet. Try again in a moment.") }
+        let past: [[String: Any]] = history.filter { ($0.amount ?? 0) > 0 && $0.dealID != deal.id }.prefix(40).map { q -> [String: Any] in
+            var row: [String: Any] = ["client": q.client, "title": q.title, "kind": q.kind, "price": q.amount ?? 0,
+                                      "status": q.status, "what_it_covered": q.deliverables]
+            if let days = q.shootDays { row["shoot_days"] = days }
+            if !q.packages.isEmpty { row["options"] = q.packages.map { "\($0.name): \($0.amount.map { Money.string($0) } ?? "") \($0.includes)" } }
+            return row
+        }
+        let facts: [String: Any] = ["this_inquiry": dealDetail(deal), "past_quotes": past, "her_rates": rateValues(deals.rates)]
+        let data = try JSONSerialization.data(withJSONObject: facts, options: [.sortedKeys])
+        guard let a = try await structured(system: Self.draftPrompt, schema: Self.draftSchema,
+                                           payload: String(decoding: data, as: UTF8.self)), !a.isEmpty else {
+            throw AIError("Claude's draft didn't come through. Try again in a moment.")
+        }
+        func s(_ k: String) -> String { ((a[k] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        func n(_ k: String, _ low: Int, _ high: Int) -> Int { min(max(Int(((a[k] as? Double) ?? Double((a[k] as? Int) ?? low)).rounded()), low), high) }
+
+        var d = deal
+        // The discovery answers: only where she hasn't written one.
+        var disc = d.disc
+        if disc.goal.isEmpty { disc.goal = s("goal") }
+        if disc.audience.isEmpty { disc.audience = s("audience") }
+        if disc.whereWatched.isEmpty { disc.whereWatched = s("where_watched") }
+        if disc.onCamera.isEmpty { disc.onCamera = s("on_camera") }
+        if disc.locations.isEmpty { disc.locations = s("locations") }
+        if disc.formats.isEmpty { disc.formats = s("formats") }
+        d.discovery = disc
+        // The opening words.
+        if d.story.isEmpty {
+            d.story.headline = s("headline")
+            d.story.logline = s("logline")
+            d.story.why = (a["why"] as? [String] ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        }
+        // The scope: only when there are no options yet. Prices come from her rate card.
+        if d.options.isEmpty {
+            var o = ScopeOption.starter()
+            o.localDays = n("local_days", 0, 30)
+            o.halfDayCount = n("half_days", 0, 10)
+            o.hourCount = n("shoot_hours", 0, 12)
+            if o.localDays == 0 && o.halfDayCount == 0 && o.hourCount == 0 { o.localDays = 1 }
+            o.travelDays = n("travel_days", 0, 30)
+            o.travelPlaces = o.travelDays > 0 ? s("travel_places") : ""
+            o.localCrew = n("crew", 0, 6)
+            o.travelCrew = o.localCrew
+            o.interviewees = n("interviewees", 0, 30)
+            o.filmMinutes = n("film_minutes", 1, 60)
+            o.revisionRounds = n("revision_rounds", 1, 5)
+            o.extras = (a["extras"] as? [String] ?? []).compactMap(Extra.init(rawValue:))
+            o.footageOnly = (a["footage_only"] as? Bool) ?? false
+            o.pitch = s("pitch")
+            d.options = ((a["three_options"] as? Bool) ?? true) ? o.threeWays() : [o]
+        }
+        let prices = d.options.map { deals.estimate($0).total }
+        var note = prices.count > 1
+            ? "Priced from your rate card: \(prices.map { Money.string($0) }.joined(separator: ", ")) for the three options."
+            : prices.first.map { "Priced from your rate card: \(Money.string($0))." } ?? ""
+        let compare = s("similar_jobs")
+        if !compare.isEmpty { note += " " + compare }
+        return ProposalDraft(deal: d, priceNote: note)
+    }
+
+    private static let draftPrompt = """
+    You draft a proposal for a freelance filmmaker and videographer (Emma) in her business app, Lens. You get \
+    one inquiry (the client, their emails, Zoom call summaries, her call notes, any budget they mentioned), \
+    her past quotes, and her rate card. Size the job the way she usually would for work like this: shoot days \
+    (or half days or hours for small shoots), travel days, how many collaborators beside her, interviewees, \
+    the length of the main film, revision rounds and extras. Use her past quotes for similar work as the guide \
+    to how she scopes, and keep the size realistic for any budget the client mentioned. Do not set prices: Lens \
+    works them out from her rate card. Fill in the discovery answers only from what the client actually said \
+    (leave a field "" when it wasn't said). Write a headline, a one-sentence logline and two or three reasons \
+    this film matters to them, opening with their goal, not with Emma. pitch: one sentence on what the main \
+    option includes. three_options: true for most jobs (full vision, close to it, bare bones); false for a \
+    small, simple job. extras: only from trailer, socialCut, verticalCut, stills, interviewLibrary, rawFootage. \
+    similar_jobs: one short sentence naming up to three similar past jobs and what she charged, or "" if none. \
+    Plain English, no em dashes, no jargon.
+    """
+
+    private static let draftSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "goal": ["type": "string"], "audience": ["type": "string"], "where_watched": ["type": "string"],
+            "on_camera": ["type": "string"], "locations": ["type": "string"], "formats": ["type": "string"],
+            "headline": ["type": "string"], "logline": ["type": "string"],
+            "why": ["type": "array", "items": ["type": "string"]],
+            "local_days": ["type": "number"], "half_days": ["type": "number"], "shoot_hours": ["type": "number"],
+            "travel_days": ["type": "number"], "travel_places": ["type": "string"],
+            "crew": ["type": "number"], "interviewees": ["type": "number"], "film_minutes": ["type": "number"],
+            "revision_rounds": ["type": "number"],
+            "extras": ["type": "array", "items": ["type": "string",
+                       "enum": ["trailer", "socialCut", "verticalCut", "stills", "interviewLibrary", "rawFootage"]]],
+            "footage_only": ["type": "boolean"],
+            "pitch": ["type": "string"], "three_options": ["type": "boolean"], "similar_jobs": ["type": "string"],
+        ],
+        "required": ["goal", "audience", "where_watched", "on_camera", "locations", "formats", "headline", "logline",
+                     "why", "local_days", "half_days", "shoot_hours", "travel_days", "travel_places", "crew",
+                     "interviewees", "film_minutes", "revision_rounds", "extras", "footage_only", "pitch",
+                     "three_options", "similar_jobs"],
+        "additionalProperties": false,
+    ]
+}
