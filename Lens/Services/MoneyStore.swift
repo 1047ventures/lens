@@ -34,8 +34,14 @@ final class MoneyStore: ObservableObject {
         }
     }
 
-    func txns(in period: Period) -> [Txn] {
-        let r = period.range()
+    typealias Span = (start: Date, end: Date)
+
+    func txns(in period: Period) -> [Txn] { txns(in: period.range()) }
+    func income(_ period: Period) -> Income { income(period.range()) }
+    func cashFlow(_ period: Period) -> CashFlow { cashFlow(period.range()) }
+    func balance(_ period: Period) -> Balance { balance(period.range()) }
+
+    func txns(in r: Span) -> [Txn] {
         return data.txns.filter { $0.date >= r.start && $0.date < r.end }.sorted { $0.date > $1.date }
     }
 
@@ -57,8 +63,8 @@ final class MoneyStore: ObservableObject {
     }
 
     /// Did I make money? Revenue and costs by category (costs as positive numbers).
-    func income(_ period: Period) -> Income {
-        let list = txns(in: period)
+    func income(_ r: Span) -> Income {
+        let list = txns(in: r)
         func lines(_ group: MoneyCategory.Group, sign: Double) -> [Line] {
             MoneyCategory.allCases.filter { $0.group == group }.compactMap { cat in
                 let total = list.filter { $0.category == cat }.reduce(0) { $0 + $1.amount } * sign
@@ -75,8 +81,7 @@ final class MoneyStore: ObservableObject {
     }
 
     /// Where did the cash go? Only accounts that hold cash; ties out start to end exactly.
-    func cashFlow(_ period: Period) -> CashFlow {
-        let r = period.range()
+    func cashFlow(_ r: Span) -> CashFlow {
         let list = data.txns.filter { $0.account.isCash && $0.date >= r.start && $0.date < r.end }
         func sum(_ groups: Set<MoneyCategory.Group>) -> Double {
             list.filter { groups.contains($0.category.group) }.reduce(0) { $0 + $1.amount }
@@ -96,8 +101,8 @@ final class MoneyStore: ObservableObject {
     }
 
     /// What's it all worth? As of the end of the period (or today).
-    func balance(_ period: Period) -> Balance {
-        let at = min(period.range().end, Date().addingTimeInterval(86400))
+    func balance(_ r: Span) -> Balance {
+        let at = min(r.end, Date().addingTimeInterval(86400))
         let cash = MoneyAccount.allCases.filter(\.isCash).compactMap { account -> Line? in
             let b = accountBalance(account, before: at)
             return abs(b) < 0.005 && data.openings[account.rawValue] == nil ? nil : Line(label: account.label, amount: b)

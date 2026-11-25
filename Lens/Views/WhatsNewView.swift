@@ -16,6 +16,8 @@ enum WhatsNew {
         ("2.0.1", [
             Item(icon: "map.fill", title: "From the map to the pictures",
                  detail: "Click a shoot on the Library map and you go straight to its photos and videos. If Lens hasn't found them yet, it shows the folders from around the shoot date so you can pick the right one."),
+            Item(icon: "book.fill", title: "Your books by day, week, month or year",
+                 detail: "The books in Money now have Day, Week, Month and Year tabs. Use the arrows to look back at an earlier one. The main lines stand out, and hovering over one tells you what it means."),
         ]),
         ("2.0.0", [
             Item(icon: "paintpalette.fill", title: "A fresh new look",

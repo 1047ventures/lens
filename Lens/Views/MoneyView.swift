@@ -12,14 +12,18 @@ struct MoneyView: View {
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var appearance: Appearance
 
-    @AppStorage("moneyPeriod") private var periodRaw = MoneyStore.Period.thisYear.rawValue
+    /// The books' tab: day, week, month or year. `back` steps to earlier ones (0 is the current one).
+    @AppStorage("money.span") private var spanRaw = BooksSpan.month.rawValue
+    @State private var back = 0
     @State private var onlyUnsorted = false
     @State private var toast: String?
     @State private var importURL: URL?
     /// Which groups in the books are open. Closed by default so only the main numbers show.
     @AppStorage("moneyOpenGroups") private var openGroupsRaw = ""
 
-    private var period: MoneyStore.Period { MoneyStore.Period(rawValue: periodRaw) ?? .thisYear }
+    private var span: BooksSpan { BooksSpan(rawValue: spanRaw) ?? .month }
+    private var range: MoneyStore.Span { span.range(back: back) }
+    private var rangeTitle: String { span.title(back: back) }
 
     var body: some View {
         if appearance.simple { simpleMoney } else { everything }
@@ -216,12 +220,6 @@ struct MoneyView: View {
                 Text(subtitle).font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
             }
             Spacer()
-            Picker("", selection: $periodRaw) {
-                ForEach(MoneyStore.Period.allCases) { Text($0.rawValue).tag($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 380)
             Menu {
                 Button("Bank + credit card") { navigator.bankLogin = .bank }
                 Button("Venmo") { navigator.bankLogin = .venmo }
@@ -240,10 +238,10 @@ struct MoneyView: View {
     }
 
     private var subtitle: String {
-        let i = money.income(period)
+        let i = money.income(range)
         if i.totalRevenue == 0 && money.txns.isEmpty { return "Tap Update from bank to bring in your transactions and start the books." }
-        return i.net >= 0 ? "You kept \(Money.string(i.net)) of the \(Money.string(i.totalRevenue)) that came in."
-                          : "You spent \(Money.string(-i.net)) more than came in."
+        return i.net >= 0 ? "\(rangeTitle): you kept \(Money.string(i.net)) of the \(Money.string(i.totalRevenue)) that came in."
+                          : "\(rangeTitle): you spent \(Money.string(-i.net)) more than came in."
     }
 
     private var unsortedBanner: some View {
@@ -260,15 +258,39 @@ struct MoneyView: View {
 
     // MARK: The books
 
+    /// Day, Week, Month, Year, with arrows to step back and forward and the dates showing.
+    private var spanTabs: some View {
+        HStack(spacing: 10) {
+            Picker("", selection: Binding(get: { spanRaw }, set: { spanRaw = $0; back = 0 })) {
+                ForEach(BooksSpan.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented).labelsHidden().frame(width: 240)
+            Button { back += 1 } label: { Image(systemName: "chevron.left") }
+                .buttonStyle(.borderless).help("Earlier")
+            Text(rangeTitle).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                .monospacedDigit().lineLimit(1).fixedSize().frame(minWidth: 130)
+            Button { back -= 1 } label: { Image(systemName: "chevron.right") }
+                .buttonStyle(.borderless).help("Later").disabled(back == 0)
+            if back > 0 {
+                Button { back = 0 } label: {
+                    Text("Back to now").font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.teal)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.borderless)
+                .fixedSize()
+            }
+        }
+    }
+
     private var books: some View {
-        let inc = money.income(period), cash = money.cashFlow(period), bal = money.balance(period)
+        let inc = money.income(range), cash = money.cashFlow(range), bal = money.balance(range)
         let rev = inc.totalRevenue
         func pct(_ v: Double) -> String? { rev > 0 ? "\(Int((100 * v / rev).rounded()))%" : nil }
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 ColorLabel("The books", Palette.lime)
                 Spacer()
-                Text(period.rawValue).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                spanTabs
                 Button(openGroups.isEmpty ? "Show every line" : "Main numbers only") {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         openGroupsRaw = openGroups.isEmpty ? Self.allGroups.joined(separator: ",") : ""
@@ -422,7 +444,7 @@ struct MoneyView: View {
                 if abs(c.unsorted) > 0.004 { row("Not sorted yet", c.unsorted) }
             }
             row("Ended with", c.end, .total, meaning: "Cash in your accounts at the end")
-            row(c.end >= c.start ? "Up by" : "Down by", abs(c.end - c.start))
+            row(abs(c.end - c.start) < 0.005 ? "No change" : (c.end > c.start ? "Up by" : "Down by"), abs(c.end - c.start))
         }
     }
 
@@ -450,8 +472,8 @@ struct MoneyView: View {
     }
 
     private var numbers: some View {
-        let inc = money.income(period), range = period.range()
-        let list = money.txns(in: period)
+        let inc = money.income(range)
+        let list = money.txns(in: range)
         let rev = inc.totalRevenue
         // Revenue
         let projectRevenue = Dictionary(grouping: list.filter { $0.category.group == .income && $0.projectID != nil }, by: { $0.projectID! })
@@ -469,7 +491,7 @@ struct MoneyView: View {
         let delivered = projects.active.filter { $0.stage == .delivered }.count
         let rates = deals.deals.filter { $0.stage == .won }.compactMap { $0.chosenOption }.map { deals.estimate($0).takeHomePerHour }
         // Cash
-        let bal = money.balance(period)
+        let bal = money.balance(range)
         let overdue = money.receivables.filter { $0.paidOn == nil && $0.due < Calendar.current.startOfDay(for: Date()) }
         // Gear
         let gearBought = list.filter { $0.category == .gear }.reduce(0) { $0 - $1.amount }
@@ -510,7 +532,7 @@ struct MoneyView: View {
             HStack {
                 ColorLabel("Numbers", Palette.violet)
                 Spacer()
-                Text(period.rawValue).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                Text(rangeTitle).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
             ForEach(groups, id: \.0) { group in
                 VStack(alignment: .leading, spacing: 8) {
@@ -596,12 +618,12 @@ struct MoneyView: View {
     // MARK: Transactions
 
     private var transactions: some View {
-        let list = money.txns(in: period).filter { !onlyUnsorted || $0.category == .uncategorized }
+        let list = money.txns(in: range).filter { !onlyUnsorted || $0.category == .uncategorized }
         let total = list.reduce(0) { $0 + $1.amount }
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 ColorLabel("All transactions", Palette.blue)
-                Text("\(list.count) · \(period.rawValue.lowercased())").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                Text("\(list.count) · \(rangeTitle)").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 Spacer()
                 Toggle("Only unsorted", isOn: $onlyUnsorted).toggleStyle(.checkbox).font(Theme.font(size: 12))
             }
@@ -740,5 +762,45 @@ private struct ImportSheet: View {
         }
         .padding(24)
         .frame(width: 440)
+    }
+}
+
+/// The tabs on the books: one day, week, month or year at a time.
+enum BooksSpan: String, CaseIterable, Identifiable {
+    case day, week, month, year
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+
+    private var unit: Calendar.Component {
+        switch self { case .day: return .day; case .week: return .weekOfYear; case .month: return .month; case .year: return .year }
+    }
+
+    /// The `back`-th one before the current one (0 is today, this week, this month, this year).
+    func range(back: Int, now: Date = Date()) -> MoneyStore.Span {
+        let cal = Calendar.current
+        let current = cal.dateInterval(of: unit, for: now)!.start
+        let start = cal.date(byAdding: unit, value: -back, to: current)!
+        return (start, cal.date(byAdding: unit, value: 1, to: start)!)
+    }
+
+    func title(back: Int, now: Date = Date()) -> String {
+        let r = range(back: back, now: now)
+        let cal = Calendar.current
+        switch self {
+        case .day:
+            if back == 0 { return "Today" }
+            if back == 1 { return "Yesterday" }
+            return r.start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        case .week:
+            if back == 0 { return "This week" }
+            if back == 1 { return "Last week" }
+            let last = cal.date(byAdding: .day, value: -1, to: r.end)!
+            return "\(r.start.formatted(.dateTime.month(.abbreviated).day())) to \(last.formatted(.dateTime.month(.abbreviated).day()))"
+        case .month:
+            return cal.isDate(r.start, equalTo: now, toGranularity: .year)
+                ? r.start.formatted(.dateTime.month(.wide)) : r.start.formatted(.dateTime.month(.wide).year())
+        case .year:
+            return r.start.formatted(.dateTime.year())
+        }
     }
 }
