@@ -73,8 +73,6 @@ struct ArrangeablePage: View {
 
     /// The box whose edge the pointer is on, ready to be picked up.
     @State private var ringFor: String?
-    /// True for a drag that started inside a box (that's the box's own business, not a move).
-    @State private var ignoring = false
     /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
     /// Where the pointer is lives outside the page's own state, so moving the mouse only
@@ -82,7 +80,8 @@ struct ArrangeablePage: View {
     @State private var tracker = DragTracker()
     /// The box she swapped places with last, so it doesn't flip back and forth on a boundary.
     @State private var lastOver: String?
-    @GestureState private var pressing = false
+    /// Watches the mouse for the whole window, so nothing inside a box can swallow a press.
+    @State private var mouse = MouseWatch()
     /// The order while dragging, before it's saved.
     @State private var live: [BoxPlace]?
     @State private var frames: [String: CGRect] = [:]
@@ -95,6 +94,7 @@ struct ArrangeablePage: View {
     }
 
     private var key: String { page + "." + (appearance.simple ? "simple" : "everything") }
+    private var space: String { "arrange." + page }
 
     // MARK: Order
 
@@ -151,6 +151,8 @@ struct ArrangeablePage: View {
 
     var body: some View {
         let list = shown
+        // Hand the mouse watcher this render's view of the page, so it never acts on an old one.
+        let _ = mouse.use(down: pressed, drag: moved, up: released)
         VStack(alignment: .leading, spacing: max(spacing - 2 * grabWidth, 0)) {
             ForEach(rows(list), id: \.first!.id) { row in
                 if row.count == 2 {
@@ -179,18 +181,11 @@ struct ArrangeablePage: View {
         .padding(-grabWidth)
         .contentShape(Rectangle())
         .overlay(alignment: .topLeading) { floating }
-        .simultaneousGesture(pageDrag)
-        .onChange(of: pressing) { _, now in
-            // If the Mac cancels the drag (it can when boxes move under the pointer), still put the box down.
-            if !now { finish() }
-        }
-        .background(GeometryReader { g in
-            Color.clear.preference(key: BoxFrames.self, value: ["_page": g.frame(in: .global)])
-        })
-        .onPreferenceChange(BoxFrames.self) { all in
-            tracker.origin = all["_page"]?.origin ?? .zero
-            frames = all.filter { !$0.key.hasPrefix("_") }
-        }
+        // Positions are measured from the page's own top-left corner, by both the boxes and the mouse.
+        .background(PageMouseReader(watch: mouse))
+        .coordinateSpace(name: space)
+        .onDisappear { finish() }
+        .onPreferenceChange(BoxFrames.self) { frames = $0 }
     }
 
     /// How far outside a box's edge she can grab it.
@@ -213,7 +208,7 @@ struct ArrangeablePage: View {
                 }
             }
             .background(GeometryReader { g in
-                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .global)])
+                Color.clear.preference(key: BoxFrames.self, value: [p.id: g.frame(in: .named(space))])
             })
             .padding(grabWidth)
             .overlay {
@@ -257,33 +252,54 @@ struct ArrangeablePage: View {
             .min { gap($0.value) < gap($1.value) }?.key
     }
 
-    /// One drag for the whole page, so it keeps going while boxes are moved around beneath it.
-    private var pageDrag: some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .global)
-            .updating($pressing) { _, state, _ in state = true }
-            .onChanged { v in
-                if dragging == nil {
-                    if ignoring { return }
-                    guard let id = box(grabbedAt: v.startLocation), let frame = frames[id] else { ignoring = true; return }
-                    tracker.grab = CGSize(width: v.startLocation.x - frame.minX, height: v.startLocation.y - frame.minY)
-                    tracker.size = frame.size
-                    tracker.pointer = v.location
-                    live = merged()
-                    lastOver = nil
-                    ringFor = nil
-                    dragging = id
-                    NSCursor.closedHand.set()
-                }
-                guard let id = dragging else { return }
-                tracker.pointer = v.location
-                reorder(id, at: v.location)
+    /// The button went down: note which box it's on, if any.
+    private func pressed(_ p: CGPoint) {
+        mouse.box = nil
+        if let id = box(grabbedAt: p) {
+            mouse.box = id; mouse.edge = true
+        } else if let id = frames.first(where: { $0.value.contains(p) })?.key {
+            mouse.box = id; mouse.edge = false
+        }
+    }
+
+    /// The mouse moved with the button down. Returns true when this page is moving a box,
+    /// so the box underneath doesn't also react.
+    private func moved(_ p: CGPoint) -> Bool {
+        if dragging == nil {
+            guard let id = mouse.box, let frame = frames[id] else { return false }
+            let start = mouse.downAt
+            if hypot(p.x - start.x, p.y - start.y) < 4 { return false }
+            // Just outside a box: pick it up straight away. On the box itself: only after
+            // holding still for a moment, so clicks and scrubbing inside it still work.
+            if !mouse.edge && Date().timeIntervalSince(mouse.downTime) < 0.25 {
+                mouse.box = nil
+                return false
             }
-            .onEnded { _ in finish() }
+            tracker.grab = CGSize(width: start.x - frame.minX, height: start.y - frame.minY)
+            tracker.size = frame.size
+            tracker.pointer = p
+            live = merged()
+            lastOver = nil
+            ringFor = nil
+            dragging = id
+            NSCursor.closedHand.set()
+        }
+        guard let id = dragging else { return false }
+        tracker.pointer = p
+        reorder(id, at: p)
+        return true
+    }
+
+    /// The button came up. Returns true if it ended a move.
+    private func released() -> Bool {
+        let wasDragging = dragging != nil
+        finish()
+        return wasDragging
     }
 
     /// Put the box down where it is now and save the order.
     private func finish() {
-        ignoring = false
+        mouse.box = nil
         guard dragging != nil else { return }
         if let live { layouts.save(key, live) }
         withAnimation(.easeOut(duration: 0.18)) {
@@ -372,8 +388,6 @@ private final class DragTracker: ObservableObject {
     @Published var pointer: CGPoint = .zero
     var grab: CGSize = .zero
     var size: CGSize = .zero
-    /// Where the page itself sits on screen, to place the floating box within it.
-    var origin: CGPoint = .zero
 }
 
 /// The box being moved, following the pointer. Its own view, so mouse moves redraw only this.
@@ -386,8 +400,83 @@ private struct FloatingBox: View {
             .frame(width: tracker.size.width, height: tracker.size.height, alignment: .topLeading)
             .scaleEffect(1.02)
             .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
-            .offset(x: tracker.pointer.x - tracker.grab.width - tracker.origin.x,
-                    y: tracker.pointer.y - tracker.grab.height - tracker.origin.y)
+            .offset(x: tracker.pointer.x - tracker.grab.width,
+                    y: tracker.pointer.y - tracker.grab.height)
             .allowsHitTesting(false)
     }
+}
+
+/// Follows the mouse over one page, in the page's own top-left coordinates.
+@MainActor
+private final class MouseWatch {
+    weak var view: NSView?
+    var box: String?
+    var edge = false
+    var downAt: CGPoint = .zero
+    var downTime = Date()
+    private var monitor: Any?
+    private var down: (CGPoint) -> Void = { _ in }
+    private var drag: (CGPoint) -> Bool = { _ in false }
+    private var up: () -> Bool = { false }
+
+    func use(down: @escaping (CGPoint) -> Void, drag: @escaping (CGPoint) -> Bool, up: @escaping () -> Bool) {
+        self.down = down; self.drag = drag; self.up = up
+    }
+
+    /// Watch while the page is in a window, stop when it leaves.
+    func attach(_ view: NSView) {
+        self.view = view
+        if view.window == nil { stop() } else if monitor == nil { start() }
+    }
+
+    private func start() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self, let view = self.view, let window = view.window, event.window === window else { return event }
+            let p = view.convert(event.locationInWindow, from: nil)
+            switch event.type {
+            case .leftMouseDown:
+                self.box = nil
+                // Only presses on the part of the page that's showing.
+                guard !view.isHiddenOrHasHiddenAncestor, view.visibleRect.contains(p) else { return event }
+                self.downAt = p
+                self.downTime = Date()
+                self.down(p)
+                return event
+            case .leftMouseDragged:
+                return self.drag(p) ? nil : event
+            default:
+                // After a move, let go somewhere far away, so a button that was pressed doesn't fire.
+                guard self.up() else { return event }
+                return NSEvent.mouseEvent(with: .leftMouseUp, location: CGPoint(x: -10_000, y: -10_000),
+                                          modifierFlags: event.modifierFlags, timestamp: event.timestamp,
+                                          windowNumber: event.windowNumber, context: nil,
+                                          eventNumber: event.eventNumber, clickCount: event.clickCount,
+                                          pressure: event.pressure) ?? event
+            }
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
+/// An invisible view behind the page that tells the mouse watcher where the page is.
+private struct PageMouseReader: NSViewRepresentable {
+    let watch: MouseWatch
+    func makeNSView(context: Context) -> PageMouseView {
+        let view = PageMouseView()
+        view.watch = watch
+        return view
+    }
+    func updateNSView(_ view: PageMouseView, context: Context) { view.watch = watch; watch.attach(view) }
+    static func dismantleNSView(_ view: PageMouseView, coordinator: ()) { view.watch?.stop() }
+}
+
+private final class PageMouseView: NSView {
+    weak var watch: MouseWatch?
+    override var isFlipped: Bool { true }
+    override func viewDidMoveToWindow() { watch?.attach(self) }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

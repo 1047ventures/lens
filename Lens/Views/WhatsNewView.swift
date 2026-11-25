@@ -19,7 +19,7 @@ enum WhatsNew {
             Item(icon: "leaf.fill", title: "Simple or Everything, at the top",
                  detail: "The Simple and Everything switch now sits at the top right, next to Ask Lens, so you can flip between them on any screen. Style at the bottom of the sidebar is just for the look."),
             Item(icon: "square.grid.2x2.fill", title: "Arrange any page your way",
-                 detail: "Point just outside the edge of any box and the pointer turns into a hand. Grab it and drag it anywhere on the page, and the other boxes slide out of the way. Right-click there to make a box half width so two sit side by side, or to hide it. Hidden boxes wait at the bottom of the page."),
+                 detail: "Press and hold on any box for a moment, then drag it anywhere on the page (or grab it straight away just outside its edge, where the pointer turns into a hand), and the other boxes slide out of the way. Right-click there to make a box half width so two sit side by side, or to hide it. Hidden boxes wait at the bottom of the page."),
             Item(icon: "book.fill", title: "Your books by day, week, month or year",
                  detail: "The books in Money now have Day, Week, Month and Year tabs. Use the arrows to look back at an earlier one. The main lines stand out, and hovering over one tells you what it means."),
         ]),
