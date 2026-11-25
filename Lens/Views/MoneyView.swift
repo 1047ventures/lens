@@ -321,11 +321,13 @@ struct MoneyView: View {
                 .buttonStyle(SecondaryButtonStyle())
             }
             ViewThatFits(in: .horizontal) {
+                // All three as tall as the tallest, so their bottom lines sit level.
                 HStack(alignment: .top, spacing: 14) {
                     incomeColumn(inc, pct: pct)
                     cashColumn(cash)
                     balanceColumn(bal)
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 14) {
                     incomeColumn(inc, pct: pct)
                     cashColumn(cash)
@@ -342,12 +344,12 @@ struct MoneyView: View {
 
     private func column<Content: View>(_ question: String, _ formal: String, color: Color, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(formal.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
-            Text(question).font(Theme.display(size: 20)).foregroundStyle(Theme.text).padding(.bottom, 10)
+            Text(formal.uppercased()).font(Theme.font(size: 12, weight: .bold)).tracking(0.8).foregroundStyle(color)
+            Text(question).font(Theme.display(size: 24)).foregroundStyle(Theme.text).padding(.bottom, 10)
             content()
         }
-        .padding(16)
-        .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
+        .padding(18)
+        .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.raised.opacity(0.5))
         .overlay(alignment: .top) { Rectangle().fill(color.opacity(0.8)).frame(height: 3) }
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -360,22 +362,23 @@ struct MoneyView: View {
         let tone = good == nil ? (style == .item ? Theme.text2 : Theme.text) : (good! ? Theme.teal : Theme.coral)
         return HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(Theme.font(size: style == .total ? 15 : (style == .sub ? 14 : 13),
+                .font(Theme.font(size: style == .total ? 18 : (style == .sub ? 17 : 16),
                                  weight: style == .total ? .bold : (style == .sub ? .semibold : .regular)))
                 .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
-                .lineLimit(1)
+                .lineLimit(style == .total ? 2 : 1)
+                .minimumScaleFactor(0.85)
                 .padding(.leading, style == .item ? 10 : 0)
             Spacer(minLength: 8)
             if let pct {
-                Text(pct).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
+                Text(pct).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
                     .help("Share of total revenue")
             }
             Text(signed(amount))
-                .font(style == .total ? Theme.display(size: 22) : Theme.font(size: style == .sub ? 14 : 13, weight: style == .item ? .regular : .semibold))
+                .font(style == .total ? Theme.display(size: 28) : Theme.font(size: style == .sub ? 17 : 16, weight: style == .item ? .regular : .semibold))
                 .monospacedDigit()
                 .foregroundStyle(tone)
         }
-        .padding(.vertical, style == .item ? 3 : 7)
+        .padding(.vertical, style == .item ? 4 : 8)
         .padding(.horizontal, style == .total ? 10 : 0)
         .background {
             if style == .total {
@@ -406,12 +409,12 @@ struct MoneyView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "chevron.right")
-                    .font(Theme.font(size: 8, weight: .bold))
+                    .font(Theme.font(size: 10, weight: .bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                Text(title).font(Theme.font(size: 13, weight: .semibold))
+                Text(title).font(Theme.font(size: 16, weight: .semibold))
                 Spacer(minLength: 8)
                 if !open, let total {
-                    Text(signed(total)).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
+                    Text(signed(total)).font(Theme.font(size: 16)).monospacedDigit().foregroundStyle(Theme.text2)
                 }
             }
             .foregroundStyle(Theme.muted)
@@ -434,7 +437,7 @@ struct MoneyView: View {
     private func incomeColumn(_ i: MoneyStore.Income, pct: @escaping (Double) -> String?) -> some View {
         column("Did I make money?", "Income statement", color: Palette.lime) {
             group("Revenue") {
-                if i.revenue.isEmpty { Text("Nothing yet").font(Theme.font(size: 12)).foregroundStyle(Theme.muted) }
+                if i.revenue.isEmpty { Text("Nothing yet").font(Theme.font(size: 15)).foregroundStyle(Theme.muted) }
                 ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
             }
             row("Total revenue", i.totalRevenue, .sub, meaning: "Everything clients paid you")
@@ -446,6 +449,7 @@ struct MoneyView: View {
                 ForEach(i.overhead) { row($0.label, -$0.amount, pct: pct($0.amount)) }
             }
             row("Total overhead", -i.totalOverhead, .sub, pct: pct(i.totalOverhead), meaning: "What the business costs to run, shoot or no shoot")
+            Spacer(minLength: 0)
             row("You kept", i.net, .total, pct: pct(i.net), good: i.net >= 0, meaning: "Your profit: revenue minus every cost")
         }
     }
@@ -465,8 +469,9 @@ struct MoneyView: View {
                 row("Paid to you / put in", c.owner)
                 if abs(c.unsorted) > 0.004 { row("Not sorted yet", c.unsorted) }
             }
-            row("Ended with", c.end, .total, meaning: "Cash in your accounts at the end")
             row(abs(c.end - c.start) < 0.005 ? "No change" : (c.end > c.start ? "Up by" : "Down by"), abs(c.end - c.start))
+            Spacer(minLength: 0)
+            row("Ended with", c.end, .total, meaning: "Cash in your accounts at the end")
         }
     }
 
@@ -481,6 +486,7 @@ struct MoneyView: View {
             group("What you owe", total: -b.card) {
                 row("Credit card", -b.card)
             }
+            Spacer(minLength: 0)
             row("Your business is worth", b.worth, .total, good: b.worth >= 0, meaning: "What you have minus what you owe")
         }
     }
