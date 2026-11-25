@@ -10,14 +10,20 @@ struct PageBox: Identifiable {
     var color: Color
     /// Starts at half width, side by side with the next half box (pages with columns only).
     var half: Bool
+    /// An extra she can switch on from "Choose boxes"; it starts off the page.
+    var off: Bool
+    /// One plain line on what the box tells her, shown when she's choosing boxes.
+    var about: String?
     let view: AnyView
 
     init<Content: View>(_ id: String, _ title: String, color: Color = Theme.teal, half: Bool = false,
-                        @ViewBuilder _ content: () -> Content) {
+                        off: Bool = false, about: String? = nil, @ViewBuilder _ content: () -> Content) {
         self.id = id
         self.title = title
         self.color = color
         self.half = half
+        self.off = off
+        self.about = about
         self.view = AnyView(content())
     }
 }
@@ -73,6 +79,8 @@ struct ArrangeablePage: View {
 
     /// The box whose edge the pointer is on, ready to be picked up.
     @State private var hoverFor: String?
+    /// The "Choose boxes" sheet is open.
+    @State private var choosing = false
     /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
     /// Where the pointer is lives outside the page's own state, so moving the mouse only
@@ -117,14 +125,13 @@ struct ArrangeablePage: View {
 
     private var shown: [Placed] {
         (live ?? merged()).compactMap { place in
-            guard !(place.hidden ?? false), let box = boxes.first(where: { $0.id == place.id }) else { return nil }
+            guard let box = boxes.first(where: { $0.id == place.id }), !isHidden(place, box) else { return nil }
             return Placed(box: box, half: columns && (place.half ?? box.half))
         }
     }
 
-    private var hiddenBoxes: [PageBox] {
-        merged().filter { $0.hidden ?? false }.compactMap { p in boxes.first { $0.id == p.id } }
-    }
+    /// Off the page: she hid it, or it's an extra she hasn't switched on.
+    private func isHidden(_ place: BoxPlace, _ box: PageBox) -> Bool { place.hidden ?? box.off }
 
     /// Two half boxes in a row share it; anything else gets a row to itself.
     private func rows(_ list: [Placed]) -> [[Placed]] {
@@ -174,7 +181,7 @@ struct ArrangeablePage: View {
                     slot(row[0])
                 }
             }
-            if !hiddenBoxes.isEmpty { hiddenNote.padding(.horizontal, grabWidth).padding(.top, grabWidth) }
+            chooseButton.padding(.horizontal, grabWidth).padding(.top, grabWidth)
         }
         // Each box carries an invisible grab band inside its own space; pull the page out by the
         // same amount so the boxes still line up with the page title.
@@ -329,29 +336,111 @@ struct ArrangeablePage: View {
         }
     }
 
-    private var hiddenNote: some View {
-        let hidden = hiddenBoxes
-        return HStack(spacing: 8) {
-            Image(systemName: "eye.slash").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-            Menu {
-                ForEach(hidden) { box in
-                    Button("Show \(box.title)") { change(box.id) { $0.hidden = false } }
+    private var chooseButton: some View {
+        let off = merged().filter { p in boxes.first { $0.id == p.id }.map { isHidden(p, $0) } ?? false }.count
+        return Button { choosing = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "square.grid.2x2").font(Theme.font(size: 12))
+                Text(off == 0 ? "Choose boxes" : "Choose boxes · \(off) more to add")
+                    .font(Theme.font(size: 13, weight: .medium))
+            }
+            .foregroundStyle(Theme.muted)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(Capsule().fill(Theme.panel))
+            .overlay(Capsule().stroke(Theme.line))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $choosing) {
+            BoxChooser(boxes: boxes, isOn: { box in
+                merged().first { $0.id == box.id }.map { !isHidden($0, box) } ?? !box.off
+            }, set: { box, on in
+                change(box.id) { $0.hidden = !on }
+            }, reset: {
+                withAnimation { layouts.reset(key) }
+            })
+        }
+    }
+}
+
+/// Every box a page can show, with a small look at each and a switch to put it on the page or take it off.
+private struct BoxChooser: View {
+    let boxes: [PageBox]
+    let isOn: (PageBox) -> Bool
+    let set: (PageBox, Bool) -> Void
+    let reset: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var refresh = 0
+
+    var body: some View {
+        let on = boxes.filter(isOn), off = boxes.filter { !isOn($0) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Choose your boxes").font(Theme.display(size: 24)).foregroundStyle(Theme.text)
+                    Text("Switch on the ones you want to see. You can drag them into any order on the page.")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                 }
-                if hidden.count > 1 {
-                    Divider()
-                    Button("Show them all") {
-                        var list = merged()
-                        for i in list.indices { list[i].hidden = nil }
-                        withAnimation { layouts.save(key, list) }
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+            }
+            .padding(24)
+            Divider().overlay(Theme.line)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if !on.isEmpty { section("On your page", on) }
+                    if !off.isEmpty { section("More to add", off) }
+                    Button("Put this page back how it was") { reset(); refresh += 1 }
+                        .buttonStyle(.plain)
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                }
+                .padding(24)
+                .id(refresh)
+            }
+        }
+        .frame(width: 760, height: 640)
+        .background(Theme.ground)
+    }
+
+    private func section(_ title: String, _ list: [PageBox]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased()).font(Theme.font(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                ForEach(list) { box in card(box) }
+            }
+        }
+    }
+
+    private func card(_ box: PageBox) -> some View {
+        let on = isOn(box)
+        return VStack(alignment: .leading, spacing: 10) {
+            // A small, still look at the box as it is right now.
+            box.view
+                .frame(width: 620)
+                .fixedSize(horizontal: false, vertical: true)
+                .scaleEffect(0.53, anchor: .topLeading)
+                .frame(width: 330, height: 150, alignment: .topLeading)
+                .clipped()
+                .allowsHitTesting(false)
+                .background(Theme.ground.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
+            HStack(alignment: .top, spacing: 10) {
+                Circle().fill(box.color).frame(width: 8, height: 8).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(box.title).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                    if let about = box.about {
+                        Text(about).font(Theme.font(size: 12)).foregroundStyle(Theme.text3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-            } label: {
-                Text("\(hidden.count) hidden on this page")
-                    .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                Spacer(minLength: 8)
+                Toggle("", isOn: Binding(get: { on }, set: { set(box, $0); refresh += 1 }))
+                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
         }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(on ? box.color.opacity(0.5) : Theme.line))
     }
 }
 

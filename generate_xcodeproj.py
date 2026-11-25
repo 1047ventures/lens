@@ -64,6 +64,8 @@ FILES = [
     (f"{APP_NAME}/Views/Theme.swift",                     f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/TodayView.swift",                 f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/Arrangeable.swift",               f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/TodayMoreBoxes.swift",            f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/ChoosableTiles.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/TodayDashboard.swift",            f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectsView.swift",              f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/ProjectDetailView.swift",         f"{APP_NAME}/Views"),
