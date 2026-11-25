@@ -296,15 +296,16 @@ struct MoneyView: View {
         .accentBar(Palette.lime)
     }
 
-    private func column<Content: View>(_ question: String, _ formal: String, @ViewBuilder _ content: () -> Content) -> some View {
+    private func column<Content: View>(_ question: String, _ formal: String, color: Color, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(formal.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted)
+            Text(formal.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(color)
             Text(question).font(Theme.display(size: 20)).foregroundStyle(Theme.text).padding(.bottom, 10)
             content()
         }
         .padding(16)
         .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
         .background(Theme.raised.opacity(0.5))
+        .overlay(alignment: .top) { Rectangle().fill(color.opacity(0.8)).frame(height: 3) }
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -314,17 +315,12 @@ struct MoneyView: View {
                      good: Bool? = nil, meaning: String? = nil) -> some View {
         let tone = good == nil ? (style == .item ? Theme.text2 : Theme.text) : (good! ? Theme.teal : Theme.coral)
         return HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(Theme.font(size: style == .total ? 15 : (style == .sub ? 14 : 13),
-                                     weight: style == .total ? .bold : (style == .sub ? .semibold : .regular)))
-                    .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
-                if let meaning {
-                    Text(meaning).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(.leading, style == .item ? 10 : 0)
+            Text(label)
+                .font(Theme.font(size: style == .total ? 15 : (style == .sub ? 14 : 13),
+                                 weight: style == .total ? .bold : (style == .sub ? .semibold : .regular)))
+                .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
+                .lineLimit(1)
+                .padding(.leading, style == .item ? 10 : 0)
             Spacer(minLength: 8)
             if let pct {
                 Text(pct).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
@@ -344,6 +340,8 @@ struct MoneyView: View {
         }
         .overlay(alignment: .top) { if style == .sub { Rectangle().fill(Theme.line).frame(height: 1) } }
         .padding(.top, style == .total ? 6 : 0)
+        .contentShape(Rectangle())
+        .help(meaning ?? "")
     }
 
     private static let allGroups = ["Revenue", "Project costs", "Running the business", "Working",
@@ -390,7 +388,7 @@ struct MoneyView: View {
     }
 
     private func incomeColumn(_ i: MoneyStore.Income, pct: @escaping (Double) -> String?) -> some View {
-        column("Did I make money?", "Income statement") {
+        column("Did I make money?", "Income statement", color: Palette.lime) {
             group("Revenue") {
                 if i.revenue.isEmpty { Text("Nothing yet").font(Theme.font(size: 12)).foregroundStyle(Theme.muted) }
                 ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
@@ -409,7 +407,7 @@ struct MoneyView: View {
     }
 
     private func cashColumn(_ c: MoneyStore.CashFlow) -> some View {
-        column("Where did the cash go?", "Cash flow · checking, Venmo, PayPal") {
+        column("Where did the cash go?", "Cash flow · checking, Venmo, PayPal", color: Theme.amber) {
             row("Started with", c.start, .sub, meaning: "Cash in your accounts at the start")
             group("Working", total: c.clientsPaid + c.projectCosts + c.runningCosts + c.cardAndTransfers + c.taxes) {
                 row("Clients paid you", c.clientsPaid)
@@ -429,7 +427,7 @@ struct MoneyView: View {
     }
 
     private func balanceColumn(_ b: MoneyStore.Balance) -> some View {
-        column("What's it all worth?", "Balance sheet · end of period") {
+        column("What's it all worth?", "Balance sheet · end of period", color: Palette.blue) {
             group("What you have") {
                 ForEach(b.cash) { row($0.label, $0.amount) }
                 row("Clients owe you", b.owed)
