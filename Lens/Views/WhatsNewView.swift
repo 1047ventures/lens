@@ -14,6 +14,8 @@ enum WhatsNew {
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
         ("2.0.2", [
+            Item(icon: "photo.on.rectangle.angled", title: "Projects as pictures",
+                 detail: "Projects is now a wall of big pictures, one per project, using a photo from its footage folder. Ones waiting on you glow, and Needs you at the top shows just those. To change a picture, drag a photo onto it or right-click and choose Choose cover picture."),
             Item(icon: "arrow.down.right.circle.fill", title: "Pipeline is now part of Projects",
                  detail: "Every inquiry is a project from the first message, sitting at Quoting. Its quote, options and proposal are right on the project page, with the same steps and buttons as every other project. Mark it as booked and it moves on to Planning. Past quotes and your rates are under Quotes on Projects."),
             Item(icon: "square.grid.2x2.fill", title: "Choose your boxes",

@@ -9,7 +9,7 @@ struct ProjectsView: View {
     @EnvironmentObject private var deals: DealStore
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var history: EmailHistory
-    @State private var doneOpen = false
+    @EnvironmentObject private var gmail: GmailSync
     @State private var editing: Project?
     @State private var creating = false
     @State private var importMessage: String?
@@ -45,32 +45,6 @@ struct ProjectsView: View {
         .sheet(isPresented: $showRates) { RateCardSheet() }
     }
 
-    /// The funnel, top to bottom: one group per step that has projects in it, then the ones that
-    /// didn't book and the ones put away. She can rearrange or hide them.
-    private var everythingBoxes: [PageBox] {
-        var boxes: [PageBox] = []
-        for step in ProjectStage.allCases where step != .archived {
-            let items = projects.active.filter { $0.stage == step }
-            guard !items.isEmpty else { continue }
-            var title = step.label
-            if step == .lead {
-                let total = items.compactMap { deals.quote(for: $0).flatMap { deals.value(of: $0) } }.reduce(0, +)
-                if total > 0 { title += " · up to \(Money.short(total))" }
-            }
-            boxes.append(PageBox("step.\(step.rawValue)", step.label, color: Theme.teal) { group(title: title, items: items) })
-        }
-        let archived = projects.projects.filter { $0.stage == .archived }
-        let lost = archived.filter { deals.didntBook($0) }
-        let away = archived.filter { !deals.didntBook($0) }
-        if !lost.isEmpty {
-            boxes.append(PageBox("didntBook", "Didn't book", color: Palette.slate) { group(title: "Didn't book", items: lost) })
-        }
-        if !away.isEmpty {
-            boxes.append(PageBox("archived", "Put away", color: Palette.slate) { group(title: "Put away", items: away) })
-        }
-        return boxes
-    }
-
     /// Past quotes and her rates: what every quote is priced from.
     private var quotesMenu: some View {
         Menu("Quotes") {
@@ -81,66 +55,94 @@ struct ProjectsView: View {
         .fixedSize()
     }
 
-    private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Projects")
-                            .font(Theme.font(size: 30, weight: .bold))
-                            .foregroundStyle(Theme.text)
-                        Text("Every idea you're bringing to life, from first spark to finished.")
-                            .font(Theme.font(size: 15))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    if let root = viewModel.roots.first {
-                        Button("Import from drive folders") {
-                            let added = projects.importProjects(fromFoldersIn: root)
-                            importMessage = added == 0 ? "No new folders to import." : "Added \(added) project\(added == 1 ? "" : "s") from the drive."
+    /// Emails waiting for her say-so before they become projects.
+    private var waitingEmails: Int {
+        gmail.suggestions.filter { [.inquiry, .project, .attach].contains($0.kind) }.count
+    }
+
+    private var list: some View { page(simple: false) }
+    private var simpleList: some View { page(simple: true) }
+
+    /// The wall of projects, with what Lens found in email and calls underneath.
+    private func page(simple: Bool) -> some View {
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 26) {
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Projects")
+                                .font(simple ? Theme.display(size: 34) : Theme.font(size: 30, weight: .bold))
+                                .foregroundStyle(Theme.text)
+                            Text(simple ? "Here's what's on your plate. Click a picture to open it."
+                                        : "Every idea you're bringing to life, from first spark to finished.")
+                                .font(Theme.font(size: 15))
+                                .foregroundStyle(Theme.muted)
                         }
-                        .buttonStyle(SecondaryButtonStyle())
+                        Spacer()
+                        if !simple, let root = viewModel.roots.first {
+                            Button("Import from drive folders") {
+                                let added = projects.importProjects(fromFoldersIn: root)
+                                importMessage = added == 0 ? "No new folders to import." : "Added \(added) project\(added == 1 ? "" : "s") from the drive."
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                        }
+                        if !simple { quotesMenu }
+                        Button("New project") { creating = true }
+                            .buttonStyle(PrimaryButtonStyle())
                     }
-                    quotesMenu
-                    Button("New project") { creating = true }
-                        .buttonStyle(PrimaryButtonStyle())
-                }
 
-                if let importMessage {
-                    Text(importMessage)
-                        .font(Theme.font(size: 13))
-                        .foregroundStyle(Theme.text3)
-                }
-
-                if !projects.projects.isEmpty { findBar }
-
-                if finding && !projects.projects.isEmpty {
-                    found(simple: false)
-                } else {
-                FoundWorkPanel()
-                EmailSuggestionsPanel(place: .projects)
-                UnmatchedNotesPanel()
-
-                if projects.projects.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("No projects yet")
-                            .font(Theme.font(size: 16, weight: .semibold))
-                            .foregroundStyle(Theme.text)
-                        Text(viewModel.roots.isEmpty
-                             ? "Create one, or add your drive in Library and import its folders as projects."
-                             : "Create one, or turn the drive's folders into projects with “Import from drive folders”.")
-                            .font(Theme.font(size: 14))
-                            .foregroundStyle(Theme.muted)
+                    if let importMessage {
+                        Text(importMessage).font(Theme.font(size: 13)).foregroundStyle(Theme.text3)
                     }
-                    .panel(padding: 22)
-                } else {
-                    ArrangeablePage("projects", spacing: 26, boxes: everythingBoxes)
+
+                    if waitingEmails > 0 && !finding {
+                        Button {
+                            withAnimation { scroller.scrollTo("fromEmail", anchor: .top) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "envelope.badge").foregroundStyle(Theme.amber)
+                                Text(waitingEmails == 1 ? "1 new email could be a project" : "\(waitingEmails) new emails could be projects")
+                                    .font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text("Take a look").font(Theme.font(size: 13)).foregroundStyle(Theme.teal)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 11)
+                            .background(Theme.amber.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if projects.projects.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No projects yet")
+                                .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                            Text(simple || viewModel.roots.isEmpty
+                                 ? "Start one with New project: a client booking, or an idea of your own you want to bring to life."
+                                 : "Create one, or turn the drive's folders into projects with \u{201C}Import from drive folders\u{201D}.")
+                                .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                        }
+                        .panel(padding: 22)
+                    } else {
+                        findBar
+                        if finding { found } else { ProjectWall() }
+                    }
+
+                    if !finding {
+                        VStack(alignment: .leading, spacing: 20) {
+                            if !simple || !history.found.isEmpty { FoundWorkPanel() }
+                            EmailSuggestionsPanel(place: .projects)
+                            if !simple { UnmatchedNotesPanel() }
+                        }
+                        .padding(.top, 12)
+                        .id("fromEmail")
+                    }
                 }
-                }
+                .padding(.horizontal, 48)
+                .padding(.vertical, 40)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 40)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -173,7 +175,7 @@ struct ProjectsView: View {
         }
     }
 
-    @ViewBuilder private func found(simple: Bool) -> some View {
+    @ViewBuilder private var found: some View {
         let query = navigator.projectQuery.trimmingCharacters(in: .whitespaces)
         let words = query.lowercased().split(separator: " ").map(String.init)
         let items = projects.projects.filter { words.isEmpty || ProjectFinder.matches($0, words) }
@@ -186,240 +188,12 @@ struct ProjectsView: View {
             }
             .panel(padding: 22)
         } else {
-            VStack(alignment: .leading, spacing: simple ? 28 : 26) {
-                ForEach(ProjectFinder.groups(items, by: arrange)) { found in
-                    if simple {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("\(found.title) · \(found.items.count)")
-                                .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                            ForEach(found.items) { simpleCard($0) }
-                        }
-                    } else {
-                        group(title: found.title, items: found.items)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Simple
-
-    private func simpleGroup(_ title: String, _ items: [Project]) -> [(String, [Project])] {
-        items.isEmpty ? [] : [(title, items)]
-    }
-
-    /// The groups that have projects in them, in their usual order; she can rearrange or hide them.
-    private func simpleBoxes(_ groups: [(String, [Project])], done: [Project]) -> [PageBox] {
-        let ids = ["Quoting": "quoting", "Coming up": "comingUp", "Shooting": "shooting", "Editing": "editing", "Waiting on payment": "waitingPay"]
-        let colors: [String: Color] = ["Quoting": Palette.violet, "Coming up": Palette.blue, "Shooting": Theme.coral, "Editing": Palette.orchid, "Waiting on payment": Theme.amber]
-        var boxes = groups.map { title, items in
-            PageBox(ids[title] ?? title, title, color: colors[title] ?? Theme.teal) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(title)
-                        .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                    ForEach(items) { simpleCard($0) }
-                }
-            }
-        }
-        if !done.isEmpty {
-            boxes.append(PageBox("done", "Finished and paid", color: Palette.slate) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Button {
-                        withAnimation { doneOpen.toggle() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text("Finished and paid · \(done.count)")
-                                .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                            Image(systemName: doneOpen ? "chevron.down" : "chevron.right")
-                                .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if doneOpen { ForEach(done) { simpleCard($0) } }
-                }
-            })
-        }
-        return boxes
-    }
-
-    private var simpleList: some View {
-        let all = projects.projects
-        func byDate(_ a: Project, _ b: Project) -> Bool {
-            (a.shootDate ?? .distantFuture) < (b.shootDate ?? .distantFuture)
-        }
-        let groups = simpleGroup("Quoting", all.filter { $0.stage == .lead }.sorted { $0.createdAt > $1.createdAt })
-            + simpleGroup("Coming up", all.filter { $0.stage == .booked }.sorted(by: byDate))
-            + simpleGroup("Shooting", all.filter { $0.stage == .shoot }.sorted(by: byDate))
-            + simpleGroup("Editing", all.filter { $0.stage == .edit }.sorted(by: byDate))
-            + simpleGroup("Waiting on payment", all.filter { $0.stage == .delivered }.sorted(by: byDate))
-        let done = all.filter { $0.stage == .paid || $0.stage == .archived }
-            .sorted { ($0.shootDate ?? $0.createdAt) > ($1.shootDate ?? $1.createdAt) }
-        return ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Projects")
-                            .font(Theme.display(size: 34))
-                            .foregroundStyle(Theme.text)
-                        Text("Here's what's on your plate, grouped by what you do next.")
-                            .font(Theme.font(size: 15))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    Button("New project") { creating = true }
-                        .buttonStyle(PrimaryButtonStyle())
-                }
-                if !all.isEmpty { findBar }
-                if finding && !all.isEmpty {
-                    found(simple: true)
-                } else {
-                if !history.found.isEmpty { FoundWorkPanel() }
-                EmailSuggestionsPanel(place: .projects)
-                if all.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("No projects yet")
-                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                        Text("Start one with New project: a client booking, or an idea of your own you want to bring to life.")
-                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
-                    }
-                    .panel(padding: 22)
-                }
-                ArrangeablePage("projects", spacing: 28, boxes: simpleBoxes(groups, done: done))
+                ForEach(ProjectFinder.groups(items, by: arrange)) { group in
+                    WallSection(title: group.title, items: group.items)
                 }
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 40)
-            .frame(maxWidth: 820, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func simpleCard(_ project: Project) -> some View {
-        Button {
-            navigator.projectID = project.id
-        } label: {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(project.name)
-                        .font(Theme.display(size: 19)).foregroundStyle(Theme.text)
-                    if !project.client.isEmpty {
-                        Text(project.client).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
-                    }
-                    Text(nextLine(project))
-                        .font(Theme.font(size: 14)).foregroundStyle(Theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                }
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text(deals.didntBook(project) ? "Didn't book" : SimpleProject.chipName(project.stage))
-                        .font(Theme.font(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.teal)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Theme.teal.opacity(0.12))
-                        .clipShape(Capsule())
-                    if let date = project.shootDate {
-                        Text(SimpleProject.when(date))
-                            .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .panel(padding: 20)
-    }
-
-    private func group(title: String, items: [Project]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("\(title) · \(items.count)")
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, project in
-                    if index > 0 { Divider().overlay(Theme.lineSoft) }
-                    Button {
-                        navigator.projectID = project.id
-                    } label: {
-                        HStack(spacing: 16) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(project.name)
-                                    .font(Theme.font(size: 15, weight: .semibold))
-                                    .foregroundStyle(Theme.text)
-                                Text(subtitle(for: project))
-                                    .font(Theme.font(size: 13))
-                                    .foregroundStyle(Theme.muted)
-                            }
-                            Spacer(minLength: 16)
-                            glance(for: project)
-                            VStack(alignment: .trailing, spacing: 6) {
-                                Text(deals.didntBook(project) ? "Didn't book" : project.stage.label)
-                                    .font(Theme.font(size: 12, weight: .semibold))
-                                    .foregroundStyle(project.stage == .delivered ? Theme.coral : Theme.text3)
-                                StageBar(stage: project.stage).frame(width: 170)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .background(Theme.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-        }
-    }
-
-    /// Hours and what she keeps, at a glance.
-    @ViewBuilder private func glance(for project: Project) -> some View {
-        let books = ProjectBooks.make(project, money: money, deals: deals)
-        if deals.didntBook(project) {
-            EmptyView()
-        } else if project.stage == .lead, let q = deals.quote(for: project) {
-            Text(deals.valueText(of: q))
-                .font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(q.isStale ? Theme.amber : Theme.text2)
-                .frame(width: 130, alignment: .trailing)
-        } else if books.hours > 0 || books.keep != nil || books.spent > 0 {
-            VStack(alignment: .trailing, spacing: 3) {
-                HStack(spacing: 5) {
-                    if project.isTiming { Circle().fill(Theme.coral).frame(width: 7, height: 7) }
-                    Text(books.hours > 0 ? Hours.short(books.hours) : "No time yet")
-                        .font(Theme.font(size: 13, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(books.hours > 0 ? Theme.text2 : Theme.muted)
-                }
-                if let keep = books.keep {
-                    Text(keep >= 0 ? "Keep \(Money.short(keep))" : "Over by \(Money.short(-keep))")
-                        .font(Theme.font(size: 12)).monospacedDigit()
-                        .foregroundStyle(keep >= 0 ? Theme.teal : Theme.coral)
-                } else if books.spent > 0 {
-                    Text("Spent \(Money.short(books.spent))")
-                        .font(Theme.font(size: 12)).monospacedDigit().foregroundStyle(Theme.muted)
-                }
-            }
-            .frame(width: 130, alignment: .trailing)
-        }
-    }
-
-    /// What's next, in a line; at Quoting it's the quote's next move.
-    private func nextLine(_ project: Project) -> String {
-        if project.stage == .lead, let q = deals.quote(for: project), q.stage.isOpen { return DealCard.nextMove(q) + "." }
-        return SimpleProject.nextLine(project)
-    }
-
-    private func subtitle(for project: Project) -> String {
-        var parts: [String] = []
-        if !project.client.isEmpty { parts.append(project.client) }
-        if project.stage == .lead, let q = deals.quote(for: project), q.stage.isOpen {
-            parts.append(DealCard.nextMove(q))
-            return parts.joined(separator: " · ")
-        }
-        if let date = project.shootDate { parts.append(date.formatted(date: .abbreviated, time: .omitted)) }
-        if project.isOnServer { parts.append("On the server") }
-        else if project.folderPath == nil { parts.append("No footage folder") }
-        return parts.isEmpty ? "No details yet" : parts.joined(separator: " · ")
     }
 }
 

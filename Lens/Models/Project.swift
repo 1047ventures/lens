@@ -169,6 +169,8 @@ struct Project: Codable, Identifiable, Hashable {
     var autoFiled: [AutoFiled]?
     /// Email addresses the user said aren't on this project, so Lens doesn't add them again.
     var notPeople: [String]?
+    /// The picture she picked for this project's tile. Nil means Lens picks one from the footage folder.
+    var coverPath: String?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {
