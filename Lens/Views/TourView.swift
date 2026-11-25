@@ -33,7 +33,7 @@ enum Tour {
                  body: "Click your picture at the top right for Log-ins. Connect your email, calendar and bank there, one time each. You sign in on their own page, so Lens never sees your passwords. It only reads, it never pays or posts anything."),
         TourStop(section: nil, opensAsk: true, icon: "sparkles",
                  title: "Ask Lens",
-                 body: "Not sure where something is? Ask in plain words, like \"who haven't I replied to?\" or \"what did I make in March?\" Lens checks with you before it changes anything."),
+                 body: "Press Command and K to jump to any project, person or page by typing its name. Press Command and J, or click Ask Lens, to ask in plain words, like \"who haven't I replied to?\" or \"what did I make in March?\" Lens checks with you before it changes anything."),
         TourStop(section: .footage, opensAsk: false, icon: "externaldrive",
                  title: "Your first step",
                  body: "Plug in one of your drives. Lens will offer to add it here. It just reads the drive, nothing gets moved or deleted. Then try the search box."),

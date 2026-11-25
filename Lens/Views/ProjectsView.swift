@@ -41,8 +41,17 @@ struct ProjectsView: View {
                 navigator.projectID = p.id
             }
         }
+        // "New project" from the find bar.
+        .onAppear { takeNewProjectRequest() }
+        .onChange(of: navigator.newProjectRequested) { _, _ in takeNewProjectRequest() }
         .sheet(isPresented: $showQuotes) { QuoteHistoryView() }
         .sheet(isPresented: $showRates) { RateCardSheet() }
+    }
+
+    private func takeNewProjectRequest() {
+        guard navigator.newProjectRequested else { return }
+        navigator.newProjectRequested = false
+        creating = true
     }
 
     /// Past quotes and her rates: what every quote is priced from.

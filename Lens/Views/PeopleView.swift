@@ -1077,60 +1077,6 @@ struct ProjectPickerSheet: View {
     }
 }
 
-/// "Find a person" from anywhere in Lens (toolbar, ⇧⌘P).
-struct FindPersonPopover: View {
-    @EnvironmentObject private var people: PeopleStore
-    @EnvironmentObject private var navigator: Navigator
-    @State private var query = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Find a person", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .focused($focused)
-                .onSubmit { if let first = results.first { open(first) } }
-            ForEach(results) { p in
-                Button { open(p) } label: {
-                    HStack(spacing: 10) {
-                        PersonBadge(person: p, size: 24)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(p.name).font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                            if !p.subtitle.isEmpty { Text(p.subtitle).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(1) }
-                        }
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            if !query.isEmpty && results.isEmpty {
-                Text("No one matches.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-            }
-            Button("Open People") {
-                navigator.personID = nil
-                navigator.open(.people)
-                navigator.findingPerson = false
-            }
-            .buttonStyle(.plain)
-            .font(Theme.font(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.teal)
-        }
-        .padding(14)
-        .frame(width: 320)
-        .onAppear { focused = true }
-    }
-
-    private var results: [Person] {
-        query.isEmpty ? [] : Array(people.search(query).prefix(8))
-    }
-
-    private func open(_ p: Person) {
-        navigator.openPerson(p.id)
-        navigator.findingPerson = false
-    }
-}
-
 /// The people on a project or deal, shown on its page.
 struct PeoplePanel: View {
     enum Target { case project(UUID), deal(UUID) }

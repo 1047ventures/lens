@@ -721,7 +721,7 @@ private struct ClaudeControls: View {
                     testing = true
                     Task {
                         let error = await ai.testKey()
-                        result = error ?? "Works. Ask Lens is ready (⌘K)."
+                        result = error ?? "Works. Ask Lens is ready (⌘J)."
                         testing = false
                     }
                 }

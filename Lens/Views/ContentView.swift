@@ -47,8 +47,10 @@ final class Navigator: ObservableObject {
     @Published var dealID: UUID?
     /// The person whose page is open in People.
     @Published var personID: UUID?
-    /// Whether the "Find a person" search is showing.
-    @Published var findingPerson = false
+    /// Whether the find bar (⌘K) is showing.
+    @Published var findOpen = false
+    /// Asks Projects to open its New project sheet (from the find bar).
+    @Published var newProjectRequested = false
     /// The deal whose proposal builder is open.
     @Published var builderDealID: UUID?
     /// Whether the Ask Lens panel is open.
@@ -160,6 +162,9 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.ground)
+            .overlay {
+                if navigator.findOpen { FindBar().transition(.opacity) }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if navigator.touring { TourCard().transition(.opacity) }
             }
@@ -182,17 +187,12 @@ struct ContentView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        navigator.findingPerson.toggle()
+                        navigator.findOpen.toggle()
                     } label: {
-                        Label("Find a person", systemImage: "magnifyingglass")
+                        Label("Find anything", systemImage: "magnifyingglass")
                     }
-                    .keyboardShortcut("p", modifiers: [.command, .shift])
-                    .help("Find a person (⇧⌘P)")
-                    .popover(isPresented: $navigator.findingPerson, arrowEdge: .bottom) {
-                        FindPersonPopover()
-                            .environmentObject(people)
-                            .environmentObject(navigator)
-                    }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .help("Find anything (⌘K)")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     // How much every screen shows, one click away wherever she is.
@@ -222,8 +222,8 @@ struct ContentView: View {
                         .overlay(Capsule().stroke(Palette.violet.opacity(0.55)))
                     }
                     .buttonStyle(.plain)
-                    .keyboardShortcut("k", modifiers: .command)
-                    .help("Ask Lens (⌘K)")
+                    .keyboardShortcut("j", modifiers: .command)
+                    .help("Ask Lens (⌘J)")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     ProfileMenu()

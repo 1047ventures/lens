@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The Ask Lens panel (⌘K): a conversation with Claude that can look things up across Lens,
+/// The Ask Lens panel (⌘J): a conversation with Claude that can look things up across Lens,
 /// propose changes the user approves with one tap, and learn how she likes to work.
 struct AskLensView: View {
     @EnvironmentObject private var ai: LensAI
