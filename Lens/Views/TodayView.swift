@@ -73,20 +73,9 @@ struct TodayView: View {
         }
         boxes += [
             PageBox("needsYou", "Needs you", color: Theme.coral) { needsYou },
-            PageBox("numbers", "Key numbers", color: Palette.lime) { tiles(numbers).padding(.top, 14) },
-            PageBox("moneyIn", "Money in", color: Palette.lime, half: true) {
-                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
-                    MoneyInChart(numbers: numbers)
-                }
-            },
             PageBox("time", "Where your time went", color: Palette.orchid, half: true) {
                 DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) }) {
                     HoursDonut(slices: numbers.hoursThisMonth)
-                }
-            },
-            PageBox("funnel", "Lead to paid", color: Palette.violet, half: true) {
-                DashCard(title: "Lead to paid", color: Palette.violet, action: { navigator.open(.projects) }) {
-                    StageFunnel(steps: numbers.funnel)
                 }
             },
             PageBox("week", "The week ahead", color: Theme.teal, half: true) {
@@ -94,6 +83,17 @@ struct TodayView: View {
                     WeekStrip(projects: projects.active) { navigator.openProject($0) }
                 }
             },
+            PageBox("moneyIn", "Money in", color: Palette.lime, half: true) {
+                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
+                    MoneyInChart(numbers: numbers)
+                }
+            },
+            PageBox("funnel", "Where your jobs are", color: Palette.violet, half: true) {
+                DashCard(title: "Where your jobs are", color: Palette.violet, action: { navigator.open(.projects) }) {
+                    StageFunnel(steps: numbers.funnel)
+                }
+            },
+            PageBox("numbers", "Key numbers", color: Palette.lime) { tiles(numbers).padding(.top, 14) },
             PageBox("autoFiled", "Filed by Lens this week", color: Theme.amber) {
                 AutoFiledToday().frame(maxWidth: 720, alignment: .leading)
             },

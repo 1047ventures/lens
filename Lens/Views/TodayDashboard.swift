@@ -293,9 +293,14 @@ struct StageFunnel: View {
     var body: some View {
         let maxCount = max(1, steps.map(\.count).max() ?? 1)
         if steps.allSatisfy({ $0.count == 0 }) {
-            DashEmpty("Add a deal or a project and you'll see the flow from lead to paid.")
+            DashEmpty("Add a deal or a project and you'll see each job's step, from first inquiry to paid.")
         } else {
-            VStack(spacing: 7) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Every job you have, by the step it's at, and what those jobs are worth.")
+                    .font(Theme.font(size: 12))
+                    .foregroundStyle(Theme.text3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 4)
                 ForEach(steps) { step in
                     HStack(spacing: 10) {
                         Text(step.stage.label)
@@ -303,29 +308,43 @@ struct StageFunnel: View {
                             .foregroundStyle(step.count > 0 ? step.stage.color : Theme.muted)
                             .frame(width: 68, alignment: .leading)
                         GeometryReader { geo in
-                            let w = step.count == 0 ? 6 : max(26, geo.size.width * CGFloat(step.count) / CGFloat(maxCount))
+                            let w = step.count == 0 ? 6 : max(10, geo.size.width * CGFloat(step.count) / CGFloat(maxCount))
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 6).fill(Theme.track.opacity(0.45))
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(LinearGradient(colors: [step.stage.color.opacity(0.95), step.stage.color.opacity(0.6)],
                                                          startPoint: .leading, endPoint: .trailing))
                                     .frame(width: w)
-                                if step.count > 0 {
-                                    Text("\(step.count)")
-                                        .font(Theme.font(size: 12, weight: .bold)).monospacedDigit()
-                                        .foregroundStyle(Theme.ground)
-                                        .padding(.leading, 9)
-                                }
                             }
                         }
-                        .frame(height: 22)
-                        Text(step.value > 0 ? Money.short(step.value) : "")
+                        .frame(height: 16)
+                        Text(summary(step))
                             .font(Theme.font(size: 12)).monospacedDigit()
-                            .foregroundStyle(Theme.text3)
-                            .frame(width: 50, alignment: .trailing)
+                            .foregroundStyle(step.count > 0 ? Theme.text2 : Theme.muted)
+                            .frame(width: 112, alignment: .trailing)
                     }
+                    .help(Self.meaning(step.stage))
                 }
             }
+        }
+    }
+
+    private func summary(_ step: TodayNumbers.Step) -> String {
+        guard step.count > 0 else { return "none" }
+        let jobs = "\(step.count) job\(step.count == 1 ? "" : "s")"
+        return step.value > 0 ? jobs + " · " + Money.short(step.value) : jobs
+    }
+
+    /// What each step means, shown when she rests the pointer on it.
+    static func meaning(_ stage: ProjectStage) -> String {
+        switch stage {
+        case .lead: return "Leads: people who asked about a job but haven't booked yet. The money is what you've quoted them."
+        case .booked: return "Booked: they said yes, and the shoot hasn't happened yet."
+        case .shoot: return "Shoot: being filmed or photographed now."
+        case .edit: return "Edit: shot, and you're editing it."
+        case .delivered: return "Delivered: they have it, and you're waiting to be paid."
+        case .paid: return "Paid: done and paid, not put away on the server yet."
+        case .archived: return "Put away on the server."
         }
     }
 }
