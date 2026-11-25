@@ -38,7 +38,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 @MainActor
 final class Navigator: ObservableObject {
     @Published var section: SidebarSection? = .today
-    /// "Style and detail" is open.
+    /// "Style" is open.
     @Published var choosingStyle = false
     @Published var projectID: UUID?
     @Published var dealID: UUID?
@@ -153,6 +153,16 @@ struct ContentView: View {
                             .environmentObject(people)
                             .environmentObject(navigator)
                     }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    // How much every screen shows, one click away wherever she is.
+                    Picker("", selection: $appearance.detail) {
+                        ForEach(Detail.allCases) { Text($0.name).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Simple shows just what you need. Everything shows every number and option.")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -391,7 +401,7 @@ struct Sidebar: View {
                 Button {
                     navigator.choosingStyle = true
                 } label: {
-                    Label("Style and detail", systemImage: "paintpalette")
+                    Label("Style", systemImage: "paintpalette")
                         .font(Theme.font(size: 13))
                         .foregroundStyle(Theme.sideMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)

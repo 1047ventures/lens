@@ -16,14 +16,16 @@ enum WhatsNew {
         ("2.0.1", [
             Item(icon: "map.fill", title: "From the map to the pictures",
                  detail: "Click a shoot on the Library map and you go straight to its photos and videos. If Lens hasn't found them yet, it shows the folders from around the shoot date so you can pick the right one."),
+            Item(icon: "leaf.fill", title: "Simple or Everything, at the top",
+                 detail: "The Simple and Everything switch now sits at the top right, next to Ask Lens, so you can flip between them on any screen. Style at the bottom of the sidebar is just for the look."),
             Item(icon: "book.fill", title: "Your books by day, week, month or year",
                  detail: "The books in Money now have Day, Week, Month and Year tabs. Use the arrows to look back at an earlier one. The main lines stand out, and hovering over one tells you what it means."),
         ]),
         ("2.0.0", [
             Item(icon: "paintpalette.fill", title: "A fresh new look",
-                 detail: "Lens has two new looks, Daylight and Evening, in your own brand colours and fonts. The old dark look is still there as Studio. Change it any time with Style and detail at the bottom of the sidebar."),
+                 detail: "Lens has two new looks, Daylight and Evening, in your own brand colours and fonts. The old dark look is still there as Studio. Change it any time with Style at the bottom of the sidebar."),
             Item(icon: "leaf.fill", title: "Simple or Everything",
-                 detail: "Simple shows just what you need on every screen: today and this week, who's waiting on you, and the few money numbers that matter. Switch to Everything in Style and detail whenever you want every number and option."),
+                 detail: "Simple shows just what you need on every screen: today and this week, who's waiting on you, and the few money numbers that matter. Switch to Everything at the top right, next to Ask Lens, whenever you want every number and option."),
             Item(icon: "photo.stack.fill", title: "Library by shoot",
                  detail: "Library now opens on a map of your shoots, each one where it was shot. Zoom in and click one to open it, or switch to List to sort them by date, place, people, camera, price, paid or not, or which drive they're on. Folders that aren't part of a shoot yet wait below, and Lens asks which project each one is from."),
         ]),

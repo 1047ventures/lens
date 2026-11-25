@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// "Make Lens feel like yours": pick a look (Daylight, Evening, Studio) and how much each screen shows.
-/// Opened from "Style and detail" at the bottom of the sidebar. Changes apply straight away.
+/// "Make Lens feel like yours": pick a look (Daylight, Evening, Studio).
+/// Opened from "Style" at the bottom of the sidebar. Changes apply straight away. Simple or Everything is in the toolbar.
 struct StylePickerView: View {
     @ObservedObject private var appearance = Appearance.shared
     @Environment(\.dismiss) private var dismiss
@@ -21,30 +21,6 @@ struct StylePickerView: View {
                         Button { appearance.look = look } label: { lookCard(look) }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(appearance.look == look ? .isSelected : [])
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("How much to show").font(Theme.font(size: 13, weight: .bold)).foregroundStyle(Theme.text3)
-                HStack(spacing: 14) {
-                    ForEach(Detail.allCases) { detail in
-                        Button { appearance.detail = detail } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(detail.name).font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                                Text(detail.blurb).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(Theme.panel)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14)
-                                .stroke(appearance.detail == detail ? Theme.teal : Theme.line, lineWidth: 2))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(appearance.detail == detail ? .isSelected : [])
                     }
                 }
             }
