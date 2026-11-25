@@ -215,7 +215,7 @@ struct LibraryShootsView: View {
         for p in waiting {
             guard let spot = placeSpot(p) else { continue }
             pins.append(MapPin(id: p.id.uuidString, coordinate: spot, title: p.name, sample: nil,
-                               target: .project(p.id), isShoot: true))
+                               target: .library(.shoot(p.id)), isShoot: true))
         }
         for i in shelf.unsorted where index.folders.indices.contains(i) {
             let f = index.folders[i]
@@ -236,7 +236,7 @@ struct LibraryShootsView: View {
     private func noPlaceStrip(_ shoots: [Shoot], _ waiting: [Project]) -> some View {
         let unplaced: [(id: UUID, name: String, target: MapTarget)] =
             shoots.filter { $0.spot == nil }.sorted(by: newestFirst).map { ($0.id, $0.project.name, .library(.shoot($0.id))) }
-            + waiting.filter { placeSpot($0) == nil }.map { ($0.id, $0.name, .project($0.id)) }
+            + waiting.filter { placeSpot($0) == nil }.map { ($0.id, $0.name, .library(.shoot($0.id))) }
         if !unplaced.isEmpty {
             HStack(alignment: .center, spacing: 10) {
                 Text("No place yet").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
@@ -888,16 +888,20 @@ struct ShootFilesView: View {
             header(all)
             Divider().overlay(Theme.line)
             if groups.isEmpty {
-                Text(index.loading ? "Reading your drives…" : "No photos or videos here yet.")
-                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted).padding(40)
-                Spacer()
+                if let project, !index.loading {
+                    ScrollView { notFound(project).padding(24) }
+                } else {
+                    Text(index.loading ? "Reading your drives…" : "No photos or videos here yet.")
+                        .font(Theme.font(size: 14)).foregroundStyle(Theme.muted).padding(40)
+                    Spacer()
+                }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         ForEach(groups, id: \.0.id) { folder, files in
                             VStack(alignment: .leading, spacing: 10) {
                                 folderHeader(folder, count: files.count)
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
                                     ForEach(files) { tile($0) }
                                 }
                             }
@@ -912,6 +916,66 @@ struct ShootFilesView: View {
         .sheet(item: $previewing) { item in
             PreviewSheet(items: all.filter(\.canPreview), start: item)
         }
+    }
+
+    /// A shoot with nothing found yet: say so, and offer the loose folders most likely to be it.
+    private func notFound(_ project: Project) -> some View {
+        let shelf = index.shelf(projects: projects.projects, links: links, catalog: catalog)
+        let loose = shelf.unsorted.compactMap { index.folders.indices.contains($0) ? index.folders[$0] : nil }
+            .filter { !links.isRejected($0, project.id) }
+        let guessed = loose.filter { ShootGuess.project(for: $0, among: projects.projects, links: links)?.id == project.id }
+        let nearby: [LibraryFolder] = {
+            guard let shoot = project.shootDate else { return [] }
+            return loose.filter { f in
+                f.first != .distantFuture && !guessed.contains(f)
+                    && abs(f.first.timeIntervalSince(shoot)) < 14 * 86_400
+            }
+            .sorted { abs($0.first.timeIntervalSince(shoot)) < abs($1.first.timeIntervalSince(shoot)) }
+        }()
+        let likely = Array((guessed + nearby).prefix(6))
+        return VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Lens hasn't found the photos and videos for this shoot yet")
+                    .font(Theme.font(size: 17, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(likely.isEmpty ? "If they're on a drive, plug it in and they'll show up here. To file a folder that's already in the Library, find it in the List view and say which project it's from."
+                                    : "If they're on a drive, plug it in and they'll show up here. If they're already in the Library, pick the folder below.")
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+            }
+            if !likely.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(project.shootDate == nil ? "Could it be one of these?" : "From around the shoot date")
+                        .font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Theme.text3)
+                    VStack(spacing: 0) {
+                        ForEach(likely) { folder in
+                            HStack(spacing: 12) {
+                                Image(systemName: folder.videos > 0 ? "film" : "photo.on.rectangle")
+                                    .foregroundStyle(Theme.text3).frame(width: 20)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(folder.name).font(Theme.font(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                                    Text(looseDetail(folder)).font(Theme.font(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Button("This is it") { LibraryFiles.file(folder, under: project, projects: projects, catalog: catalog) }
+                                    .buttonStyle(PrimaryButtonStyle())
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            if folder.id != likely.last?.id { Divider().overlay(Theme.line) }
+                        }
+                    }
+                    .panel(padding: 0)
+                }
+            }
+        }
+        .frame(maxWidth: 640, alignment: .leading)
+    }
+
+    private func looseDetail(_ folder: LibraryFolder) -> String {
+        var parts: [String] = []
+        if folder.first != .distantFuture { parts.append(folder.first.formatted(.dateTime.month(.abbreviated).day().year())) }
+        if folder.videos > 0 { parts.append("\(folder.videos) video\(folder.videos == 1 ? "" : "s")") }
+        if folder.photos > 0 { parts.append("\(folder.photos) photo\(folder.photos == 1 ? "" : "s")") }
+        if let drive = catalog.drives.first(where: { $0.id == folder.driveID }) { parts.append(drive.name) }
+        return parts.joined(separator: " · ")
     }
 
     private func header(_ all: [FolderItem]) -> some View {
@@ -930,8 +994,10 @@ struct ShootFilesView: View {
                     Button("Open project") { navigator.openProject(project.id) }.buttonStyle(SecondaryButtonStyle())
                 }
             }
-            Picker("", selection: $show) { ForEach(Show.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+            if !folders.isEmpty {
+                Picker("", selection: $show) { ForEach(Show.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+            }
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
     }
@@ -947,7 +1013,7 @@ struct ShootFilesView: View {
         }
         if videos > 0 { parts.append("\(videos.formatted()) video\(videos == 1 ? "" : "s")") }
         if photos > 0 { parts.append("\(photos.formatted()) photo\(photos == 1 ? "" : "s")") }
-        parts.append(ByteFormat.string(all.reduce(0) { $0 + $1.size }))
+        if !all.isEmpty { parts.append(ByteFormat.string(all.reduce(0) { $0 + $1.size })) }
         return parts.joined(separator: " · ")
     }
 
@@ -979,7 +1045,7 @@ struct ShootFilesView: View {
         let isSelected = selected == item.id
         return VStack(alignment: .leading, spacing: 6) {
             Thumbnail(url: item.url, assetID: item.assetID, kind: item.kind)
-                .frame(height: 100)
+                .frame(height: 130)
                 .frame(maxWidth: .infinity)
                 .background(Theme.raised)
                 .clipShape(RoundedRectangle(cornerRadius: 8))

@@ -298,8 +298,8 @@ struct MoneyView: View {
 
     private func column<Content: View>(_ question: String, _ formal: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(question).font(Theme.font(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-            Text(formal).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).padding(.bottom, 8)
+            Text(formal.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted)
+            Text(question).font(Theme.display(size: 20)).foregroundStyle(Theme.text).padding(.bottom, 10)
             content()
         }
         .padding(16)
@@ -310,21 +310,40 @@ struct MoneyView: View {
 
     private enum RowStyle { case item, sub, total }
 
-    private func row(_ label: String, _ amount: Double, _ style: RowStyle = .item, pct: String? = nil, good: Bool? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(Theme.font(size: style == .item ? 13 : 13, weight: style == .item ? .regular : .semibold))
-                .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
-                .padding(.leading, style == .item ? 10 : 0)
+    private func row(_ label: String, _ amount: Double, _ style: RowStyle = .item, pct: String? = nil,
+                     good: Bool? = nil, meaning: String? = nil) -> some View {
+        let tone = good == nil ? (style == .item ? Theme.text2 : Theme.text) : (good! ? Theme.teal : Theme.coral)
+        return HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(Theme.font(size: style == .total ? 15 : (style == .sub ? 14 : 13),
+                                     weight: style == .total ? .bold : (style == .sub ? .semibold : .regular)))
+                    .foregroundStyle(style == .item ? Theme.text3 : Theme.text)
+                if let meaning {
+                    Text(meaning).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.leading, style == .item ? 10 : 0)
             Spacer(minLength: 8)
-            if let pct { Text(pct).font(Theme.font(size: 11).italic()).foregroundStyle(Theme.muted) }
+            if let pct {
+                Text(pct).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
+                    .help("Share of total revenue")
+            }
             Text(signed(amount))
-                .font(Theme.font(size: style == .total ? 15 : 13, weight: style == .item ? .regular : .semibold))
+                .font(style == .total ? Theme.display(size: 22) : Theme.font(size: style == .sub ? 14 : 13, weight: style == .item ? .regular : .semibold))
                 .monospacedDigit()
-                .foregroundStyle(good == nil ? Theme.text2 : (good! ? Theme.teal : Theme.coral))
+                .foregroundStyle(tone)
         }
-        .padding(.vertical, style == .total ? 6 : 3)
-        .overlay(alignment: .top) { if style != .item { Rectangle().fill(Theme.line).frame(height: 1).offset(y: -2) } }
+        .padding(.vertical, style == .item ? 3 : 7)
+        .padding(.horizontal, style == .total ? 10 : 0)
+        .background {
+            if style == .total {
+                RoundedRectangle(cornerRadius: 8).fill((good == false ? Theme.coral : Theme.teal).opacity(0.12))
+            }
+        }
+        .overlay(alignment: .top) { if style == .sub { Rectangle().fill(Theme.line).frame(height: 1) } }
+        .padding(.top, style == .total ? 6 : 0)
     }
 
     private static let allGroups = ["Revenue", "Project costs", "Running the business", "Working",
@@ -347,7 +366,7 @@ struct MoneyView: View {
                 Image(systemName: "chevron.right")
                     .font(Theme.font(size: 8, weight: .bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                Text(title.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8)
+                Text(title).font(Theme.font(size: 13, weight: .semibold))
                 Spacer(minLength: 8)
                 if !open, let total {
                     Text(signed(total)).font(Theme.font(size: 13)).monospacedDigit().foregroundStyle(Theme.text2)
@@ -376,22 +395,22 @@ struct MoneyView: View {
                 if i.revenue.isEmpty { Text("Nothing yet").font(Theme.font(size: 12)).foregroundStyle(Theme.muted) }
                 ForEach(i.revenue) { row($0.label, $0.amount, pct: pct($0.amount)) }
             }
-            row("Total revenue", i.totalRevenue, .sub)
+            row("Total revenue", i.totalRevenue, .sub, meaning: "Everything clients paid you")
             group("Project costs", total: -i.direct.reduce(0) { $0 + $1.amount }) {
                 ForEach(i.direct) { row($0.label, -$0.amount, pct: pct($0.amount)) }
             }
-            row("Gross profit", i.gross, .sub, pct: pct(i.gross))
+            row("Gross profit", i.gross, .sub, pct: pct(i.gross), meaning: "What's left after each shoot's own costs")
             group("Running the business") {
                 ForEach(i.overhead) { row($0.label, -$0.amount, pct: pct($0.amount)) }
             }
-            row("Total overhead", -i.totalOverhead, .sub, pct: pct(i.totalOverhead))
-            row("You kept", i.net, .total, pct: pct(i.net), good: i.net >= 0)
+            row("Total overhead", -i.totalOverhead, .sub, pct: pct(i.totalOverhead), meaning: "What the business costs to run, shoot or no shoot")
+            row("You kept", i.net, .total, pct: pct(i.net), good: i.net >= 0, meaning: "Your profit: revenue minus every cost")
         }
     }
 
     private func cashColumn(_ c: MoneyStore.CashFlow) -> some View {
         column("Where did the cash go?", "Cash flow · checking, Venmo, PayPal") {
-            row("Started with", c.start, .sub)
+            row("Started with", c.start, .sub, meaning: "Cash in your accounts at the start")
             group("Working", total: c.clientsPaid + c.projectCosts + c.runningCosts + c.cardAndTransfers + c.taxes) {
                 row("Clients paid you", c.clientsPaid)
                 if c.projectCosts != 0 { row("Crew and project costs", c.projectCosts) }
@@ -404,8 +423,8 @@ struct MoneyView: View {
                 row("Paid to you / put in", c.owner)
                 if abs(c.unsorted) > 0.004 { row("Not sorted yet", c.unsorted) }
             }
-            row("Ended with", c.end, .total, good: c.end >= c.start)
-            row("Change", c.end - c.start)
+            row("Ended with", c.end, .total, meaning: "Cash in your accounts at the end")
+            row(c.end >= c.start ? "Up by" : "Down by", abs(c.end - c.start))
         }
     }
 
@@ -416,11 +435,11 @@ struct MoneyView: View {
                 row("Clients owe you", b.owed)
                 row("Gear at today's value", b.gear)
             }
-            row("Total", b.assets, .sub)
+            row("Total you have", b.assets, .sub, meaning: "Cash, money owed to you and your gear")
             group("What you owe", total: -b.card) {
                 row("Credit card", -b.card)
             }
-            row("Your business is worth", b.worth, .total, good: b.worth >= 0)
+            row("Your business is worth", b.worth, .total, good: b.worth >= 0, meaning: "What you have minus what you owe")
         }
     }
 

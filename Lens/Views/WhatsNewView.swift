@@ -13,6 +13,10 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("2.0.1", [
+            Item(icon: "map.fill", title: "From the map to the pictures",
+                 detail: "Click a shoot on the Library map and you go straight to its photos and videos. If Lens hasn't found them yet, it shows the folders from around the shoot date so you can pick the right one."),
+        ]),
         ("2.0.0", [
             Item(icon: "paintpalette.fill", title: "A fresh new look",
                  detail: "Lens has two new looks, Daylight and Evening, in your own brand colours and fonts. The old dark look is still there as Studio. Change it any time with Style and detail at the bottom of the sidebar."),
