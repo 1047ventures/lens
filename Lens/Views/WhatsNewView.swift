@@ -18,6 +18,8 @@ enum WhatsNew {
                  detail: "Click a shoot on the Library map and you go straight to its photos and videos. If Lens hasn't found them yet, it shows the folders from around the shoot date so you can pick the right one."),
             Item(icon: "leaf.fill", title: "Simple or Everything, at the top",
                  detail: "The Simple and Everything switch now sits at the top right, next to Ask Lens, so you can flip between them on any screen. Style at the bottom of the sidebar is just for the look."),
+            Item(icon: "square.grid.2x2.fill", title: "Arrange any page your way",
+                 detail: "Click Arrange at the top of a page to drag its boxes into the order you want. On Today and Money you can make any two boxes half width so they sit side by side, and you can hide the ones you don't use. Back to how it was puts everything back."),
             Item(icon: "book.fill", title: "Your books by day, week, month or year",
                  detail: "The books in Money now have Day, Week, Month and Year tabs. Use the arrows to look back at an earlier one. The main lines stand out, and hovering over one tells you what it means."),
         ]),

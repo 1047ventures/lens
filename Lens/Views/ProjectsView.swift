@@ -29,6 +29,16 @@ struct ProjectsView: View {
         }
     }
 
+    /// The Everything groups in their usual order; she can rearrange or hide them.
+    private var everythingBoxes: [PageBox] {
+        var boxes = [PageBox("active", "Active", color: Theme.teal) { group(title: "Active", items: projects.active) }]
+        let archived = projects.projects.filter { $0.stage == .archived }
+        if !archived.isEmpty {
+            boxes.append(PageBox("archived", "Archived", color: Palette.slate) { group(title: "Archived", items: archived) })
+        }
+        return boxes
+    }
+
     private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
@@ -76,9 +86,7 @@ struct ProjectsView: View {
                     }
                     .panel(padding: 22)
                 } else {
-                    group(title: "Active", items: projects.active)
-                    let archived = projects.projects.filter { $0.stage == .archived }
-                    if !archived.isEmpty { group(title: "Archived", items: archived) }
+                    ArrangeablePage("projects", spacing: 26, boxes: everythingBoxes)
                 }
             }
             .padding(.horizontal, 48)
@@ -91,6 +99,41 @@ struct ProjectsView: View {
 
     private func simpleGroup(_ title: String, _ items: [Project]) -> [(String, [Project])] {
         items.isEmpty ? [] : [(title, items)]
+    }
+
+    /// The groups that have projects in them, in their usual order; she can rearrange or hide them.
+    private func simpleBoxes(_ groups: [(String, [Project])], done: [Project]) -> [PageBox] {
+        let ids = ["Coming up": "comingUp", "Shooting": "shooting", "Editing": "editing", "Waiting on payment": "waitingPay"]
+        let colors: [String: Color] = ["Coming up": Palette.blue, "Shooting": Theme.coral, "Editing": Palette.orchid, "Waiting on payment": Theme.amber]
+        var boxes = groups.map { title, items in
+            PageBox(ids[title] ?? title, title, color: colors[title] ?? Theme.teal) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(title)
+                        .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                    ForEach(items) { simpleCard($0) }
+                }
+            }
+        }
+        if !done.isEmpty {
+            boxes.append(PageBox("done", "Finished and paid", color: Palette.slate) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button {
+                        withAnimation { doneOpen.toggle() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Finished and paid · \(done.count)")
+                                .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                            Image(systemName: doneOpen ? "chevron.down" : "chevron.right")
+                                .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if doneOpen { ForEach(done) { simpleCard($0) } }
+                }
+            })
+        }
+        return boxes
     }
 
     private var simpleList: some View {
@@ -129,30 +172,7 @@ struct ProjectsView: View {
                     }
                     .panel(padding: 22)
                 }
-                ForEach(groups, id: \.0) { title, items in
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(title)
-                            .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                        ForEach(items) { simpleCard($0) }
-                    }
-                }
-                if !done.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Button {
-                            withAnimation { doneOpen.toggle() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text("Finished and paid · \(done.count)")
-                                    .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                                Image(systemName: doneOpen ? "chevron.down" : "chevron.right")
-                                    .font(Theme.font(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        if doneOpen { ForEach(done) { simpleCard($0) } }
-                    }
-                }
+                ArrangeablePage("projects", spacing: 28, boxes: simpleBoxes(groups, done: done))
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)

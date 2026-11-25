@@ -18,6 +18,11 @@ struct LoginsView: View {
         let items: [LoginID]
     }
 
+    /// A short, steady id for a group's box, so her arrangement survives wording changes elsewhere.
+    private static func boxID(_ group: Group) -> String {
+        group.id.lowercased().replacingOccurrences(of: " ", with: "-")
+    }
+
     private let groups = [
         Group(id: "Google account", color: Palette.blue, note: "One sign-in covers most of what Lens reads.", items: [.google, .calendar, .drive]),
         Group(id: "Calls", color: Palette.violet, note: "Zoom already records and summarizes your calls.", items: [.zoom]),
@@ -53,14 +58,16 @@ struct LoginsView: View {
                     Text("The accounts Lens reads so it can see the whole business. Lens never sees your passwords.")
                         .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 }
-                ForEach(groups.filter { !$0.items.allSatisfy { logins.status($0).isLater } }) { group in
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(group.id).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                            ForEach(group.items.filter { !logins.status($0).isLater }) { simpleCard($0) }
+                ArrangeablePage("logins", spacing: 28, boxes: groups.filter { !$0.items.allSatisfy { logins.status($0).isLater } }.map { group in
+                    PageBox(Self.boxID(group), group.id, color: group.color) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(group.id).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                                ForEach(group.items.filter { !logins.status($0).isLater }) { simpleCard($0) }
+                            }
                         }
                     }
-                }
+                })
             }
             .padding(40)
             .frame(maxWidth: 980, alignment: .leading)
@@ -111,17 +118,19 @@ struct LoginsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 header
-                ForEach(groups) { group in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            ColorLabel(group.id, group.color)
-                            Text(group.note).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-                        }
-                        ForEach(group.items) { id in
-                            card(id, color: group.color)
+                ArrangeablePage("logins", spacing: 26, boxes: groups.map { group in
+                    PageBox(Self.boxID(group), group.id, color: group.color) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                ColorLabel(group.id, group.color)
+                                Text(group.note).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                            }
+                            ForEach(group.items) { id in
+                                card(id, color: group.color)
+                            }
                         }
                     }
-                }
+                })
                 Text("Access can be removed any time, here or from each service's own security settings.")
                     .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }

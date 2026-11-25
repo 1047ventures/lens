@@ -25,6 +25,32 @@ struct ProjectDetailView: View {
         if appearance.simple { simpleBody } else { everythingBody }
     }
 
+    /// Overview's boxes in their usual order; she can rearrange, resize or hide them.
+    private var overviewBoxes: [PageBox] {
+        [
+            PageBox("footage", "Footage", color: Theme.teal) { footagePanel },
+            PageBox("story", "The story so far", color: Theme.teal, half: true) { story },
+            PageBox("details", "Details", color: Theme.teal, half: true) { details },
+            PageBox("glance", "In this project", color: Theme.teal, half: true) { atAGlance },
+            PageBox("autoFiled", "Filed by Lens", color: Theme.amber, half: true) { AutoFiledPanel(project: project) },
+        ]
+    }
+
+    /// The simple page's boxes in their usual order; the name and dates stay at the top.
+    private var simpleBoxes: [PageBox] {
+        var boxes: [PageBox] = [
+            PageBox("stage", "Where it's at", color: Theme.teal) { simpleStageLine },
+            PageBox("next", "Next up", color: Theme.coral) { simpleNextUp },
+            PageBox("people", "Who's on it", color: Palette.orchid) { simplePeople },
+        ]
+        if !moneySentences.isEmpty { boxes.append(PageBox("money", "Money", color: Palette.lime) { simpleMoney }) }
+        if !(project.emails ?? []).isEmpty {
+            boxes.append(PageBox("emails", "Latest emails", color: Palette.blue) { simpleEmails })
+        }
+        boxes.append(PageBox("more", "Where to find the rest", color: Theme.muted) { simpleFooter })
+        return boxes
+    }
+
     private var everythingBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -42,14 +68,7 @@ struct ProjectDetailView: View {
                 tabBar
                 switch tab {
                 case .overview:
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 28) {
-                            VStack(alignment: .leading, spacing: 28) { footagePanel; story }
-                                .frame(minWidth: 420)
-                            VStack(alignment: .leading, spacing: 28) { details; atAGlance; AutoFiledPanel(project: project) }.frame(width: 300)
-                        }
-                        VStack(alignment: .leading, spacing: 28) { footagePanel; story; details; atAGlance; AutoFiledPanel(project: project) }
-                    }
+                    ArrangeablePage("project", columns: true, spacing: 28, boxes: overviewBoxes)
                 case .people:
                     ProjectPeopleTab(project: project)
                 case .notes: ProjectNotesTab(project: project)
@@ -423,12 +442,7 @@ extension ProjectDetailView {
                 .buttonStyle(.plain)
 
                 simpleHeader
-                simpleStageLine
-                simpleNextUp
-                simplePeople
-                simpleMoney
-                simpleEmails
-                simpleFooter
+                ArrangeablePage("project", spacing: 26, boxes: simpleBoxes)
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 32)

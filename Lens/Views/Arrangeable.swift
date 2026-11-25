@@ -59,12 +59,21 @@ final class PageLayouts: ObservableObject {
         UserDefaults.standard.removeObject(forKey: defaultsKey(key))
     }
 
-    func appeared(_ page: String) { current = page }
+    /// Pages on screen, newest last. Pages can appear and disappear in either order when she
+    /// switches, so the newest one still showing is the one Arrange works on.
+    private var showing: [String] = []
+
+    func appeared(_ page: String) {
+        showing.append(page)
+        if current != page { arranging = false }
+        current = page
+    }
 
     func disappeared(_ page: String) {
-        guard current == page else { return }
-        current = nil
-        arranging = false
+        if let i = showing.lastIndex(of: page) { showing.remove(at: i) }
+        let now = showing.last
+        if now != current { arranging = false }
+        current = now
     }
 }
 
@@ -174,8 +183,8 @@ struct ArrangeablePage: View {
                 if row.count == 2 {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 16) {
-                            row[0].box.view.frame(minWidth: 340, maxWidth: .infinity)
-                            row[1].box.view.frame(minWidth: 340, maxWidth: .infinity)
+                            row[0].box.view.frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                            row[1].box.view.frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                         }
                         .fixedSize(horizontal: false, vertical: true)
                         VStack(alignment: .leading, spacing: 16) { row[0].box.view; row[1].box.view }

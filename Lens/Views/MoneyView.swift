@@ -33,14 +33,7 @@ struct MoneyView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
-                if money.unsortedCount > 0 { unsortedBanner }
-                books
-                numbers
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) { comingIn; accounts.frame(width: 320) }
-                    VStack(alignment: .leading, spacing: 16) { comingIn; accounts }
-                }
-                transactions
+                ArrangeablePage("money", columns: true, spacing: 20, boxes: everythingBoxes)
             }
             .padding(36)
             .frame(maxWidth: 1240, alignment: .leading)
@@ -61,7 +54,119 @@ struct MoneyView: View {
         }
     }
 
+    /// The Everything boxes in their usual order; she can rearrange, resize or hide them.
+    private var everythingBoxes: [PageBox] {
+        var boxes: [PageBox] = []
+        if money.unsortedCount > 0 {
+            boxes.append(PageBox("unsorted", "Things to sort", color: Theme.amber) { unsortedBanner })
+        }
+        boxes += [
+            PageBox("books", "The books", color: Palette.violet) { books },
+            PageBox("numbers", "The numbers that matter", color: Palette.lime) { numbers },
+            PageBox("comingIn", "Coming in", color: Theme.amber, half: true) { comingIn },
+            PageBox("accounts", "Accounts", color: Palette.mint, half: true) { accounts },
+            PageBox("transactions", "All transactions", color: Palette.blue) { transactions },
+        ]
+        return boxes
+    }
+
     // MARK: Simple
+
+    /// Simple's boxes in their usual order; she can rearrange or hide them.
+    private var simpleBoxes: [PageBox] {
+        let inc = money.income(.thisMonth)
+        let cameIn = inc.totalRevenue
+        let unpaid = money.receivables.filter { $0.paidOn == nil }.sorted { $0.due < $1.due }
+        let owed = unpaid.reduce(0) { $0 + $1.amount }
+        let hasMonthActivity = !money.txns(in: .thisMonth).isEmpty
+        let hasBank = !money.data.openings.isEmpty
+        let bank = money.balance(.thisMonth).totalCash
+        let sortCount = money.unsortedCount
+        var boxes: [PageBox] = []
+        boxes.append(PageBox("cameIn", "Came in this month", color: Palette.lime) {
+        simplePanel("Came in this month") {
+            HeadlineNumber(text: dollars(cameIn), size: 44)
+            if let usual = usualMonth {
+                let ratio = cameIn / usual
+                Text(ratio > 1.15 ? "A bit more than usual" : ratio < 0.85 ? "A bit less than usual so far" : "About usual")
+                    .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+            }
+        }
+        })
+        boxes.append(PageBox("owed", "Waiting to be paid", color: Theme.amber) {
+        simplePanel("Waiting to be paid") {
+            HeadlineNumber(text: dollars(owed), size: 44)
+            if unpaid.isEmpty {
+                Text("Nobody owes you anything right now.")
+                    .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(unpaid.prefix(3))) { r in
+                        let (when, late) = dueText(r)
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.client.isEmpty ? r.label : r.client)
+                                    .font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                                Text("\(dollars(r.amount)), \(when)")
+                                    .font(Theme.font(size: 14))
+                                    .foregroundStyle(late ? Theme.coral : Theme.muted)
+                            }
+                            Spacer()
+                            if late {
+                                Button("See it") {
+                                    if let id = r.projectID { navigator.openProject(id) }
+                                    else { Appearance.shared.detail = .everything }
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
+                            }
+                        }
+                    }
+                    if unpaid.count > 3 {
+                        Text("and \(unpaid.count - 3) more")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        })
+        if hasMonthActivity {
+            boxes.append(PageBox("kept", "What you kept", color: Palette.violet) {
+                    simplePanel("What you kept") {
+                        HeadlineNumber(text: dollars(inc.net), size: 44)
+                        Text(inc.net >= 0 ? "After costs you kept \(dollars(inc.net)) this month."
+                                          : "Costs ran \(dollars(-inc.net)) more than came in this month.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    }
+            })
+        }
+        if hasBank {
+            boxes.append(PageBox("bank", "In the bank", color: Palette.blue) {
+                    simplePanel("In the bank") {
+                        HeadlineNumber(text: dollars(bank), size: 44)
+                        Text("Across your accounts and cash on hand.")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                    }
+            })
+        }
+        if sortCount > 0 {
+            boxes.append(PageBox("unsorted", "Things to sort", color: Theme.amber) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "tray.full").foregroundStyle(Theme.amber)
+                        Text("\(sortCount) to sort when you have a minute")
+                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
+                        Spacer()
+                        Button("Sort them") {
+                            onlyUnsorted = true
+                            Appearance.shared.detail = .everything
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
+                    .panel(padding: 16)
+            })
+        }
+        return boxes
+    }
 
     private func dollars(_ v: Double) -> String {
         (v < 0 ? "-" : "") + abs(v).formatted(.currency(code: "USD").precision(.fractionLength(0)))
@@ -96,14 +201,6 @@ struct MoneyView: View {
     }
 
     private var simpleMoney: some View {
-        let inc = money.income(.thisMonth)
-        let cameIn = inc.totalRevenue
-        let unpaid = money.receivables.filter { $0.paidOn == nil }.sorted { $0.due < $1.due }
-        let owed = unpaid.reduce(0) { $0 + $1.amount }
-        let hasMonthActivity = !money.txns(in: .thisMonth).isEmpty
-        let hasBank = !money.data.openings.isEmpty
-        let bank = money.balance(.thisMonth).totalCash
-        let sortCount = money.unsortedCount
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -112,82 +209,7 @@ struct MoneyView: View {
                         .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
                 }
 
-                simplePanel("Came in this month") {
-                    HeadlineNumber(text: dollars(cameIn), size: 44)
-                    if let usual = usualMonth {
-                        let ratio = cameIn / usual
-                        Text(ratio > 1.15 ? "A bit more than usual" : ratio < 0.85 ? "A bit less than usual so far" : "About usual")
-                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
-                    }
-                }
-
-                simplePanel("Waiting to be paid") {
-                    HeadlineNumber(text: dollars(owed), size: 44)
-                    if unpaid.isEmpty {
-                        Text("Nobody owes you anything right now.")
-                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(Array(unpaid.prefix(3))) { r in
-                                let (when, late) = dueText(r)
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(r.client.isEmpty ? r.label : r.client)
-                                            .font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
-                                        Text("\(dollars(r.amount)), \(when)")
-                                            .font(Theme.font(size: 14))
-                                            .foregroundStyle(late ? Theme.coral : Theme.muted)
-                                    }
-                                    Spacer()
-                                    if late {
-                                        Button("See it") {
-                                            if let id = r.projectID { navigator.openProject(id) }
-                                            else { Appearance.shared.detail = .everything }
-                                        }
-                                        .buttonStyle(SecondaryButtonStyle())
-                                    }
-                                }
-                            }
-                            if unpaid.count > 3 {
-                                Text("and \(unpaid.count - 3) more")
-                                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-
-                if hasMonthActivity {
-                    simplePanel("What you kept") {
-                        HeadlineNumber(text: dollars(inc.net), size: 44)
-                        Text(inc.net >= 0 ? "After costs you kept \(dollars(inc.net)) this month."
-                                          : "Costs ran \(dollars(-inc.net)) more than came in this month.")
-                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
-                    }
-                }
-
-                if hasBank {
-                    simplePanel("In the bank") {
-                        HeadlineNumber(text: dollars(bank), size: 44)
-                        Text("Across your accounts and cash on hand.")
-                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
-                    }
-                }
-
-                if sortCount > 0 {
-                    HStack(spacing: 12) {
-                        Image(systemName: "tray.full").foregroundStyle(Theme.amber)
-                        Text("\(sortCount) to sort when you have a minute")
-                            .font(Theme.font(size: 15)).foregroundStyle(Theme.text2)
-                        Spacer()
-                        Button("Sort them") {
-                            onlyUnsorted = true
-                            Appearance.shared.detail = .everything
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .panel(padding: 16)
-                }
+                ArrangeablePage("money", spacing: 22, boxes: simpleBoxes)
 
                 HStack(spacing: 0) {
                     Text("Statements, charts and every transaction are in ")

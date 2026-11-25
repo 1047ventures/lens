@@ -28,9 +28,11 @@ struct FootageView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
-                    LibraryDrivesView(part: .search, query: $query)
-                    LibraryShootsView(query: query) { path.append($0) }
-                    drivesSection
+                    ArrangeablePage("library", spacing: 28, boxes: [
+                        PageBox("search", "Find footage", color: Theme.teal) { LibraryDrivesView(part: .search, query: $query) },
+                        PageBox("shoots", "Shoots", color: Palette.blue) { LibraryShootsView(query: query) { path.append($0) } },
+                        PageBox("drives", "Drives", color: Palette.violet) { drivesSection },
+                    ])
                 }
                 .padding(.horizontal, 48)
                 .padding(.vertical, 40)

@@ -70,6 +70,18 @@ struct PeopleView: View {
         }
     }
 
+    /// The groups that have someone in them, in their usual order; she can rearrange or hide them.
+    private func simpleBoxes(now: [Person], rest: [Person], stands: [UUID: Standing]) -> [PageBox] {
+        var boxes: [PageBox] = []
+        if !now.isEmpty {
+            boxes.append(PageBox("now", "Working with now", color: Theme.teal) { simpleGroup("Working with now", now, stands) })
+        }
+        if !rest.isEmpty {
+            boxes.append(PageBox("rest", "Everyone else", color: Palette.slate) { simpleGroup(now.isEmpty ? "Everyone" : "Everyone else", rest, stands) })
+        }
+        return boxes
+    }
+
     private var simpleList: some View {
         let visible = people.search(query).filter { !isRobot($0) }
         let stands = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, standing($0)) })
@@ -106,8 +118,7 @@ struct PeopleView: View {
                 } else if visible.isEmpty {
                     Text("No one matches that.").font(Theme.font(size: 14)).foregroundStyle(Theme.muted).panel()
                 }
-                if !now.isEmpty { simpleGroup("Working with now", now, stands) }
-                if !rest.isEmpty { simpleGroup(now.isEmpty ? "Everyone" : "Everyone else", rest, stands) }
+                ArrangeablePage("people", spacing: 28, boxes: simpleBoxes(now: now, rest: rest, stands: stands))
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
@@ -163,6 +174,52 @@ struct PeopleView: View {
         return projects.project(id: onID)?.name ?? deals.deal(id: onID)?.title
     }
 
+    /// Everything's boxes in their usual order; the search and filters stay at the top.
+    private var everythingBoxes: [PageBox] {
+        var boxes: [PageBox] = []
+        if !people.recentlyAdded.isEmpty {
+            boxes.append(PageBox("recent", "Added recently", color: Palette.blue) { RecentlyAddedPanel() })
+        }
+        if !people.followUpsDue.isEmpty || !people.goneQuiet.isEmpty {
+            boxes.append(PageBox("checkIns", "Worth a check-in", color: Theme.amber) { followUps })
+        }
+        boxes.append(PageBox("everyone", "The list of people", color: Theme.teal) {
+            VStack(alignment: .leading, spacing: 26) {
+            if people.people.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No one here yet")
+                        .font(Theme.font(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("Everyone on your deals, projects and Zoom calls shows up here by itself, and so does anyone who emails you about work once Google is connected in Log-ins. You can also scan business cards or bring in LinkedIn, Facebook and Instagram.")
+                        .font(Theme.font(size: 14))
+                        .foregroundStyle(Theme.muted)
+                }
+                .panel(padding: 22)
+            } else if filtered.isEmpty {
+                Text("No one matches that.")
+                    .font(Theme.font(size: 14))
+                    .foregroundStyle(Theme.text3)
+                    .panel()
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionLabel("\(title) · \(filtered.count)")
+                    VStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element.id) { index, person in
+                            if index > 0 { Divider().overlay(Theme.lineSoft) }
+                            PersonRow(person: person) { navigator.personID = person.id }
+                        }
+                    }
+                    .background(Theme.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+                }
+            }
+    
+            }
+        })
+        return boxes
+    }
+
     private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
@@ -195,38 +252,7 @@ struct PeopleView: View {
 
                 filters
 
-                RecentlyAddedPanel()
-                followUps
-
-                if people.people.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("No one here yet")
-                            .font(Theme.font(size: 16, weight: .semibold))
-                            .foregroundStyle(Theme.text)
-                        Text("Everyone on your deals, projects and Zoom calls shows up here by itself, and so does anyone who emails you about work once Google is connected in Log-ins. You can also scan business cards or bring in LinkedIn, Facebook and Instagram.")
-                            .font(Theme.font(size: 14))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .panel(padding: 22)
-                } else if filtered.isEmpty {
-                    Text("No one matches that.")
-                        .font(Theme.font(size: 14))
-                        .foregroundStyle(Theme.text3)
-                        .panel()
-                } else {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SectionLabel("\(title) · \(filtered.count)")
-                        VStack(spacing: 0) {
-                            ForEach(Array(filtered.enumerated()), id: \.element.id) { index, person in
-                                if index > 0 { Divider().overlay(Theme.lineSoft) }
-                                PersonRow(person: person) { navigator.personID = person.id }
-                            }
-                        }
-                        .background(Theme.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
-                    }
-                }
+                ArrangeablePage("people", spacing: 26, boxes: everythingBoxes)
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)

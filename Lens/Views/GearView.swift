@@ -42,14 +42,16 @@ struct GearView: View {
                     }
                     .panel(padding: 22)
                 }
-                ForEach(kinds) { kind in
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(kind.label).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                            ForEach(items.filter { $0.kind == kind }) { simpleCard($0) }
+                ArrangeablePage("gear", spacing: 28, boxes: kinds.map { kind in
+                    PageBox("kind-" + kind.rawValue, kind.label, color: Palette.gold) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(kind.label).font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                                ForEach(items.filter { $0.kind == kind }) { simpleCard($0) }
+                            }
                         }
                     }
-                }
+                })
             }
             .padding(40)
             .frame(maxWidth: 1000, alignment: .leading)
@@ -85,52 +87,41 @@ struct GearView: View {
         .panel()
     }
 
-    private var fullBody: some View {
-        let items = money.gear.sorted { $0.value() > $1.value() }
-        let worth = items.reduce(0) { $0 + $1.value() }, paid = items.reduce(0) { $0 + $1.paid }
-        let service = items.filter(\.needsService).sorted { ($0.shoots ?? 0) > ($1.shoots ?? 0) }
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Gear").font(Theme.font(size: 30, weight: .bold)).foregroundStyle(Theme.text)
-                        Text("Everything you own, what it's worth today, and when it was last looked after.")
-                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    Button("Add from photo") { fromPhoto = true }
-                        .buttonStyle(SecondaryButtonStyle())
-                    Button("Add gear") {
-                        editing = GearItem(name: "", kind: .camera, bought: Date(), paid: 0, lifeYears: 5)
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                }
-
+    /// Everything's boxes in their usual order; she can rearrange or hide them.
+    private func fullBoxes(items: [GearItem], worth: Double, paid: Double, service: [GearItem]) -> [PageBox] {
+        var boxes: [PageBox] = [
+            PageBox("numbers", "Key numbers", color: Palette.gold) {
                 HStack(spacing: 12) {
                     tile("Items", "\(items.count)", Theme.text)
                     tile("Worth today", Money.string(worth), Palette.gold)
                     tile("Paid", Money.string(paid), Theme.text)
                     tile("Needs a check-up", "\(service.count)", service.isEmpty ? Theme.text : Theme.amber)
                 }
-
-                if let first = service.first {
-                    HStack(spacing: 12) {
-                        Image(systemName: "wrench.and.screwdriver").foregroundStyle(Theme.amber)
-                        Text("\(first.name) \(first.lastService == nil ? "has never had a check-up" : "hasn't been looked after in over a year")\(first.shoots.map { " and has been on \($0) shoots" } ?? ""). Book one before the next big shoot?")
-                            .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
-                        Spacer()
-                        Button("Log a check-up") {
-                            var item = first
-                            item.lastService = Date()
-                            item.serviceNote = "Check-up"
-                            money.saveGear(item)
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
+            },
+        ]
+        if !service.isEmpty {
+            boxes.append(PageBox("checkup", "Needs a check-up", color: Theme.amber) {
+            if let first = service.first {
+                HStack(spacing: 12) {
+                    Image(systemName: "wrench.and.screwdriver").foregroundStyle(Theme.amber)
+                    Text("\(first.name) \(first.lastService == nil ? "has never had a check-up" : "hasn't been looked after in over a year")\(first.shoots.map { " and has been on \($0) shoots" } ?? ""). Book one before the next big shoot?")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
+                    Spacer()
+                    Button("Log a check-up") {
+                        var item = first
+                        item.lastService = Date()
+                        item.serviceNote = "Check-up"
+                        money.saveGear(item)
                     }
-                    .panel(padding: 14)
-                    .accentBar(Theme.amber)
+                    .buttonStyle(SecondaryButtonStyle())
                 }
-
+                .panel(padding: 14)
+                .accentBar(Theme.amber)
+            }
+            })
+        }
+        boxes.append(PageBox("items", "All your gear", color: Palette.gold) {
+            VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text("Item").frame(maxWidth: .infinity, alignment: .leading)
@@ -175,8 +166,35 @@ struct GearView: View {
                 .panel()
                 .accentBar(Palette.gold)
 
-                Text("\"Worth now\" counts down from what you paid to a resale floor of 20% over each item's useful life, and feeds straight into What's it all worth? on Money.")
+            Text("\"Worth now\" counts down from what you paid to a resale floor of 20% over each item's useful life, and feeds straight into What's it all worth? on Money.")
                     .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+            }
+        })
+        return boxes
+    }
+
+    private var fullBody: some View {
+        let items = money.gear.sorted { $0.value() > $1.value() }
+        let worth = items.reduce(0) { $0 + $1.value() }, paid = items.reduce(0) { $0 + $1.paid }
+        let service = items.filter(\.needsService).sorted { ($0.shoots ?? 0) > ($1.shoots ?? 0) }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Gear").font(Theme.font(size: 30, weight: .bold)).foregroundStyle(Theme.text)
+                        Text("Everything you own, what it's worth today, and when it was last looked after.")
+                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Button("Add from photo") { fromPhoto = true }
+                        .buttonStyle(SecondaryButtonStyle())
+                    Button("Add gear") {
+                        editing = GearItem(name: "", kind: .camera, bought: Date(), paid: 0, lifeYears: 5)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+
+                ArrangeablePage("gear", spacing: 20, boxes: fullBoxes(items: items, worth: worth, paid: paid, service: service))
             }
             .padding(36)
             .frame(maxWidth: 1100, alignment: .leading)

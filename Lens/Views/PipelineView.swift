@@ -47,6 +47,17 @@ struct PipelineView: View {
         }
     }
 
+    /// The groups that have someone in them, in their usual order; she can rearrange or hide them.
+    private func simpleBoxes(needReply: [Deal], needQuote: [Deal], waiting: [Deal], booked: [Deal], lost: [Deal]) -> [PageBox] {
+        var boxes: [PageBox] = []
+        if !needReply.isEmpty { boxes.append(PageBox("reply", "Reply to these", color: Theme.coral) { simpleGroup("Reply to these", .reply, needReply) }) }
+        if !needQuote.isEmpty { boxes.append(PageBox("quote", "Send a quote", color: Theme.amber) { simpleGroup("Send a quote", .quote, needQuote) }) }
+        if !waiting.isEmpty { boxes.append(PageBox("waiting", "Waiting to hear back", color: Palette.blue) { simpleGroup("Waiting to hear back", .waiting, waiting) }) }
+        if !booked.isEmpty { boxes.append(PageBox("booked", "Booked", color: Palette.lime) { simpleGroup("Booked", .booked, booked, collapsible: true) }) }
+        if !lost.isEmpty { boxes.append(PageBox("lost", "Didn't go ahead", color: Palette.slate) { simpleGroup("Didn't go ahead", .lost, lost, collapsible: true) }) }
+        return boxes
+    }
+
     private var simpleInquiries: some View {
         let inquiries = deals.deals(in: .inquiry)
         // A call has happened (or is booked): the next job is the quote itself.
@@ -82,11 +93,8 @@ struct PipelineView: View {
                     }
                     .panel(padding: 22)
                 }
-                if !needReply.isEmpty { simpleGroup("Reply to these", .reply, needReply) }
-                if !needQuote.isEmpty { simpleGroup("Send a quote", .quote, needQuote) }
-                if !waiting.isEmpty { simpleGroup("Waiting to hear back", .waiting, waiting) }
-                if !booked.isEmpty { simpleGroup("Booked", .booked, booked, collapsible: true) }
-                if !lost.isEmpty { simpleGroup("Didn't go ahead", .lost, lost, collapsible: true) }
+                ArrangeablePage("inquiries", spacing: 28, boxes: simpleBoxes(needReply: needReply, needQuote: needQuote,
+                                                                           waiting: waiting, booked: booked, lost: lost))
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
