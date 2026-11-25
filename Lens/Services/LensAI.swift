@@ -434,7 +434,7 @@ final class LensAI: ObservableObject {
     You get new call summaries and her open projects. Each project has a name, client, keywords, the people on it
     (with roles like Director, Interviewee, Producer) and the titles of calls already filed there.
     For every summary, pick the one project it is about, or "" when it is about none of them (personal calls,
-    other businesses, a brand-new client). Use who was on the call, the people and places mentioned, the meeting
+    other businesses, a brand-new client, workshops or classes she ran or took, and Zoom's own emails). Use who was on the call, the people and places mentioned, the meeting
     title, the project names and keywords, and earlier calls in the same series.
     sure: true only when the summary clearly belongs to that project and to no other. When two projects fit,
     or the link is a guess, set sure to false. Never invent ids: project_id must be one of the ids given, or "".
