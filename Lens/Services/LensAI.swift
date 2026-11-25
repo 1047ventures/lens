@@ -289,6 +289,40 @@ final class LensAI: ObservableObject {
         return (overview, sections, steps)
     }
 
+    /// The short summary at the top of a project page: what it is, how it came in, where it stands.
+    /// Nil when there isn't enough to say.
+    func summarizeProject(_ facts: String) async throws -> String? {
+        guard let answer = try await structured(system: Self.projectSummaryPrompt, schema: Self.projectSummarySchema, payload: facts) else { return nil }
+        let parts = ["what", "how_it_came", "where_it_stands"]
+            .map { (answer[$0] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { $0.replacingOccurrences(of: " — ", with: ", ").replacingOccurrences(of: "—", with: ", ") }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    private static let projectSummaryPrompt = """
+    You write the short summary at the top of one project's page in a freelance filmmaker's business app. \
+    The owner of the business reads it; write to them as "you". It answers, in this order: what the project is \
+    (who the client is and the cool thing they want to make, in plain words), how it came to them (a referral \
+    and who referred them, an email, a website form, someone they met), and where it stands right now (dates \
+    set or not yet, what's been sent, what they're waiting on, like a budget being approved). \
+    One sentence for each, short and warm, like a friend catching them up. Name the people who matter by first \
+    name. Use real dates and facts from what you're given; never invent any. If you don't know how it came in, \
+    leave how_it_came empty. No em dashes, no jargon, no prices unless the budget is the point. Today's date is \
+    given so you can say "next week" or "in March".
+    """
+
+    private static let projectSummarySchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "what": ["type": "string"],
+            "how_it_came": ["type": "string"],
+            "where_it_stands": ["type": "string"],
+        ],
+        "required": ["what", "how_it_came", "where_it_stands"],
+        "additionalProperties": false,
+    ]
+
     /// Reads a proposal or quote file: who it's for, the total, line items and what it covered.
     func readQuote(_ blocks: [[String: Any]]) async throws -> [String: Any]? {
         let content = blocks + [["type": "text", "text": "Read this proposal or quote."]]

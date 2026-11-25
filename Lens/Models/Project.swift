@@ -171,6 +171,11 @@ struct Project: Codable, Identifiable, Hashable {
     var notPeople: [String]?
     /// The picture she picked for this project's tile. Nil means Lens picks one from the footage folder.
     var coverPath: String?
+    /// The few lines at the top of the project page: what it is, how it came in, where it stands.
+    /// Lens writes it from the emails, notes and people; nil until it has.
+    var summary: String?
+    /// What the summary was written from, so Lens only writes it again when something changed.
+    var summaryKey: String?
 
     init(name: String, client: String = "", shootDate: Date? = nil, location: String = "",
          folderPath: String? = nil, stage: ProjectStage = .lead) {

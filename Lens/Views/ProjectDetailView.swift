@@ -229,6 +229,8 @@ struct ProjectDetailView: View {
                     .font(Theme.font(size: 14))
                     .foregroundStyle(Theme.text3)
             }
+            ProjectSummaryView(project: project, size: 16)
+                .padding(.top, 4)
         }
     }
 
@@ -560,6 +562,8 @@ extension ProjectDetailView {
                 Text(meta).font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
             Text(project.name).font(Theme.display(size: 38)).foregroundStyle(Theme.text)
+            ProjectSummaryView(project: project, size: 17)
+                .padding(.top, 2)
         }
     }
 
