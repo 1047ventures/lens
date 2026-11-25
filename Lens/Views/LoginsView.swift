@@ -441,8 +441,9 @@ struct LoginsView: View {
                    "Each one placed on the matching inquiry or project, by the client's name and email",
                    "Ask Lens can read and search them all, so you can ask what someone said on a call"],
             never: "Never sees your Zoom password, never changes or deletes anything in Zoom, never joins your calls.",
-            steps: ["Click **Connect Zoom** below, sign in to Zoom and press **Allow**.",
-                    "That's it. Lens reads all your summaries in the background, then checks for new ones every hour.",
+            steps: ["One-time setup: make a small private app on your Zoom account and paste its two keys below. The steps are right below.",
+                    "Click **Connect Zoom**, sign in to Zoom and press **Allow**.",
+                    "Lens reads all your past summaries in the background, then checks for new ones every hour.",
                     "Make sure **Meeting summary** is on in Zoom's AI setting (link below), so every call gets one."]),
         .website: Info(
             name: "Website contact form", icon: "globe",
@@ -529,6 +530,8 @@ private struct ZoomControls: View {
     @EnvironmentObject private var logins: ConnectionStore
     @EnvironmentObject private var zoom: ZoomNotes
     @EnvironmentObject private var navigator: Navigator
+    @State private var clientID = ""
+    @State private var secret = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -586,11 +589,20 @@ private struct ZoomControls: View {
                         .disabled(logins.zoomBusy)
                         settingLink
                     }
+                    Button("Use different keys") { logins.forgetZoomClient() }
+                        .buttonStyle(.link).font(Theme.font(size: 12))
+                        .help("Forgets the saved Zoom keys so you can paste new ones.")
                 } else {
-                    Text("Connecting Zoom isn't set up on this Mac yet. Ask Claude to set up Zoom for Lens.")
-                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                    ZoomSetupSteps()
+                    HStack(spacing: 8) {
+                        TextField("Client ID", text: $clientID).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                        SecureField("Client Secret", text: $secret).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                        Button("Save keys") { logins.saveZoomClient(id: clientID, secret: secret); clientID = ""; secret = "" }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .disabled(clientID.trimmingCharacters(in: .whitespaces).isEmpty || secret.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                     HStack(spacing: 10) {
-                        Button("Get help") { ask("Connecting Zoom isn't set up on this Mac yet. How do I set up Zoom for Lens?") }
+                        Button("Get help") { ask("Walk me through making my private Zoom app for Lens, one click at a time.") }
                             .buttonStyle(SecondaryButtonStyle())
                         settingLink
                     }
@@ -622,6 +634,77 @@ private struct ZoomControls: View {
     private func ask(_ question: String) {
         navigator.askDraft = question
         navigator.askOpen = true
+    }
+}
+
+/// The one-time Zoom setup, step by step: a private app on Emma's own Zoom account that can only read.
+private struct ZoomSetupSteps: View {
+    static let redirect = "http://127.0.0.1:8765/zoom"
+    /// Zoom's names for the read-only permissions Lens needs.
+    static let scopes: [(name: String, what: String)] = [
+        ("meeting:read:list_summaries", "list your meeting summaries"),
+        ("meeting:read:summary", "read each summary"),
+        ("meeting:read:list_past_participants", "see who was on each call"),
+        ("meeting:read:list_meetings", "list your past meetings, a backup way to find summaries"),
+        ("user:read:user", "see which Zoom account is connected"),
+    ]
+    @State private var copied: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("One-time setup, about 5 minutes. You make a small private app on your own Zoom account that can only read.")
+                .font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+            step(1, "Go to **marketplace.zoom.us** and sign in with your Zoom account.") {
+                Link("Open Zoom Marketplace ↗", destination: URL(string: "https://marketplace.zoom.us")!).font(Theme.font(size: 12))
+            }
+            step(2, "Top right, click **Develop**, then **Build App**.")
+            step(3, "Pick **General App**, then **Create**. Name it **Lens**.")
+            step(4, "Under **How will the app be managed?**, pick **User-managed**.")
+            step(5, "Paste this address into **OAuth Redirect URL**, and add the same address to the **OAuth Allow List**:") {
+                copyRow(Self.redirect)
+            }
+            step(6, "On the left, click **Scopes**, then **Add Scopes**. Tick only these. They all only read:") {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Self.scopes, id: \.name) { scope in
+                        HStack(spacing: 8) {
+                            Text(scope.name).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text).textSelection(.enabled)
+                            Text(scope.what).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                    Text("If Zoom only shows names ending in **:admin**, tick those instead. They're the same permissions.")
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            step(7, "On the left, click **Basic Information** (or **App Credentials**). Copy the **Client ID** and **Client Secret** and paste them below. Only paste them here, nowhere else. You don't need to publish the app.")
+            step(8, "Click **Save keys**, then **Connect Zoom**. Sign in to Zoom and press **Allow**.")
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func step(_ n: Int, _ text: String) -> some View {
+        step(n, text) { EmptyView() }
+    }
+
+    private func step<Extra: View>(_ n: Int, _ text: String, @ViewBuilder extra: () -> Extra) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(n).").font(Theme.font(size: 13, weight: .semibold)).foregroundStyle(Palette.violet).frame(width: 18, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(.init(text)).font(Theme.font(size: 13)).foregroundStyle(Theme.text2).fixedSize(horizontal: false, vertical: true)
+                extra()
+            }
+        }
+    }
+
+    private func copyRow(_ value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(value).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.text).textSelection(.enabled)
+            Button(copied == value ? "Copied" : "Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(value, forType: .string)
+                copied = value
+            }
+            .buttonStyle(.link).font(Theme.font(size: 12))
+        }
     }
 }
 
