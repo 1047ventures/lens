@@ -15,7 +15,7 @@ struct TodayView: View {
 
     @EnvironmentObject private var money: MoneyStore
     @State private var events: [LensCalendarEvent] = []
-    /// The next seven days, for "The rest of your week".
+    /// The next seven days, for "Your week".
     @State private var weekEvents: [LensCalendarEvent] = []
     @State private var eventsLoaded = false
     @State private var openItems: Set<String> = []
@@ -432,7 +432,7 @@ struct TodayView: View {
                 }
                 ArrangeablePage("today", spacing: 30, boxes: simpleBoxes(all))
             }
-            .frame(maxWidth: 860, alignment: .leading)
+            .frame(maxWidth: 1180, alignment: .leading)
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
             .frame(maxWidth: .infinity)
@@ -444,7 +444,7 @@ struct TodayView: View {
         var boxes: [PageBox] = []
         if logins.googleCalendarReady { boxes.append(PageBox("yourDay", "Your day", color: Palette.blue) { yourDay }) }
         boxes.append(PageBox("things", "A few things for you", color: Theme.coral) { thingsForYou(all) })
-        boxes.append(PageBox("week", "The rest of your week", color: Theme.teal) { restOfWeek })
+        boxes.append(PageBox("week", "Your week", color: Theme.teal) { restOfWeek })
         boxes.append(PageBox("ask", "Ask Lens", color: Palette.violet) { askBar })
         return boxes
     }
@@ -517,15 +517,29 @@ struct TodayView: View {
     private var restOfWeek: some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let days = (1...6).compactMap { cal.date(byAdding: .day, value: $0, to: today) }
+        // Seven days, today first, all in one row when there's room.
+        let days = (0...6).compactMap { cal.date(byAdding: .day, value: $0, to: today) }
         return VStack(alignment: .leading, spacing: 14) {
-            Text("The rest of your week").font(Theme.display(size: 22)).foregroundStyle(Theme.text)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
-                ForEach(days, id: \.self) { day in
+            Text("Your week").font(Theme.display(size: 22)).foregroundStyle(Theme.text)
+            // One row of seven when it fits; on a narrow window the days wrap.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(days, id: \.self) { weekDay($0).frame(minWidth: 112) }
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
+                    ForEach(days, id: \.self) { weekDay($0) }
+                }
+            }
+        }
+    }
+
+    private func weekDay(_ day: Date) -> some View {
+        let cal = Calendar.current
+        return Group {
                     let plan = plans(on: day)
                     let shoot = projects.active.contains { $0.shootDate.map { cal.isDate($0, inSameDayAs: day) } ?? false }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(day.formatted(.dateTime.weekday(.wide)))
+                        Text(cal.isDateInToday(day) ? "Today" : day.formatted(.dateTime.weekday(.wide)))
                             .font(Theme.font(size: 13, weight: .bold))
                             .foregroundStyle(shoot ? Palette.mint : Theme.muted)
                         if plan.isEmpty {
@@ -541,12 +555,10 @@ struct TodayView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
-                    .padding(16)
+                    .padding(14)
                     .background(shoot ? Palette.mint.opacity(Theme.look == .daylight ? 0.12 : 0.18) : Theme.panel)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.look == .daylight || shoot ? Color.clear : Theme.line))
-                }
-            }
         }
     }
 
