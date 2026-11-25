@@ -72,7 +72,7 @@ struct ArrangeablePage: View {
     @EnvironmentObject private var appearance: Appearance
 
     /// The box whose edge the pointer is on, ready to be picked up.
-    @State private var ringFor: String?
+    @State private var hoverFor: String?
     /// The box being dragged, where the pointer is, and where on the box she grabbed it.
     @State private var dragging: String?
     /// Where the pointer is lives outside the page's own state, so moving the mouse only
@@ -212,22 +212,14 @@ struct ArrangeablePage: View {
             })
             .padding(grabWidth)
             .overlay {
-                if ringFor == p.id && dragging == nil {
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Theme.teal.opacity(0.6), lineWidth: 1.5)
-                        .padding(3)
-                        .allowsHitTesting(false)
-                }
-            }
-            .overlay {
                 Color.clear
                     .contentShape(EdgeBand(width: grabWidth), eoFill: true)
                     .onHover { inside in
                         if inside {
-                            ringFor = p.id
+                            hoverFor = p.id
                             NSCursor.openHand.set()
-                        } else if ringFor == p.id {
-                            ringFor = nil
+                        } else if hoverFor == p.id {
+                            hoverFor = nil
                             if dragging == nil { NSCursor.arrow.set() }
                         }
                     }
@@ -280,7 +272,7 @@ struct ArrangeablePage: View {
             tracker.pointer = p
             live = merged()
             lastOver = nil
-            ringFor = nil
+            hoverFor = nil
             dragging = id
             NSCursor.closedHand.set()
         }
