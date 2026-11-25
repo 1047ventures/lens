@@ -38,7 +38,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 /// Shared navigation state, so any screen can jump to a section or open a project.
 @MainActor
 final class Navigator: ObservableObject {
-    @Published var section: SidebarSection? = .today
+    @Published var section: SidebarSection? = .projects
     /// "Style" is open.
     @Published var choosingStyle = false
     @Published var projectID: UUID?
@@ -142,13 +142,32 @@ struct ContentView: View {
     @StateObject private var history = EmailHistory()
     @StateObject private var freshbooks = FreshBooksSync()
     @State private var whatsNew: [WhatsNew.Item] = []
+    /// The morning cards, while they're showing.
+    @State private var morning: [TodayItem]?
     @ObservedObject private var appearance = Appearance.shared
+
+    /// Once a day, at launch: a few cards for what needs her. Nothing to do, nothing shown.
+    private func startMorning() {
+        guard morning == nil, whatsNew.isEmpty, !navigator.touring, !MorningCards.shownToday else { return }
+        let things = MorningCards.things(viewModel: viewModel, projects: projects, deals: deals,
+                                         logins: logins, people: people, navigator: navigator)
+        guard !things.isEmpty else { return }
+        MorningCards.markShown()
+        withAnimation(.easeOut(duration: 0.25)) { morning = things }
+    }
+
+    /// Done or skipped: she lands on the wall of projects (a card's own button goes where it says).
+    private func finishMorning() {
+        navigator.open(.projects)
+        navigator.projectID = nil
+        withAnimation(.easeOut(duration: 0.25)) { morning = nil }
+    }
 
     var body: some View {
         // No sidebar: the bar across the top gets her everywhere, and the page gets the whole width.
         VStack(spacing: 0) {
             Group {
-                switch navigator.section ?? .today {
+                switch navigator.section ?? .projects {
                 case .today: TodayView()
                 case .pipeline: ProjectsView()
                 case .people: PeopleView()
@@ -162,6 +181,12 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.ground)
+            .overlay {
+                if let morning {
+                    MorningCardsView(items: morning) { finishMorning() }
+                        .transition(.opacity)
+                }
+            }
             .overlay {
                 if navigator.findOpen { FindBar().transition(.opacity) }
             }
@@ -231,13 +256,16 @@ struct ContentView: View {
             }
             .toolbarBackground(Theme.ground, for: .windowToolbar)
             .navigationTitle("")
-            .sheet(isPresented: Binding(get: { !whatsNew.isEmpty }, set: { if !$0 { whatsNew = []; WhatsNew.markSeen() } })) {
+            .sheet(isPresented: Binding(get: { !whatsNew.isEmpty }, set: { if !$0 { whatsNew = []; WhatsNew.markSeen(); startMorning() } })) {
                 WhatsNewView(items: whatsNew)
             }
             .task {
                 try? await Task.sleep(for: .seconds(1))
                 whatsNew = WhatsNew.unseen()
                 if whatsNew.isEmpty { WhatsNew.markSeen() }
+                // Give the stores a moment to fill, then the day's cards (after any "What's new").
+                try? await Task.sleep(for: .seconds(1))
+                startMorning()
             }
             .sheet(item: $navigator.bankLogin) { id in
                 BankLoginView(id: id, folder: logins.state.statementsFolder.map { URL(fileURLWithPath: $0) } ?? BankSite.defaultFolder)
