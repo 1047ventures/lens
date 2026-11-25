@@ -13,6 +13,13 @@ struct ProjectsView: View {
     @State private var editing: Project?
     @State private var creating = false
     @State private var importMessage: String?
+    @AppStorage("projects.arrange") private var arrangeRaw = ProjectArrange.next.rawValue
+
+    private var arrange: ProjectArrange { ProjectArrange(rawValue: arrangeRaw) ?? .next }
+    /// Searching or sorting another way swaps the usual groups for the found list.
+    private var finding: Bool {
+        !navigator.projectQuery.trimmingCharacters(in: .whitespaces).isEmpty || arrange != .next
+    }
 
     var body: some View {
         Group {
@@ -47,7 +54,7 @@ struct ProjectsView: View {
                         Text("Projects")
                             .font(Theme.font(size: 30, weight: .bold))
                             .foregroundStyle(Theme.text)
-                        Text("Every gig, from first inquiry to archived.")
+                        Text("Every idea you're bringing to life, from first spark to finished.")
                             .font(Theme.font(size: 15))
                             .foregroundStyle(Theme.muted)
                     }
@@ -69,6 +76,11 @@ struct ProjectsView: View {
                         .foregroundStyle(Theme.text3)
                 }
 
+                if !projects.projects.isEmpty { findBar }
+
+                if finding && !projects.projects.isEmpty {
+                    found(simple: false)
+                } else {
                 FoundWorkPanel()
                 EmailSuggestionsPanel(place: .projects)
                 UnmatchedNotesPanel()
@@ -88,10 +100,69 @@ struct ProjectsView: View {
                 } else {
                     ArrangeablePage("projects", spacing: 26, boxes: everythingBoxes)
                 }
+                }
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Find and sort
+
+    private var findBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                TextField("Find by name, client, place, date or anyone involved", text: $navigator.projectQuery)
+                    .textFieldStyle(.plain)
+                    .font(Theme.font(size: 14))
+                if !navigator.projectQuery.isEmpty {
+                    Button { navigator.projectQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear")
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Theme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+            Picker("Sort by", selection: $arrangeRaw) {
+                ForEach(ProjectArrange.allCases) { Text($0.rawValue).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu).fixedSize()
+            .font(Theme.font(size: 13))
+        }
+    }
+
+    @ViewBuilder private func found(simple: Bool) -> some View {
+        let query = navigator.projectQuery.trimmingCharacters(in: .whitespaces)
+        let words = query.lowercased().split(separator: " ").map(String.init)
+        let items = projects.projects.filter { words.isEmpty || ProjectFinder.matches($0, words) }
+        if items.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Nothing matches \u{201C}\(query)\u{201D}")
+                    .font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+                Text("Try a client, a place, a month like \u{201C}June\u{201D}, or the name of someone involved.")
+                    .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
+            }
+            .panel(padding: 22)
+        } else {
+            VStack(alignment: .leading, spacing: simple ? 28 : 26) {
+                ForEach(ProjectFinder.groups(items, by: arrange)) { found in
+                    if simple {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("\(found.title) · \(found.items.count)")
+                                .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
+                            ForEach(found.items) { simpleCard($0) }
+                        }
+                    } else {
+                        group(title: found.title, items: found.items)
+                    }
+                }
+            }
         }
     }
 
@@ -162,17 +233,22 @@ struct ProjectsView: View {
                     Button("New project") { creating = true }
                         .buttonStyle(PrimaryButtonStyle())
                 }
+                if !all.isEmpty { findBar }
+                if finding && !all.isEmpty {
+                    found(simple: true)
+                } else {
                 if !history.found.isEmpty { FoundWorkPanel() }
                 if all.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No projects yet")
                             .font(Theme.display(size: 20)).foregroundStyle(Theme.text)
-                        Text("Start one with New project, and it will show up here.")
+                        Text("Start one with New project: a client booking, or an idea of your own you want to bring to life.")
                             .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
                     }
                     .panel(padding: 22)
                 }
                 ArrangeablePage("projects", spacing: 28, boxes: simpleBoxes(groups, done: done))
+                }
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 40)
@@ -313,11 +389,17 @@ struct ProjectEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(initial == nil ? "New project" : "Edit project")
-                .font(Theme.font(size: 20, weight: .bold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(initial == nil ? "New project" : "Edit project")
+                    .font(Theme.font(size: 20, weight: .bold))
+                if initial == nil {
+                    Text("A client booking, or an idea of your own you want to bring to life.")
+                        .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
+                }
+            }
             Form {
                 TextField("Name", text: $name, prompt: Text("Hartley wedding"))
-                TextField("Client", text: $client)
+                TextField("Client", text: $client, prompt: Text("Leave empty if it's your own"))
                 TextField("Location", text: $location)
                 TextField("Keywords", text: $keywords, prompt: Text("CU, documentary"))
                     .help("Words that show a Zoom call or email is about this project, separated by commas")
@@ -492,5 +574,92 @@ enum SimpleProject {
         case .paid: return p.folderPath != nil && !p.isOnServer ? "Paid. Move the footage to the server when you're ready." : "All paid. Nicely done."
         case .archived: return "Finished and put away."
         }
+    }
+}
+
+// MARK: - Finding projects
+
+/// The ways she can lay out the Projects list. "What's next" is the usual page.
+enum ProjectArrange: String, CaseIterable, Identifiable {
+    case next = "What's next"
+    case date = "Date"
+    case place = "Place"
+    case people = "People involved"
+    case client = "Client"
+    var id: String { rawValue }
+}
+
+struct ProjectGroup: Identifiable {
+    let title: String
+    var items: [Project]
+    var id: String { title }
+}
+
+enum ProjectFinder {
+    /// Every word she typed shows up somewhere on the project: its name, client, place, keywords,
+    /// stage, the people involved and their roles, or its month and day.
+    static func matches(_ p: Project, _ words: [String]) -> Bool {
+        var parts = [p.name, p.client, p.location, p.stage.label, SimpleProject.chipName(p.stage)]
+        parts += p.keywords ?? []
+        parts += (p.people ?? []).flatMap { [$0.name, $0.role] }
+        if let d = p.shootDate {
+            parts.append(d.formatted(.dateTime.month(.wide).day().year()))
+            parts.append(d.formatted(.dateTime.month(.abbreviated)))
+        }
+        if p.client.trimmingCharacters(in: .whitespaces).isEmpty { parts.append("own personal idea") }
+        let hay = parts.joined(separator: " ").lowercased()
+        return words.allSatisfy { hay.contains($0) }
+    }
+
+    private static func when(_ p: Project) -> Date { p.shootDate ?? p.createdAt }
+
+    static func groups(_ items: [Project], by arrange: ProjectArrange) -> [ProjectGroup] {
+        let newest = items.sorted { when($0) > when($1) }
+        switch arrange {
+        case .next:
+            return ProjectStage.allCases.compactMap { stage in
+                let members = newest.filter { $0.stage == stage }
+                return members.isEmpty ? nil : ProjectGroup(title: SimpleProject.chipName(stage), items: members)
+            }
+        case .date:
+            var groups: [ProjectGroup] = []
+            for p in newest where p.shootDate != nil {
+                let title = p.shootDate!.formatted(.dateTime.month(.wide).year())
+                if groups.last?.title == title { groups[groups.count - 1].items.append(p) }
+                else { groups.append(ProjectGroup(title: title, items: [p])) }
+            }
+            let undated = newest.filter { $0.shootDate == nil }
+            if !undated.isEmpty { groups.append(ProjectGroup(title: "No date yet", items: undated)) }
+            return groups
+        case .place:
+            return labelled(newest, none: "No place set") { [$0.location] }
+        case .people:
+            // The client first, as on the shoot brief, then everyone on the People tab.
+            return labelled(newest, none: "No one added yet") { [$0.client] + ($0.people ?? []).map(\.name) }
+        case .client:
+            return labelled(newest, none: "Your own projects") { [$0.client] }
+        }
+    }
+
+    /// One group per label, busiest first; a project with several people shows under each of them.
+    private static func labelled(_ items: [Project], none: String, _ labels: (Project) -> [String]) -> [ProjectGroup] {
+        var order: [String] = []
+        var byKey: [String: ProjectGroup] = [:]
+        var leftover: [Project] = []
+        for p in items {
+            var seen = Set<String>()
+            let names = labels(p).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            if names.isEmpty { leftover.append(p); continue }
+            for name in names {
+                let key = name.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                if byKey[key] == nil { byKey[key] = ProjectGroup(title: name, items: []); order.append(key) }
+                byKey[key]!.items.append(p)
+            }
+        }
+        var groups = order.compactMap { byKey[$0] }
+            .sorted { $0.items.count != $1.items.count ? $0.items.count > $1.items.count : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        if !leftover.isEmpty { groups.append(ProjectGroup(title: none, items: leftover)) }
+        return groups
     }
 }

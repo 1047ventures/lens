@@ -41,6 +41,8 @@ final class Navigator: ObservableObject {
     /// "Style" is open.
     @Published var choosingStyle = false
     @Published var projectID: UUID?
+    /// What she typed in the Projects search box, kept while she visits other sections.
+    @Published var projectQuery = ""
     @Published var dealID: UUID?
     /// The person whose page is open in People.
     @Published var personID: UUID?

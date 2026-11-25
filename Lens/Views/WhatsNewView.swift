@@ -22,6 +22,8 @@ enum WhatsNew {
                  detail: "Everything now opens with a few things for you, the rest folded away for later, and a plain sentence on each chart saying what it means."),
             Item(icon: "chart.bar.fill", title: "Where your jobs are",
                  detail: "The jobs card on Today now shows each step in plain words, from Quoting to Wrapping up, with how many jobs are there and what they're worth. Rest the pointer on a step to see what it means."),
+            Item(icon: "magnifyingglass", title: "Find any project",
+                 detail: "Projects has a search box now. Type a client, a place, a month or anyone involved, and Sort by date, place, people involved or client. Projects aren't only for clients either: start one for an idea of your own."),
             Item(icon: "map.fill", title: "Every shoot in a place, in one list",
                  detail: "Click a group of pictures on the Library map and every shoot there is listed right beside it, with when, who and what's in it. Click one to open it."),
             Item(icon: "arrow.uturn.backward.circle.fill", title: "Right where you left off",
