@@ -45,5 +45,5 @@ Emma can change Lens herself with Claude Code. When the person at the keyboard i
   If GitHub comments that it doesn't build, fix the errors and push again.
 - Never run `release.sh` or `package.sh`, and never try to sign or notarize. Never change
   `.github/`, `tools/`, the entitlements or Info.plist: changes to those wait for Skelly.
-- She sees the change when Lens offers the update (bottom left of the sidebar).
+- She sees the change when Lens offers the update (Update ready, top right of the window).
 - Explain things to her in plain English, no jargon. She knows the app, not the code.

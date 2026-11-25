@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// "Make Lens feel like yours": pick a look (Daylight, Evening, Studio).
-/// Opened from "Style" at the bottom of the sidebar. Changes apply straight away. Simple or Everything is in the toolbar.
+/// Opened from "Style" behind her picture, top right. Changes apply straight away. Simple or Everything is in the toolbar.
 struct StylePickerView: View {
     @ObservedObject private var appearance = Appearance.shared
     @Environment(\.dismiss) private var dismiss

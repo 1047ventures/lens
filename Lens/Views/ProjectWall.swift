@@ -193,6 +193,8 @@ struct ProjectTile: View {
     @EnvironmentObject private var appearance: Appearance
     @State private var hovering = false
     @State private var dropping = false
+    /// So the menu says Pin or Take off correctly after a change.
+    @AppStorage("topbar.pins") private var pinsRaw = ""
 
     private var reason: String? { WallAttention.reason(project, deals: deals) }
     private var lostOne: Bool { deals.didntBook(project) }
@@ -247,6 +249,13 @@ struct ProjectTile: View {
         .help(reason.map { "Needs you: \($0)" } ?? project.name)
         .contextMenu {
             Button("Open") { navigator.projectID = project.id }
+            if project.stage != .archived {
+                if TopBarPins.isShown(project, in: projects) {
+                    Button("Take off the top bar") { TopBarPins.unpin(project, in: projects) }
+                } else {
+                    Button("Pin to the top bar") { TopBarPins.pin(project, in: projects) }
+                }
+            }
             Divider()
             Button("Choose cover picture…") { chooseCover() }
             if project.coverPath != nil {

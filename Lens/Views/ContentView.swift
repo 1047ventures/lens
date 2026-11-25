@@ -143,12 +143,8 @@ struct ContentView: View {
     @ObservedObject private var appearance = Appearance.shared
 
     var body: some View {
-        NavigationSplitView {
-            Sidebar()
-                .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
-                // The sidebar is deep teal on Daylight too, so it always draws as dark.
-                .environment(\.colorScheme, .dark)
-        } detail: {
+        // No sidebar: the bar across the top gets her everywhere, and the page gets the whole width.
+        VStack(spacing: 0) {
             Group {
                 switch navigator.section ?? .today {
                 case .today: TodayView()
@@ -172,6 +168,18 @@ struct ContentView: View {
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
             }
             .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    TopBarLeading()
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 10) {
+                        TimerPill()
+                        UpdatePill()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    TopBarPlaces()
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         navigator.findingPerson.toggle()
@@ -217,7 +225,12 @@ struct ContentView: View {
                     .keyboardShortcut("k", modifiers: .command)
                     .help("Ask Lens (⌘K)")
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    ProfileMenu()
+                }
             }
+            .toolbarBackground(Theme.ground, for: .windowToolbar)
+            .navigationTitle("")
             .sheet(isPresented: Binding(get: { !whatsNew.isEmpty }, set: { if !$0 { whatsNew = []; WhatsNew.markSeen() } })) {
                 WhatsNewView(items: whatsNew)
             }
@@ -349,205 +362,6 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Sidebar
-
-struct Sidebar: View {
-    @EnvironmentObject private var viewModel: ScanViewModel
-    @EnvironmentObject private var projects: ProjectStore
-    @EnvironmentObject private var deals: DealStore
-    @EnvironmentObject private var logins: ConnectionStore
-    @EnvironmentObject private var people: PeopleStore
-    @EnvironmentObject private var navigator: Navigator
-    @EnvironmentObject private var appearance: Appearance
-    @AppStorage("sidebarMoreOpen") private var moreOpen = false
-
-    private func row(_ section: SidebarSection) -> some View {
-        Label(section.rawValue, systemImage: section.systemImage)
-            .badge(section == .projects ? deals.open.filter(\.isStale).count
-                   : section == .people ? people.followUpsDue.count
-                   : section == .logins ? logins.progress.total - logins.progress.done : 0)
-            .tag(section)
-    }
-
-    var body: some View {
-        List(selection: $navigator.section) {
-            HStack(spacing: 9) {
-                Image("LensMark")
-                    .resizable()
-                    .frame(width: 26, height: 26)
-                Text("Lens")
-                    .font(Theme.isStudio ? Theme.font(size: 17, weight: .bold) : Theme.display(size: 21))
-                    .foregroundStyle(Theme.sideText)
-            }
-            .padding(.vertical, 6)
-            .selectionDisabled()
-            .accessibilityElement(children: .combine)
-            Section {
-                if appearance.simple {
-                    ForEach(SidebarSection.simpleMain) { row($0) }
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { moreOpen.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("More").font(Theme.font(size: 12, weight: .semibold))
-                            Image(systemName: moreOpen ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold))
-                            Spacer()
-                        }
-                        .foregroundStyle(Theme.sideMuted)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .selectionDisabled()
-                    // Stays showing while one of its screens is open, so the highlight never disappears.
-                    if moreOpen || SidebarSection.simpleMore.contains(where: { $0 == navigator.section }) {
-                        ForEach(SidebarSection.simpleMore) { row($0) }
-                    }
-                } else {
-                    ForEach(SidebarSection.main) { row($0) }
-                }
-            }
-
-            if !projects.active.isEmpty {
-                Section("Active projects") {
-                    ForEach(projects.active.prefix(6)) { project in
-                        Button {
-                            navigator.openProject(project.id)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(project.name)
-                                        .font(Theme.font(size: 12, weight: .semibold))
-                                        .lineLimit(1)
-                                    Spacer(minLength: 6)
-                                    Text(project.stage.label)
-                                        .font(Theme.font(size: 11))
-                                        .foregroundStyle(Theme.sideMuted)
-                                }
-                                StageBar(stage: project.stage, onSidebar: true)
-                            }
-                            .padding(.vertical, 3)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-        }
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 8) {
-                RunningTimerBadge()
-                UpdateBanner()
-                Button {
-                    navigator.choosingStyle = true
-                } label: {
-                    Label("Style", systemImage: "paintpalette")
-                        .font(Theme.font(size: 13))
-                        .foregroundStyle(Theme.sideMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Choose how Lens looks and how much each screen shows")
-                Button {
-                    navigator.open(.settings)
-                } label: {
-                    Label("Settings", systemImage: SidebarSection.settings.systemImage)
-                        .font(Theme.font(size: 13, weight: navigator.section == .settings ? .semibold : .regular))
-                        .foregroundStyle(navigator.section == .settings ? Theme.sideText : Theme.sideMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(navigator.section == .settings ? Theme.sideText.opacity(0.12) : .clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                StorageMeter()
-                // Which version this is. Click to check for a newer one.
-                Button {
-                    Task { await Updater.shared.check() }
-                } label: {
-                    Text("Lens \(Updater.shared.currentVersion)")
-                        .font(Theme.font(size: 11))
-                        .foregroundStyle(Theme.sideMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                }
-                .buttonStyle(.plain)
-                .help("Check for updates")
-                .overlay(alignment: .trailing) {
-                    Button("Take the tour") { navigator.startTour() }
-                        .buttonStyle(.plain)
-                        .font(Theme.font(size: 11))
-                        .foregroundStyle(Theme.current.sideAccent)
-                        .padding(.trailing, 4)
-                }
-            }
-            .padding(12)
-            .background(Theme.sidebar)
-            .overlay(alignment: .top) { Divider().overlay(Theme.current.sideTrack) }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Theme.sidebar)
-        // The highlight on the chosen section: the look's teal rather than the Mac's own accent colour.
-        .tint(Theme.isStudio ? Theme.tealDim : Color(hex: 0x1E6B5E))
-        .navigationTitle("Lens")
-    }
-}
-
-/// The SSD's fill level, always visible at the bottom of the sidebar.
-struct StorageMeter: View {
-    @EnvironmentObject private var viewModel: ScanViewModel
-    @EnvironmentObject private var navigator: Navigator
-    @ObservedObject private var catalog = DriveCatalog.shared
-
-    var body: some View {
-        Button {
-            navigator.open(.footage)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                if let root = viewModel.pluggedRoots.first, let capacity = DriveInfo.capacity(for: root) {
-                    HStack {
-                        Text(capacity.name).foregroundStyle(Theme.text3)
-                        Spacer()
-                        Text("\(Int((capacity.fractionUsed * 100).rounded()))% full")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(capacity.fractionUsed > 0.8 ? Theme.amber : Theme.text2)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Theme.track)
-                            Capsule()
-                                .fill(capacity.fractionUsed > 0.8 ? Theme.amber : Theme.tealDim)
-                                .frame(width: geo.size.width * capacity.fractionUsed)
-                        }
-                    }
-                    .frame(height: 4)
-                    Text("\(ByteFormat.string(capacity.free)) free")
-                        .foregroundStyle(Theme.muted)
-                } else if !DriveCatalog.shared.outside.isEmpty {
-                    let count = DriveCatalog.shared.outside.count
-                    Text("\(count) drive\(count == 1 ? "" : "s") in the Library").foregroundStyle(Theme.text3)
-                    Text("Plug one in to tidy it").foregroundStyle(Theme.muted)
-                } else {
-                    Text("No drive added yet").foregroundStyle(Theme.text3)
-                    Text("Add one in Library").foregroundStyle(Theme.muted)
-                }
-            }
-            .font(Theme.font(size: 11))
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Placeholder for sections still to come
 
 struct ComingSoonView: View {
@@ -586,51 +400,6 @@ struct ComingSoonView: View {
     }
 }
 
-
-/// Shows up at the bottom of the sidebar when a new version of Lens is ready.
-struct UpdateBanner: View {
-    @ObservedObject private var updater = Updater.shared
-
-    var body: some View {
-        if let release = updater.available {
-            Button {
-                Task { await updater.install() }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle.fill").font(Theme.font(size: 18))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Lens \(release.version) is ready").font(Theme.font(size: 12, weight: .semibold))
-                        Text(phaseText ?? "Install and restart").font(Theme.font(size: 11)).opacity(0.8)
-                    }
-                    Spacer()
-                }
-                .padding(10)
-                .background(Theme.teal.opacity(0.2))
-                .background(Theme.panel)
-                .foregroundStyle(Theme.text)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(updater.phase == .downloading || updater.phase == .installing)
-            .help(release.notes)
-        } else if let text = phaseText {
-            Text(text).font(Theme.font(size: 11)).foregroundStyle(Theme.sideMuted)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var phaseText: String? {
-        switch updater.phase {
-        case .checking: return "Checking for updates…"
-        case .upToDate: return "Lens \(updater.currentVersion) is up to date"
-        case .downloading: return "Downloading…"
-        case .installing: return "Installing…"
-        case .failed(let message): return message
-        case .idle: return nil
-        }
-    }
-}
 
 /// When people, keywords or a name are added to a project, Lens goes back through Gmail and every Zoom
 /// summary for everything about it, however old, so the project page has its whole history.

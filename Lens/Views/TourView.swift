@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The one minute tour. A small card walks through each part of Lens while the real screen
 /// changes behind it, so the new user sees where things live, not a picture of them.
-/// Shows once on first open; "Take the tour" under the version number replays it.
+/// Shows once on first open; "Take the tour" behind her picture (top right) replays it.
 struct TourStop {
     let section: SidebarSection?
     let opensAsk: Bool
@@ -15,13 +15,13 @@ enum Tour {
     static let stops: [TourStop] = [
         TourStop(section: .today, opensAsk: false, icon: "hand.wave",
                  title: "Welcome to Lens",
-                 body: "Your whole photo and video business in one place. This quick tour shows you where everything lives. It takes about a minute."),
+                 body: "Your whole photo and video business in one place. Everything is along the top: your projects on the left, the rest as small icons on the right. This quick tour takes about a minute."),
         TourStop(section: .today, opensAsk: false, icon: "sun.max",
                  title: "Today",
                  body: "Start here. It shows what's coming up, who's waiting on you, and the one thing to do next."),
         TourStop(section: .projects, opensAsk: false, icon: "folder",
                  title: "Projects",
-                 body: "Every job is a project, from the first message to booked. It starts at Quoting, where Lens suggests a price and builds your proposal, then moves down the same steps: Planning, Shooting, Editing, Getting paid, Wrapping up."),
+                 body: "Every job is a project with its own picture, from the first message to booked. Click Projects at the top left to see them all. The ones you're working on sit right beside it. Each moves down the same steps: Quoting, Planning, Shooting, Editing, Getting paid, Wrapping up."),
         TourStop(section: .footage, opensAsk: false, icon: "photo.stack",
                  title: "Library",
                  body: "Every photo and video on your drives, your Mac and the Photos app. Lens remembers a drive after you unplug it, so you can still search it. It can pull the photos off an old website too."),
@@ -30,7 +30,7 @@ enum Tour {
                  body: "Money adds up what came in, what went out, and what to save for taxes. Log in to your bank, Venmo or PayPal once and Lens fills it in. Gear keeps your kit and what it's worth."),
         TourStop(section: .logins, opensAsk: false, icon: "key",
                  title: "Log-ins",
-                 body: "Connect your email, calendar and bank here, one time each. You sign in on their own page, so Lens never sees your passwords. It only reads, it never pays or posts anything."),
+                 body: "Click your picture at the top right for Log-ins. Connect your email, calendar and bank there, one time each. You sign in on their own page, so Lens never sees your passwords. It only reads, it never pays or posts anything."),
         TourStop(section: nil, opensAsk: true, icon: "sparkles",
                  title: "Ask Lens",
                  body: "Not sure where something is? Ask in plain words, like \"who haven't I replied to?\" or \"what did I make in March?\" Lens checks with you before it changes anything."),
