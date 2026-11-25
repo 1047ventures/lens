@@ -109,6 +109,7 @@ struct ContentView: View {
     @StateObject private var freshbooks = FreshBooksSync()
     @State private var whatsNew: [WhatsNew.Item] = []
     @ObservedObject private var appearance = Appearance.shared
+    @ObservedObject private var layouts = PageLayouts.shared
 
     var body: some View {
         NavigationSplitView {
@@ -152,6 +153,18 @@ struct ContentView: View {
                         FindPersonPopover()
                             .environmentObject(people)
                             .environmentObject(navigator)
+                    }
+                }
+                if layouts.current != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { layouts.arranging.toggle() }
+                        } label: {
+                            Label(layouts.arranging ? "Done" : "Arrange",
+                                  systemImage: layouts.arranging ? "checkmark" : "square.grid.2x2")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .help(layouts.arranging ? "Finish arranging this page" : "Move, resize or hide the boxes on this page")
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {

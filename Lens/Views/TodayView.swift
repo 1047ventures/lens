@@ -52,40 +52,53 @@ struct TodayView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
-                if logins.googleCalendarReady {
-                    DashCard(title: "Today", color: Palette.blue) {
-                        DayTimeline(events: events, loaded: eventsLoaded)
-                    }
-                }
-                needsYou
-                tiles(numbers)
-                    .padding(.top, 14)
-                pair {
-                    DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
-                        MoneyInChart(numbers: numbers)
-                    }
-                } right: {
-                    DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) }) {
-                        HoursDonut(slices: numbers.hoursThisMonth)
-                    }
-                }
-                pair {
-                    DashCard(title: "Lead to paid", color: Palette.violet, action: { navigator.open(.projects) }) {
-                        StageFunnel(steps: numbers.funnel)
-                    }
-                } right: {
-                    DashCard(title: "The week ahead", color: Theme.teal) {
-                        WeekStrip(projects: projects.active) { navigator.openProject($0) }
-                    }
-                }
-                AutoFiledToday()
-                    .frame(maxWidth: 720, alignment: .leading)
+                ArrangeablePage("today", columns: true, boxes: everythingBoxes(numbers))
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 34)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .task { await loadEvents() }
+    }
+
+    /// Today's boxes in their usual order; she can rearrange, resize or hide them.
+    private func everythingBoxes(_ numbers: TodayNumbers) -> [PageBox] {
+        var boxes: [PageBox] = []
+        if logins.googleCalendarReady {
+            boxes.append(PageBox("calendar", "Today's calendar", color: Palette.blue) {
+                DashCard(title: "Today", color: Palette.blue) {
+                    DayTimeline(events: events, loaded: eventsLoaded)
+                }
+            })
+        }
+        boxes += [
+            PageBox("needsYou", "Needs you", color: Theme.coral) { needsYou },
+            PageBox("numbers", "Key numbers", color: Palette.lime) { tiles(numbers).padding(.top, 14) },
+            PageBox("moneyIn", "Money in", color: Palette.lime, half: true) {
+                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
+                    MoneyInChart(numbers: numbers)
+                }
+            },
+            PageBox("time", "Where your time went", color: Palette.orchid, half: true) {
+                DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) }) {
+                    HoursDonut(slices: numbers.hoursThisMonth)
+                }
+            },
+            PageBox("funnel", "Lead to paid", color: Palette.violet, half: true) {
+                DashCard(title: "Lead to paid", color: Palette.violet, action: { navigator.open(.projects) }) {
+                    StageFunnel(steps: numbers.funnel)
+                }
+            },
+            PageBox("week", "The week ahead", color: Theme.teal, half: true) {
+                DashCard(title: "The week ahead", color: Theme.teal) {
+                    WeekStrip(projects: projects.active) { navigator.openProject($0) }
+                }
+            },
+            PageBox("autoFiled", "Filed by Lens this week", color: Theme.amber) {
+                AutoFiledToday().frame(maxWidth: 720, alignment: .leading)
+            },
+        ]
+        return boxes
     }
 
     private func loadEvents() async {
@@ -271,9 +284,26 @@ struct TodayView: View {
                     Text(all.isEmpty ? "enjoy the quiet" : "you've got this")
                         .font(Theme.script(size: 26)).foregroundStyle(Palette.violet)
                 }
-                if logins.googleCalendarReady { yourDay }
-                thingsForYou(all)
-                restOfWeek
+                ArrangeablePage("today", spacing: 30, boxes: simpleBoxes(all))
+            }
+            .frame(maxWidth: 860, alignment: .leading)
+            .padding(.horizontal, 48)
+            .padding(.vertical, 40)
+            .frame(maxWidth: .infinity)
+        }
+        .task { await loadEvents() }
+    }
+
+    private func simpleBoxes(_ all: [Item]) -> [PageBox] {
+        var boxes: [PageBox] = []
+        if logins.googleCalendarReady { boxes.append(PageBox("yourDay", "Your day", color: Palette.blue) { yourDay }) }
+        boxes.append(PageBox("things", "A few things for you", color: Theme.coral) { thingsForYou(all) })
+        boxes.append(PageBox("week", "The rest of your week", color: Theme.teal) { restOfWeek })
+        boxes.append(PageBox("ask", "Ask Lens", color: Palette.violet) { askBar })
+        return boxes
+    }
+
+    private var askBar: some View {
                 Button { navigator.askOpen = true } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "sparkles").foregroundStyle(Palette.violet)
@@ -289,13 +319,6 @@ struct TodayView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-            }
-            .frame(maxWidth: 860, alignment: .leading)
-            .padding(.horizontal, 48)
-            .padding(.vertical, 40)
-            .frame(maxWidth: .infinity)
-        }
-        .task { await loadEvents() }
     }
 
     private var yourDay: some View {
