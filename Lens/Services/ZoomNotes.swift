@@ -3,13 +3,12 @@ import Foundation
 /// Finds the user's Zoom AI Companion summaries and attaches each one to the deal or project it's about.
 /// When Zoom is connected, Lens reads every full summary straight from Zoom: on the first connect it
 /// goes back as far as Zoom keeps them, then checks hourly. Otherwise it falls back to the summary
-/// emails Zoom sends to Gmail. Lens looks at who was on the call, the meeting title, the client, the
-/// people on each project and the project's name and keywords; when that isn't clear, Claude picks from
-/// her open projects. When Lens is sure, it files the note by itself and lists it under "Filed automatically"
-/// on the project, where the user can move it or take it off. Recent ones it isn't sure about wait in
-/// "Unmatched notes" with the question "Which project is this for?" (Lens's best guess listed first);
-/// older ones are kept quietly so Ask Lens can still search them. When the user picks or moves a note, Lens
-/// remembers that choice for the people on the call and the meeting series.
+/// emails Zoom sends to Gmail. Lens files a call by itself only on a clear match: someone on the call
+/// (by email or full name) is one of an inquiry's or project's people, or the client's name is in the
+/// meeting title, and only one place fits. Everything else waits under "Not placed" (recent ones) or is
+/// kept quietly (older ones) so Ask Lens can still search them; Claude may suggest a project but never
+/// files one. When the user picks or moves a note, Lens remembers that choice for the people on the
+/// call and the meeting series.
 @MainActor
 final class ZoomNotes: ObservableObject {
     /// A summary that didn't clearly belong to one deal or project.
@@ -54,6 +53,10 @@ final class ZoomNotes: ObservableObject {
     private var lastZoomSync: Date?
     /// The Zoom app can only see her own meetings (not the whole account's summary list).
     private var userLevel = false
+    /// Which list of summaries this Zoom app may read: "mine" (her own, the usual) or "account".
+    private var summaryList: String?
+    /// Placements have been checked again under the stricter matching rules.
+    private var recheckVersion = 0
     /// My Notes notes already read, and how far back Lens has looked through them.
     private var myNotesRead: Set<String> = []
     private var myNotesCursor: Date?
@@ -62,7 +65,7 @@ final class ZoomNotes: ObservableObject {
     /// Notes the user said aren't for a client, so the same meeting read again from Zoom stays out of the way.
     private var dismissedStubs: [Stub] = []
     private var again = false
-    /// Notes already on projects were checked once against the stricter matching (see `recheckFiled`).
+    /// From an earlier version's one-time check. Still saved so the file keeps the same shape.
     private var rechecked = false
     /// The user's own address, which is on nearly every call and so never says which project it's for.
     private var me: String { logins?.ownerEmail ?? "" }
@@ -79,12 +82,51 @@ final class ZoomNotes: ObservableObject {
         self.deals = deals
         self.projects = projects
         self.logins = logins
-        if !rechecked {
-            recheckFiled()
-            rechecked = true
-            save()
-        }
         updateReport()
+        recheckPlacements()
+    }
+
+    /// Once, after the matching rules got stricter: looks again at every summary Lens filed by itself and
+    /// keeps it only where the new rules clearly agree. The rest are taken off and wait under "Not placed".
+    /// Summaries Emma put somewhere herself (for those same people) stay where she put them. Zoom emails
+    /// that aren't call summaries at all (offers, newsletters) are taken off and set aside.
+    private func recheckPlacements() {
+        guard recheckVersion < 1, let deals, let projects else { return }
+        let onFile = deals.deals.flatMap { $0.meetingNotes ?? [] } + projects.projects.flatMap { $0.meetingNotes ?? [] }
+        var seen = Set<String>()
+        for note in onFile where seen.insert(note.id).inserted {
+            let onProjects = Set(projects.projects.filter { ($0.meetingNotes ?? []).contains { $0.id == note.id } }.map(\.id))
+            let onDeals = Set(deals.deals.filter { ($0.meetingNotes ?? []).contains { $0.id == note.id } }.map(\.id))
+            // Emma's own choice for the people on this call.
+            let chosen = Self.memoryKeys(note, me: me).filter { $0.hasPrefix("person:") }.compactMap { remembered[$0] }
+            if chosen.contains(where: { onProjects.contains($0) }) { continue }
+            if !note.fromZoom && !Self.looksLikeSummary(note) {
+                removeEverywhere(note)
+                handled.insert(note.id)
+                kept.append(note)
+                continue
+            }
+            switch match(note, deals: deals, projects: projects, useMemory: false) {
+            case .sure(let dealID, let projectID):
+                let same = projectID.map { onProjects == [$0] } ?? (onProjects.isEmpty && dealID.map { onDeals.contains($0) } == true)
+                if same { continue }
+                removeEverywhere(note)
+                place(note, dealID: dealID, projectID: projectID, auto: true)
+            case .maybe:
+                removeEverywhere(note)
+                handled.insert(note.id)
+                if !unmatched.contains(where: { $0.id == note.id }) { unmatched.append(note) }
+            }
+        }
+        unmatched.sort { $0.date > $1.date }
+        recheckVersion = 1
+        save()
+    }
+
+    /// A Zoom email that is really a call summary, not an offer or a newsletter.
+    nonisolated static func looksLikeSummary(_ note: MeetingNote) -> Bool {
+        let t = note.fullText.lowercased()
+        return ["quick recap", "next steps", "summary", "action items", "key points"].contains { t.contains($0) }
     }
 
     var ready: Bool { (logins?.zoomConnected ?? false) || (logins?.gmailReady ?? false) }
@@ -275,12 +317,27 @@ final class ZoomNotes: ObservableObject {
     private func readWindow(from: Date, to: Date, logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
         var page: String?
         repeat {
-            let result = try await ZoomAPI.summaries(from: from, to: to, pageToken: page, token: try await logins.zoomAccessToken())
+            let result = try await summaryPage(from: from, to: to, pageToken: page, logins: logins)
             for ref in result.refs {
                 try await read(ref, logins: logins, deals: deals, projects: projects)
             }
             page = result.next
         } while page != nil
+    }
+
+    /// One page of summaries. Tries her own list first (a User-managed app), then the whole account's
+    /// (an Admin-managed app), and remembers which one Zoom allows.
+    private func summaryPage(from: Date, to: Date, pageToken: String?, logins: ConnectionStore) async throws -> (refs: [ZoomAPI.Ref], next: String?) {
+        if summaryList != "account" {
+            do {
+                let result = try await ZoomAPI.summaries(from: from, to: to, pageToken: pageToken, mine: true, token: try await logins.zoomAccessToken())
+                summaryList = "mine"
+                return result
+            } catch let failure as ZoomAuth.Failure where failure.code == "missing_scope" && summaryList == nil {
+                summaryList = "account"
+            }
+        }
+        return try await ZoomAPI.summaries(from: from, to: to, pageToken: pageToken, mine: false, token: try await logins.zoomAccessToken())
     }
 
     private func readPastMeetings(logins: ConnectionStore, deals: DealStore, projects: ProjectStore) async throws {
@@ -381,7 +438,7 @@ final class ZoomNotes: ObservableObject {
         guard let logins else { return }
         guard logins.zoomConnected else { logins.zoomReport = nil; return }
         let n = zoomRead.count
-        var text = "\(n) summar\(n == 1 ? "y" : "ies") read"
+        var text = "\(n) summar\(n == 1 ? "y" : "ies") found"
         if let newest = zoomNewest { text += " · newest \(newest.formatted(.dateTime.month(.abbreviated).day()))" }
         logins.zoomReport = text
     }
@@ -400,8 +457,9 @@ final class ZoomNotes: ObservableObject {
                 guard read < 25 else { break }   // the rest wait for the next check
                 read += 1
                 let thread = try await GmailAPI.thread(item.id, token: token)
+                // Only real AI Companion summaries, not Zoom's newsletters and offers.
                 guard let message = thread.messages.last(where: { GmailAPI.parseAddress($0.from).email.hasSuffix("zoom.us") }),
-                      Self.looksLikeSummary(message.subject) else {
+                      Self.isSummaryEmail(message.subject) else {
                     handled.insert(item.id)
                     continue
                 }
@@ -449,17 +507,18 @@ final class ZoomNotes: ObservableObject {
             || projects.projects.contains { ($0.meetingNotes ?? []).contains { $0.id == id } }
     }
 
-    /// Zoom's summary emails, not its newsletters and ads (which also come from zoom.us).
-    static func looksLikeSummary(_ subject: String) -> Bool {
-        let s = subject.lowercased()
-        return ["meeting summary for", "meeting assets for", "call summary for", "call summary with", "recap of"]
-            .contains { s.contains($0) }
+    /// The subjects Zoom's AI Companion uses. Anything else from zoom.us is marketing or account mail.
+    static let summaryPrefixes = ["Meeting summary for ", "Meeting assets for ", "Call summary for ", "Call summary with ", "Recap of "]
+
+    static func isSummaryEmail(_ subject: String) -> Bool {
+        let t = subject.trimmingCharacters(in: .whitespaces).lowercased()
+        return summaryPrefixes.contains { t.hasPrefix($0.lowercased()) }
     }
 
     /// "Meeting summary for Smith wedding planning (11/18/2026)" → "Smith wedding planning".
     static func title(from subject: String) -> String {
         var t = subject.trimmingCharacters(in: .whitespaces)
-        for prefix in ["Meeting summary for ", "Meeting assets for ", "Call summary for ", "Call summary with ", "Recap of "] {
+        for prefix in summaryPrefixes {
             if t.lowercased().hasPrefix(prefix.lowercased()) { t = String(t.dropFirst(prefix.count)); break }
         }
         t = t.replacingOccurrences(of: "\\s*\\([0-9/.\\-]+\\)\\s*$", with: "", options: .regularExpression)
@@ -507,114 +566,93 @@ final class ZoomNotes: ObservableObject {
         case maybe(projectID: UUID?)
     }
 
+    /// One inquiry or project a call could belong to, with the people and client names that point to it.
     private struct Target {
         var dealID: UUID?
         var projectID: UUID?
         var active: Bool
-        var keys: [(text: String, weight: Int)]
+        var people: [(name: String, email: String)]
+        var clients: [String]
     }
 
-    /// Where the summary goes. the user's earlier choices for the same people or meeting series come first.
-    /// Then every deal and project is scored on what the call mentions: an email address counts most,
-    /// then someone from the same company's web address, a person's full name, the client or the project's
-    /// name, and a little for a first or last name or a keyword. Anything named in the meeting title counts a
-    /// little extra. Lens only files it by itself when one clearly leads on something specific (an email, a
-    /// company or a full name). A keyword or first name alone is only a guess, and a guess is never filed.
-    private func match(_ note: MeetingNote, deals: DealStore, projects: ProjectStore) -> Placement {
-        for key in Self.memoryKeys(note, me: me) {
-            if let id = remembered[key], let p = projects.project(id: id) {
-                return .sure(dealID: deals.deals.first(where: { $0.projectID == p.id })?.id, projectID: p.id)
+    /// Where the summary goes. Emma's own earlier choices for the same people or meeting series come first.
+    /// Otherwise Lens only files a call when the match is clear: someone on the call (by email, or by full
+    /// name) is one of that inquiry's or project's people, or the client's name is in the meeting title.
+    /// Anything else stays "not placed" for Emma to decide. Lens never falls back to a project just because
+    /// it's the only one, or because a word in the summary happens to match.
+    private func match(_ note: MeetingNote, deals: DealStore, projects: ProjectStore, useMemory: Bool = true) -> Placement {
+        if useMemory {
+            for key in Self.memoryKeys(note, me: me) {
+                if let id = remembered[key], let p = projects.project(id: id) {
+                    return .sure(dealID: deals.deals.first(where: { $0.projectID == p.id })?.id, projectID: p.id)
+                }
             }
         }
         let owner = me.lowercased()
-        let title = note.title.lowercased()
-        let haystack = (note.title + "\n" + note.fullText + "\n" + (note.attendees ?? []).joined(separator: " ")).lowercased()
+        let callEmails = Set(((note.attendees ?? []) + (note.people ?? []).map(\.email))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { $0.contains("@") && $0 != owner && !$0.hasSuffix("zoom.us") })
+        let callNames = Set((note.people ?? []).filter { $0.email.lowercased() != owner || owner.isEmpty }
+            .compactMap { Self.fullName($0.name) })
+        let title = Self.plain(note.title)
+
         var targets: [Target] = []
-        var linkedProjects = Set<UUID>()
+        var linked = Set<UUID>()
         for d in deals.deals {
-            var keys = Self.names(d.client, weight: 2) + Self.companyKeys(d.client)
-            for c in d.contacts where owner.isEmpty || c.email.lowercased() != owner {
-                keys += Self.emailKeys(c.email)
-                keys += Self.names(c.name, weight: 2)
-            }
+            var people = d.contacts.map { (name: $0.name, email: $0.email) }
+            var clients = [d.client]
             var active = d.stage.isOpen
             if let pid = d.projectID, let p = projects.project(id: pid) {
-                linkedProjects.insert(pid)
-                keys += Self.projectKeys(p, me: owner)
+                linked.insert(pid)
+                people += (p.people ?? []).map { (name: $0.name, email: $0.email) }
+                clients.append(p.client)
                 active = active || p.stage != .archived
             }
-            targets.append(Target(dealID: d.id, projectID: d.projectID, active: active, keys: keys))
+            targets.append(Target(dealID: d.id, projectID: d.projectID, active: active, people: people, clients: clients))
         }
-        for p in projects.projects where !linkedProjects.contains(p.id) {
-            targets.append(Target(dealID: nil, projectID: p.id, active: p.stage != .archived, keys: Self.projectKeys(p, me: owner)))
+        for p in projects.projects where !linked.contains(p.id) {
+            targets.append(Target(dealID: nil, projectID: p.id, active: p.stage != .archived,
+                                  people: (p.people ?? []).map { (name: $0.name, email: $0.email) }, clients: [p.client]))
         }
 
-        /// The whole score, and the part of it from specific things (emails, companies, full names).
-        func score(_ t: Target) -> (total: Int, strong: Int) {
-            var seen = Set<String>()
-            var total = 0, strong = 0
-            for key in t.keys where seen.insert(key.text).inserted && Self.mentions(haystack, key.text) {
-                total += key.weight + (Self.mentions(title, key.text) ? 1 : 0)
-                if key.weight >= 2 { strong += key.weight }
+        func clear(_ t: Target) -> Bool {
+            for person in t.people {
+                let email = person.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if email == owner && !owner.isEmpty { continue }   // Emma herself is on every call
+                if email.contains("@"), callEmails.contains(email) { return true }
+                if let name = Self.fullName(person.name), callNames.contains(name) { return true }
             }
-            return (total, strong)
+            return t.clients.contains { Self.clientInTitle($0, title) }
         }
-        let scored = targets.map { ($0, score($0)) }.filter { $0.1.total > 0 }
-        // Prefer gigs that are still going; fall back to older ones.
-        let pool = scored.contains { $0.0.active } ? scored.filter { $0.0.active } : scored
-        let sorted = pool.sorted { $0.1.total > $1.1.total }
-        guard let top = sorted.first else { return .maybe(projectID: nil) }
-        let runnerUp = sorted.count > 1 ? sorted[1].1.total : 0
-        if runnerUp == top.1.total { return .maybe(projectID: nil) }
-        // Sure: something specific points there, and it's a strong lead or nothing else competes.
-        let lead = top.1.total
-        if top.1.strong >= 2, (lead >= 3 && lead - runnerUp >= 2) || (lead >= 2 && runnerUp == 0) {
-            return .sure(dealID: top.0.dealID, projectID: top.0.projectID)
-        }
-        return .maybe(projectID: top.0.projectID)
+        let hits = targets.filter(clear)
+        // A deal and its project are one place.
+        var seen = Set<String>()
+        let places = hits.filter { seen.insert(($0.projectID ?? $0.dealID)?.uuidString ?? "").inserted }
+        let pool = places.count > 1 && places.contains(where: \.active) ? places.filter(\.active) : places
+        guard pool.count == 1, let only = pool.first else { return .maybe(projectID: nil) }
+        return .sure(dealID: only.dealID, projectID: only.projectID)
     }
 
-    /// What points to a project: its client, its people, its name and the user's keywords.
-    private static func projectKeys(_ p: Project, me: String = "") -> [(text: String, weight: Int)] {
-        var keys = names(p.client, weight: 2) + companyKeys(p.client)
-        for person in p.people ?? [] where me.isEmpty || person.email.lowercased() != me {
-            keys += emailKeys(person.email)
-            keys += names(person.name, weight: 2)
-            // Calls often only say "Jason" or "Chloe": a first name helps, but on its own it's only a guess.
-            if let first = firstName(person.name) { keys.append((first, 1)) }
-        }
-        let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if name.count >= 4 { keys.append((name, 2)) }
-        for word in p.keywords ?? [] {
-            let k = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            // A keyword ("documentary", "camera") only suggests, even in the meeting title.
-            if k.count >= 2 { keys.append((k, 1)) }
-        }
-        return keys
+    /// "Laura  Smith" → "laura smith". Nil unless it's at least a first and last name, since a first
+    /// name alone ("Jason") matches too many calls.
+    nonisolated static func fullName(_ raw: String) -> String? {
+        let words = plain(raw).split(separator: " ")
+        guard words.count >= 2, words.allSatisfy({ $0.count >= 2 }) else { return nil }
+        return words.joined(separator: " ")
     }
 
-    /// Free email services: sharing one says nothing about who someone works with.
-    private static let sharedDomains: Set<String> = [
-        "gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "msn.com",
-        "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "comcast.net", "zoom.us"]
-
-    /// A person's address, and their company's web address ("@artistryskinandhormone.com") when it isn't
-    /// a free email service, so a colleague on the call points to the same client.
-    private static func emailKeys(_ raw: String) -> [(text: String, weight: Int)] {
-        let email = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard email.contains("@") else { return [] }
-        var keys = [(email, 3)]
-        if let domain = email.split(separator: "@").last.map(String.init), domain.contains("."), !sharedDomains.contains(domain) {
-            keys.append(("@" + domain, 2))
-        }
-        return keys
+    /// Lowercase words only, single spaces: "Artistry Skin & Hormone!" → "artistry skin hormone".
+    nonisolated static func plain(_ text: String) -> String {
+        text.lowercased().map { $0.isLetter || $0.isNumber ? $0 : " " }
+            .reduce(into: "") { $0.append($1) }
+            .split(separator: " ").joined(separator: " ")
     }
 
-    /// "Artistry Skin and Hormone" → "@artistryskinandhormone.": someone from the client's own web address.
-    private static func companyKeys(_ client: String) -> [(text: String, weight: Int)] {
-        let squashed = client.lowercased().filter { $0.isLetter || $0.isNumber }
-        guard squashed.count >= 6 else { return [] }
-        return [("@" + squashed + ".", 3)]
+    /// The client's whole name appears in the meeting title, as whole words.
+    nonisolated static func clientInTitle(_ client: String, _ plainTitle: String) -> Bool {
+        let c = plain(client)
+        guard c.count >= 3, c != "new client", !plainTitle.isEmpty else { return false }
+        return " \(plainTitle) ".contains(" \(c) ")
     }
 
     /// "Jason Lee" → "jason". Nil for very short names, which match too much.
@@ -654,27 +692,20 @@ final class ZoomNotes: ObservableObject {
                 if alreadyOnFile(item.id, deals: deals, projects: projects) { continue }
                 let thread = try await GmailAPI.thread(item.id, token: token)
                 guard let message = thread.messages.last(where: { GmailAPI.parseAddress($0.from).email.hasSuffix("zoom.us") }),
-                      Self.looksLikeSummary(message.subject) else { continue }
+                      Self.isSummaryEmail(message.subject) else { continue }
                 let summary = Self.clean(message.text)
                 let note = MeetingNote(id: item.id, title: Self.title(from: message.subject), date: message.date,
                                        summary: summary,
                                        link: "https://mail.google.com/mail/?authuser=\(account)#all/\(item.id)",
                                        attendees: Self.attendees(message, summary: summary, me: me))
                 if allNotes(deals: deals, projects: projects).contains(where: { $0.fromZoom && Self.sameMeeting($0, note) }) { continue }
-                // Found by searching for this project's people, but a search hit isn't proof: it only goes
-                // on a project when the call clearly points there. Otherwise this project is the best guess.
+                if handled.contains(note.id) || unmatched.contains(where: { $0.id == note.id }) || kept.contains(where: { $0.id == note.id }) { continue }
+                // Only filed when the match is clear. Otherwise it stays "not placed".
                 switch match(note, deals: deals, projects: projects) {
                 case .sure(let dealID, let projectID):
                     place(note, dealID: dealID, projectID: projectID, auto: true)
-                case .maybe(let projectID):
-                    if !unmatched.contains(where: { $0.id == note.id }) && !kept.contains(where: { $0.id == note.id }) {
-                        if note.date > Date().addingTimeInterval(-Self.recentDays * 86400) {
-                            unmatched.append(note)
-                            suggested[note.id] = projectID ?? project.id
-                        } else {
-                            kept.append(note)
-                        }
-                    }
+                case .maybe:
+                    if note.date > Date().addingTimeInterval(-Self.recentDays * 86400) { unmatched.append(note) } else { kept.append(note) }
                     handled.insert(note.id)
                 }
                 foundCount += 1
@@ -707,8 +738,8 @@ final class ZoomNotes: ObservableObject {
         return t
     }
 
-    /// Asks Claude to pick the project for notes Lens wasn't sure about, from the user's open projects.
-    /// Sure answers are filed by themselves; the rest become Lens's best guess when it asks the user.
+    /// Asks Claude for a best guess for notes Lens wasn't sure about, from the user's open projects.
+    /// It is only a suggestion, listed first when Lens asks: Claude never files a note by itself.
     private func askClaude(_ notes: [MeetingNote], projects: ProjectStore) async {
         guard let ai else { return }
         let open = projects.active
@@ -725,59 +756,10 @@ final class ZoomNotes: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: ["projects": known, "notes": calls], options: [.sortedKeys]),
               let answers = try? await ai.placeNotes(String(decoding: data, as: UTF8.self)) else { return }
         for a in answers {
-            guard let noteID = a["note_id"] as? String, let note = unmatched.first(where: { $0.id == noteID }),
+            guard let noteID = a["note_id"] as? String, unmatched.contains(where: { $0.id == noteID }),
                   let id = UUID(uuidString: (a["project_id"] as? String) ?? ""), open.contains(where: { $0.id == id }) else { continue }
-            if (a["sure"] as? Bool) == true {
-                place(note, dealID: deals?.deals.first(where: { $0.projectID == id })?.id, projectID: id, auto: true)
-            } else {
-                suggested[noteID] = id
-            }
+            suggested[noteID] = id
         }
-    }
-
-    /// A full name, plus the last name on its own ("the Smiths" still finds Jane Smith).
-    private static func names(_ raw: String, weight: Int) -> [(text: String, weight: Int)] {
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard name.count >= 3, name != "new client" else { return [] }
-        var keys = [(name, weight)]
-        let words = name.split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "-" }).map(String.init)
-        if words.count >= 2, let last = words.last, last.count >= 4,
-           !["wedding", "films", "studio", "group", "company", "family", "foundation"].contains(last) {
-            keys.append((last, 1))
-        }
-        return keys
-    }
-
-    private static func mentions(_ haystack: String, _ key: String) -> Bool {
-        let escaped = NSRegularExpression.escapedPattern(for: key)
-        let pattern = key.contains("@") ? escaped : "\\b\(escaped)(s|'s)?\\b"
-        return haystack.range(of: pattern, options: .regularExpression) != nil
-    }
-
-    /// Once, after the matching got stricter: takes notes off a project when nothing clearly points
-    /// there any more (they were filed on a keyword or a search hit), and asks again. Notes the user
-    /// placed herself stay where they are: Lens remembers those for the meeting series or the people.
-    private func recheckFiled() {
-        guard let deals, let projects else { return }
-        if !me.isEmpty { remembered.removeValue(forKey: "person:" + me.lowercased()) }
-        var moved: [MeetingNote] = []
-        for p in projects.projects {
-            for note in p.meetingNotes ?? [] where !Self.memoryKeys(note, me: me).isEmpty {
-                if case .sure(_, let pid) = match(note, deals: deals, projects: projects), pid == p.id { continue }
-                moved.append(note)
-            }
-        }
-        for note in moved {
-            removeEverywhere(note)
-            handled.insert(note.id)
-            switch match(note, deals: deals, projects: projects) {
-            case .sure(let dealID, let projectID):
-                place(note, dealID: dealID, projectID: projectID, auto: true)
-            case .maybe:
-                if !unmatched.contains(where: { $0.id == note.id }) { unmatched.append(note) }
-            }
-        }
-        unmatched.sort { $0.date > $1.date }
     }
 
     // MARK: the user's choices
@@ -875,6 +857,20 @@ final class ZoomNotes: ObservableObject {
         assign(note, toProject: id)
     }
 
+    /// Takes the note off wherever it is and puts it on an inquiry (and its project, once booked).
+    func move(_ note: MeetingNote, toDeal id: UUID) {
+        removeEverywhere(note)
+        assign(note, toDeal: id)
+        if let projectID = deals?.deal(id: id)?.projectID { remember(note, projectID: projectID) }
+    }
+
+    /// From the project page: take this call off and set it aside for good (Ask Lens can still read it).
+    func remove(_ note: MeetingNote) {
+        removeEverywhere(note)
+        for key in Self.memoryKeys(note) { remembered.removeValue(forKey: key) }
+        dismiss(note)
+    }
+
     private func removeEverywhere(_ note: MeetingNote) {
         projects?.dropAutoFiled(.note, itemID: note.id)
         for d in deals?.deals ?? [] where (d.meetingNotes ?? []).contains(where: { $0.id == note.id }) {
@@ -937,6 +933,8 @@ final class ZoomNotes: ObservableObject {
         var myNotesDone: Bool?
         var lastMyNotesSync: Date?
         var rechecked: Bool?
+        var summaryList: String?
+        var recheckVersion: Int?
     }
 
     private func load() {
@@ -964,6 +962,8 @@ final class ZoomNotes: ObservableObject {
         myNotesDone = saved.myNotesDone ?? false
         lastMyNotesSync = saved.lastMyNotesSync
         rechecked = saved.rechecked ?? false
+        summaryList = saved.summaryList
+        recheckVersion = saved.recheckVersion ?? 0
     }
 
     private func save() {
@@ -976,7 +976,7 @@ final class ZoomNotes: ObservableObject {
                           zoomNewest: zoomNewest, backfillCursor: backfillCursor, backfillDone: backfillDone,
                           lastZoomSync: lastZoomSync, userLevel: userLevel, dismissed: dismissedStubs,
                           myNotesRead: Array(myNotesRead), myNotesCursor: myNotesCursor, myNotesDone: myNotesDone,
-                          lastMyNotesSync: lastMyNotesSync, rechecked: rechecked)
+                          lastMyNotesSync: lastMyNotesSync, rechecked: rechecked, summaryList: summaryList, recheckVersion: recheckVersion)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("zoom_notes.json"), options: .atomic) }
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct MeetingNotesList: View {
     @EnvironmentObject private var zoom: ZoomNotes
     @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var deals: DealStore
     let notes: [MeetingNote]
     /// The project these notes are on, so it isn't offered in "Move to".
     var projectID: UUID? = nil
@@ -46,20 +47,36 @@ struct MeetingNotesList: View {
                         }
                         Spacer()
                         let others = projects.active.filter { $0.id != projectID }
-                        if !others.isEmpty {
+                        // Open inquiries that don't have a project page yet.
+                        let inquiries = deals.deals.filter { $0.stage.isOpen && $0.projectID == nil }
+                        if !others.isEmpty || !inquiries.isEmpty {
                             Menu("Move to…") {
-                                ForEach(others) { p in
-                                    Button(p.name) { zoom.move(note, toProject: p.id) }
+                                if !others.isEmpty {
+                                    Section("Projects") {
+                                        ForEach(others) { p in
+                                            Button(p.name) { zoom.move(note, toProject: p.id) }
+                                        }
+                                    }
+                                }
+                                if !inquiries.isEmpty {
+                                    Section("Inquiries") {
+                                        ForEach(inquiries) { d in
+                                            Button(d.title.isEmpty ? d.client : "\(d.client) · \(d.title)") { zoom.move(note, toDeal: d.id) }
+                                        }
+                                    }
                                 }
                             }
                             .menuStyle(.borderlessButton)
                             .fixedSize()
                             .font(Theme.font(size: 12))
-                            .help("Put this note on another project. Lens remembers, so calls with the same people go there too.")
+                            .help("Put this call on another project or inquiry. Lens remembers, so calls with the same people go there too.")
                         }
-                        Button("Wrong place?") { zoom.unassign(note) }
+                        Button("Not sure where") { zoom.unassign(note) }
                             .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-                            .help("Take this note off and pick where it goes")
+                            .help("Take this call off and put it under Not placed, so you can pick where it goes")
+                        Button("Remove") { zoom.remove(note) }
+                            .buttonStyle(.plain).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                            .help("Take this call off. It isn't about any client. Ask Lens can still read it.")
                     }
                 }
             }
@@ -210,8 +227,8 @@ struct UnmatchedNotesPanel: View {
         if !zoom.unmatched.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    ColorLabel("Unmatched notes · \(zoom.unmatched.count)", Palette.violet)
-                    Text("Zoom calls Lens wasn't sure about. Tell it where each one goes and it remembers.")
+                    ColorLabel("Not placed · \(zoom.unmatched.count)", Palette.violet)
+                    Text("Zoom calls with no clear match to an inquiry or project. Tell Lens where each one goes and it remembers.")
                         .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
                 }
                 ForEach(zoom.unmatched) { note in
