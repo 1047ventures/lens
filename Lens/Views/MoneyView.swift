@@ -487,20 +487,21 @@ struct MoneyView: View {
 
     // MARK: Numbers
 
-    private struct Tile: Identifiable {
-        let id = UUID()
-        let label: String, value: String, sub: String
-        var tone: Color? = nil
-    }
-
     private var numbers: some View {
         let inc = money.income(range)
         let list = money.txns(in: range)
         let rev = inc.totalRevenue
+        let hasMoney = !list.isEmpty
+        let soon = "Shows once money comes in"
         // Revenue
         let projectRevenue = Dictionary(grouping: list.filter { $0.category.group == .income && $0.projectID != nil }, by: { $0.projectID! })
             .mapValues { $0.reduce(0) { $0 + $1.amount } }
         let biggest = projectRevenue.max { $0.value < $1.value }
+        // Costs
+        let costLines = inc.direct + inc.overhead
+        let spent = inc.totalDirect + inc.totalOverhead
+        let biggestCost = costLines.max { $0.amount < $1.amount }
+        let year = money.income(.thisYear)
         // Pipeline
         let closed = deals.deals.filter { ($0.stage == .won || $0.stage == .lost) && $0.lastTouch >= range.start && $0.lastTouch < range.end }
         let won = closed.filter { $0.stage == .won }
@@ -514,40 +515,111 @@ struct MoneyView: View {
         let rates = deals.deals.filter { $0.stage == .won }.compactMap { $0.chosenOption }.map { deals.estimate($0).takeHomePerHour }
         // Cash
         let bal = money.balance(range)
-        let overdue = money.receivables.filter { $0.paidOn == nil && $0.due < Calendar.current.startOfDay(for: Date()) }
+        let openBills = money.receivables.filter { $0.paidOn == nil }
+        let overdue = openBills.filter { $0.due < Calendar.current.startOfDay(for: Date()) }
+        let firstLate = overdue.sorted { $0.due < $1.due }.first
         // Gear
         let gearBought = list.filter { $0.category == .gear }.reduce(0) { $0 - $1.amount }
 
-        let groups: [(String, Color, [Tile])] = [
-            ("Revenue", Palette.lime, [
-                Tile(label: "Revenue", value: Money.short(rev), sub: "\(projectRevenue.count) paying project\(projectRevenue.count == 1 ? "" : "s")"),
-                Tile(label: "You kept", value: Money.short(inc.net), sub: rev > 0 ? "\(Int((100 * inc.net / rev).rounded()))% margin" : "—", tone: inc.net >= 0 ? Theme.teal : Theme.coral),
-                Tile(label: "Avg per project", value: projectRevenue.isEmpty ? "—" : Money.short(projectRevenue.values.reduce(0, +) / Double(projectRevenue.count)), sub: "money in, this period"),
-                Tile(label: "Biggest client", value: biggest.flatMap { projects.project(id: $0.key)?.client } ?? "—", sub: biggest.map { Money.string($0.value) } ?? ""),
-            ]),
-            ("Pipeline", Palette.violet, [
-                Tile(label: "In play", value: Money.short(inPlay), sub: "\(deals.open.count) open deals"),
-                Tile(label: "Win rate", value: closed.isEmpty ? "—" : "\(Int((100 * Double(won.count) / Double(closed.count)).rounded()))%", sub: "\(won.count) won of \(closed.count) closed"),
-                Tile(label: "Avg deal won", value: wonValue.isEmpty ? "—" : Money.short(wonValue.reduce(0, +) / Double(wonValue.count)), sub: "this period"),
-                Tile(label: "Days to close", value: daysToClose.isEmpty ? "—" : "\(daysToClose.reduce(0, +) / daysToClose.count)", sub: "inquiry to booked"),
-                Tile(label: "Best source", value: bySource.max { $0.value < $1.value }?.key ?? "—", sub: bySource.max { $0.value < $1.value }.map { "\(Money.short($0.value)) won, all time" } ?? ""),
-            ]),
-            ("Projects", Palette.blue, [
-                Tile(label: "Active", value: "\(projects.active.count)", sub: "\(delivered) delivered, awaiting payment"),
-                Tile(label: "Crew share", value: rev > 0 ? "\(Int((100 * crew / rev).rounded()))%" : "—", sub: "\(Money.string(crew)) to collaborators"),
-                Tile(label: "Your rate", value: rates.isEmpty ? "—" : "\(Money.string(rates.reduce(0, +) / Double(rates.count)))/hr", sub: "take-home, on booked quotes"),
-            ]),
-            ("Cash", Theme.amber, [
-                Tile(label: "Cash on hand", value: Money.short(bal.totalCash), sub: "checking, Venmo, PayPal"),
-                Tile(label: "Clients owe you", value: Money.short(bal.owed), sub: "\(money.receivables.filter { $0.paidOn == nil }.count) open invoices"),
-                Tile(label: "Overdue", value: Money.short(overdue.reduce(0) { $0 + $1.amount }), sub: overdue.isEmpty ? "nothing late" : overdue.map(\.client).joined(separator: ", "), tone: overdue.isEmpty ? nil : Theme.coral),
-                Tile(label: "Card balance", value: Money.short(bal.card), sub: "owed on the card"),
-            ]),
-            ("Gear", Palette.gold, [
-                Tile(label: "Gear worth", value: Money.short(bal.gear), sub: "\(money.gear.count) items, today's value"),
-                Tile(label: "Bought", value: Money.short(gearBought), sub: "this period"),
-                Tile(label: "Needs service", value: "\(money.gear.filter(\.needsService).count)", sub: "no check-up in a year", tone: money.gear.contains(where: \.needsService) ? Theme.amber : nil),
-            ]),
+        func tile(_ id: String, _ label: String, _ about: String, value: String, note: String, color: Color,
+                  noteColor: Color = Theme.text3, go: @escaping () -> Void) -> TileOption {
+            TileOption(id: id, label: label, about: about) {
+                StatTile(label: label, value: value, note: note, color: color, noteColor: noteColor, action: go)
+            }
+        }
+        let toMoney = { navigator.open(.money) }
+        let toPipeline = { navigator.open(.pipeline) }
+        let toProjects = { navigator.open(.projects) }
+        let toGear = { navigator.open(.gear) }
+        func toProject(_ id: UUID?) -> () -> Void { { if let id { navigator.openProject(id) } else { navigator.open(.projects) } } }
+
+        let options: [TileOption] = [
+            tile("revenue", "Revenue", "Everything clients paid you in this stretch of time.",
+                 value: hasMoney ? Money.short(rev) : "None yet",
+                 note: hasMoney ? "\(projectRevenue.count) paying project\(projectRevenue.count == 1 ? "" : "s")" : soon,
+                 color: Palette.lime, go: toMoney),
+            tile("kept", "You kept", "Your profit: what came in minus every cost.",
+                 value: hasMoney ? (inc.net < 0 ? "-\(Money.short(-inc.net))" : Money.short(inc.net)) : "None yet",
+                 note: !hasMoney ? soon : rev > 0 ? "\(Int((100 * inc.net / rev).rounded()))% margin" : "After costs",
+                 color: inc.net >= 0 ? Palette.lime : Theme.coral, go: toMoney),
+            tile("avgProject", "Avg per project", "What a paying project brings in, on average.",
+                 value: projectRevenue.isEmpty ? "None yet" : Money.short(projectRevenue.values.reduce(0, +) / Double(projectRevenue.count)),
+                 note: projectRevenue.isEmpty ? soon : "money in, this period", color: Palette.lime, go: toMoney),
+            tile("biggestClient", "Biggest client", "The client who paid you the most.",
+                 value: biggest.flatMap { projects.project(id: $0.key)?.client } ?? "None yet",
+                 note: biggest.map { Money.string($0.value) } ?? soon, color: Palette.lime, go: toProject(biggest?.key)),
+            tile("margin", "Profit margin", "How many cents of every dollar you keep after costs.",
+                 value: rev > 0 ? "\(Int((100 * inc.net / rev).rounded()))%" : "None yet",
+                 note: rev > 0 ? "of what came in" : soon, color: Palette.lime, go: toMoney),
+            tile("spent", "Spent", "Everything it cost to do the work and run the business.",
+                 value: spent > 0 ? Money.short(spent) : "None yet", note: spent > 0 ? "project and business costs" : "Shows once you have costs",
+                 color: Theme.coral, go: toMoney),
+            tile("biggestCost", "Your biggest cost", "The kind of cost taking the most money.",
+                 value: biggestCost?.label ?? "None yet", note: biggestCost.map { Money.string($0.amount) } ?? "Shows once you have costs",
+                 color: Theme.coral, go: toMoney),
+            tile("taxSetAside", "About set aside for tax", "A rough guess at what to put away for taxes. Ask your accountant for the real number.",
+                 value: inc.net > 0 ? "About \(Money.short(inc.net * 0.25))" : "None yet",
+                 note: inc.net > 0 ? "roughly a quarter of what you kept" : "Shows once you have a profit",
+                 color: Palette.gold, go: toMoney),
+            tile("yearToDate", "Year to date", "What you have kept so far this calendar year.",
+                 value: year.totalRevenue > 0 || year.totalDirect + year.totalOverhead > 0 ? (year.net < 0 ? "-\(Money.short(-year.net))" : Money.short(year.net)) : "None yet",
+                 note: year.totalRevenue > 0 ? "\(Money.short(year.totalRevenue)) came in" : soon,
+                 color: Palette.violet, go: toMoney),
+
+            tile("inPlay", "In play", "The value of deals you could still win.",
+                 value: deals.open.isEmpty ? "None yet" : Money.short(inPlay),
+                 note: deals.open.isEmpty ? "Shows once you have an open deal" : "\(deals.open.count) open deals",
+                 color: Palette.violet, go: toPipeline),
+            tile("winRate", "Win rate", "How often an inquiry turns into a booking.",
+                 value: closed.isEmpty ? "None yet" : "\(Int((100 * Double(won.count) / Double(closed.count)).rounded()))%",
+                 note: closed.isEmpty ? "Shows once a deal is won or lost" : "\(won.count) won of \(closed.count) closed",
+                 color: Palette.violet, go: toPipeline),
+            tile("avgDeal", "Avg deal won", "The usual size of a booking.",
+                 value: wonValue.isEmpty ? "None yet" : Money.short(wonValue.reduce(0, +) / Double(wonValue.count)),
+                 note: wonValue.isEmpty ? "Shows once a deal is won" : "this period", color: Palette.violet, go: toPipeline),
+            tile("daysToClose", "Days to close", "How long it takes from first hello to a booking.",
+                 value: daysToClose.isEmpty ? "None yet" : "\(daysToClose.reduce(0, +) / daysToClose.count)",
+                 note: daysToClose.isEmpty ? "Shows once a deal is won" : "inquiry to booked", color: Palette.violet, go: toPipeline),
+            tile("bestSource", "Best source", "Where your best clients come from.",
+                 value: bySource.max { $0.value < $1.value }?.key ?? "None yet",
+                 note: bySource.max { $0.value < $1.value }.map { "\(Money.short($0.value)) won, all time" } ?? "Shows once a deal is won",
+                 color: Palette.violet, go: toPipeline),
+
+            tile("active", "Active projects", "Jobs you are working on right now.",
+                 value: "\(projects.active.count)", note: "\(delivered) delivered, awaiting payment", color: Palette.blue, go: toProjects),
+            tile("crewShare", "Crew share", "How much of what came in went to collaborators.",
+                 value: rev > 0 ? "\(Int((100 * crew / rev).rounded()))%" : "None yet",
+                 note: rev > 0 ? "\(Money.string(crew)) to collaborators" : soon, color: Palette.blue, go: toMoney),
+            tile("yourRate", "Your rate", "What you take home per hour on booked quotes.",
+                 value: rates.isEmpty ? "None yet" : "\(Money.string(rates.reduce(0, +) / Double(rates.count)))/hr",
+                 note: rates.isEmpty ? "Shows once a quote is booked" : "take-home, on booked quotes", color: Palette.blue, go: toPipeline),
+
+            tile("cash", "Cash on hand", "What is in your accounts right now.",
+                 value: money.data.openings.isEmpty && !hasMoney ? "None yet" : Money.short(bal.totalCash),
+                 note: money.data.openings.isEmpty && !hasMoney ? "Shows once you add an account" : "checking, Venmo, PayPal",
+                 color: Theme.amber, go: toMoney),
+            tile("owed", "Owed to you", "Money clients still need to pay.",
+                 value: openBills.isEmpty ? "None yet" : Money.short(bal.owed),
+                 note: openBills.isEmpty ? "Nobody owes you" : "\(openBills.count) open invoice\(openBills.count == 1 ? "" : "s")",
+                 color: Theme.amber, go: toProject(openBills.first?.projectID)),
+            tile("overdue", "Overdue", "Money that should already have been paid.",
+                 value: overdue.isEmpty ? "None" : Money.short(overdue.reduce(0) { $0 + $1.amount }),
+                 note: overdue.isEmpty ? "nothing late" : overdue.map(\.client).joined(separator: ", "),
+                 color: overdue.isEmpty ? Theme.amber : Theme.coral,
+                 noteColor: overdue.isEmpty ? Theme.text3 : Theme.coral, go: toProject(firstLate?.projectID)),
+            tile("card", "Card balance", "What you owe on the credit card.",
+                 value: Money.short(bal.card), note: "owed on the card", color: Theme.amber, go: toMoney),
+
+            tile("gearWorth", "Gear worth", "What your gear is worth today.",
+                 value: money.gear.isEmpty ? "None yet" : Money.short(bal.gear),
+                 note: money.gear.isEmpty ? "Shows once you add gear" : "\(money.gear.count) items, today's value",
+                 color: Palette.gold, go: toGear),
+            tile("gearBought", "Gear bought", "What you spent on gear.",
+                 value: gearBought > 0 ? Money.short(gearBought) : "None yet",
+                 note: gearBought > 0 ? "this period" : "Shows once you buy gear", color: Palette.gold, go: toGear),
+            tile("needsService", "Needs service", "Gear that has not had a check-up in a year.",
+                 value: "\(money.gear.filter(\.needsService).count)", note: "no check-up in a year",
+                 color: Palette.gold, go: toGear),
         ]
 
         return VStack(alignment: .leading, spacing: 14) {
@@ -556,26 +628,13 @@ struct MoneyView: View {
                 Spacer()
                 Text(rangeTitle).font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
             }
-            ForEach(groups, id: \.0) { group in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(group.0.uppercased()).font(Theme.font(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(group.1)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], alignment: .leading, spacing: 10) {
-                        ForEach(group.2) { tile in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(tile.label).font(Theme.font(size: 11)).foregroundStyle(Theme.muted)
-                                Text(tile.value).font(Theme.font(size: 20, weight: .semibold)).monospacedDigit()
-                                    .foregroundStyle(tile.tone ?? Theme.text).lineLimit(1).minimumScaleFactor(0.6)
-                                Text(tile.sub).font(Theme.font(size: 11)).foregroundStyle(Theme.muted).lineLimit(2)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
-                            .background(Theme.raised.opacity(0.5))
-                            .overlay(alignment: .leading) { Rectangle().fill(group.1.opacity(0.7)).frame(width: 2) }
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
-                }
-            }
+            ChoosableTiles(key: "money", options: options, defaults: [
+                "revenue", "kept", "avgProject", "biggestClient",
+                "inPlay", "winRate", "avgDeal", "daysToClose", "bestSource",
+                "active", "crewShare", "yourRate",
+                "cash", "owed", "overdue", "card",
+                "gearWorth", "gearBought", "needsService",
+            ])
         }
         .panel()
         .accentBar(Palette.violet)

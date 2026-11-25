@@ -421,6 +421,8 @@ private struct BoxChooser: View {
                 .frame(width: 330, height: 150, alignment: .topLeading)
                 .clipped()
                 .allowsHitTesting(false)
+                .disabled(true)
+                .accessibilityHidden(true)
                 .background(Theme.ground.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))

@@ -83,6 +83,51 @@ struct TodayNumbers {
     }
 }
 
+// MARK: - What each card means, in one sentence
+
+extension TodayNumbers {
+    /// "$1.1k in so far this month. $3.5k more beats June, your best lately."
+    var moneyTakeaway: String? {
+        guard hasMoney else { return nil }
+        let now = thisMonth?.income ?? 0
+        let past = months.dropLast()
+        let best = past.max { $0.income < $1.income }
+        let bestName = best.map { $0.start.formatted(.dateTime.month(.wide)) } ?? ""
+        if now <= 0 {
+            return bestMonth > 0 ? "Nothing in yet this month. \(bestName) was your best lately, with \(Money.short(bestMonth))."
+                                 : "Nothing in yet this month. It will show here as it lands."
+        }
+        if bestMonth <= 0 { return "\(Money.short(now)) in so far this month. A good start." }
+        if now >= bestMonth { return "\(Money.short(now)) in this month. Your best month of the last six." }
+        return "\(Money.short(now)) in so far this month. \(Money.short(bestMonth - now)) more beats \(bestName), your best lately."
+    }
+
+    /// "18 h so far this month. Most of it went to Hartley wedding."
+    var timeTakeaway: String? {
+        let total = hoursThisMonth.reduce(0) { $0 + $1.hours }
+        guard total > 0, let top = hoursThisMonth.first else { return nil }
+        if hoursThisMonth.count == 1 { return "\(Hours.short(total)) so far this month, all on \(top.name)." }
+        if top.hours / total > 0.5 { return "\(Hours.short(total)) so far this month. Most of it went to \(top.name)." }
+        return "\(Hours.short(total)) so far this month, across \(hoursThisMonth.count) jobs. \(top.name) took the most."
+    }
+
+    /// "6 jobs on the go. 2 are delivered and waiting to be paid."
+    var funnelTakeaway: String? {
+        let total = funnel.reduce(0) { $0 + $1.count }
+        guard total > 0 else { return nil }
+        let count: (ProjectStage) -> Int = { stage in funnel.first { $0.stage == stage }?.count ?? 0 }
+        let going = total - count(.paid)
+        guard going > 0 else { return "Everything here is done and paid. Nicely done." }
+        let jobs = going == 1 ? "One job on the go." : "\(going) jobs on the go."
+        let waiting = count(.delivered), editing = count(.edit), leads = count(.lead), booked = count(.booked)
+        if waiting > 0 { return jobs + (waiting == 1 ? " One is delivered and waiting to be paid." : " \(waiting) are delivered and waiting to be paid.") }
+        if editing > 0 { return jobs + (editing == 1 ? " One is in the edit." : " \(editing) are in the edit.") }
+        if booked > 0 { return jobs + (booked == 1 ? " One is booked and coming up." : " \(booked) are booked and coming up.") }
+        if leads > 0 { return jobs + (leads == 1 ? " One person is still deciding." : " \(leads) people are still deciding.") }
+        return jobs
+    }
+}
+
 // MARK: - Shared card
 
 /// A dashboard card: coloured heading, content, and the whole thing opens its home page.
@@ -90,6 +135,8 @@ struct DashCard<Content: View>: View {
     let title: String
     let color: Color
     var action: (() -> Void)? = nil
+    /// One plain sentence under the title that says what the card means.
+    var takeaway: String? = nil
     @ViewBuilder let content: Content
     @State private var hover = false
 
@@ -104,6 +151,13 @@ struct DashCard<Content: View>: View {
                             .font(Theme.font(size: 11, weight: .semibold))
                             .foregroundStyle(hover ? color : Theme.muted.opacity(0.6))
                     }
+                }
+                if let takeaway, !takeaway.isEmpty {
+                    Text(takeaway)
+                        .font(Theme.font(size: 13.5, weight: .medium))
+                        .foregroundStyle(Theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, -6)
                 }
                 content
             }
@@ -212,7 +266,7 @@ struct MoneyInChart: View {
 
     var body: some View {
         if !numbers.hasMoney {
-            DashEmpty("Bring in a bank statement on Money and your months show up here.")
+            DashEmpty("Your money in will show here, month by month. Bring in a bank statement on Money to start.")
         } else {
             HStack(alignment: .center, spacing: 22) {
                 Chart {
@@ -296,11 +350,6 @@ struct StageFunnel: View {
             DashEmpty("Add a deal or a project and you'll see each job's step, from first inquiry to paid.")
         } else {
             VStack(alignment: .leading, spacing: 7) {
-                Text("Every job you have, by the step it's at, and what those jobs are worth.")
-                    .font(Theme.font(size: 12))
-                    .foregroundStyle(Theme.text3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 4)
                 ForEach(steps) { step in
                     HStack(spacing: 10) {
                         Text(step.stage.label)
@@ -365,7 +414,7 @@ struct HoursDonut: View {
     var body: some View {
         let total = slices.reduce(0) { $0 + $1.hours }
         if total == 0 {
-            DashEmpty("Start a timer on a project and this month's hours fill in here.")
+            DashEmpty("Start a timer on any project and you'll see where this month's hours go.")
         } else {
             HStack(spacing: 18) {
                 ZStack {

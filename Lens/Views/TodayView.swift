@@ -49,10 +49,11 @@ struct TodayView: View {
 
     private var everything: some View {
         let numbers = TodayNumbers(money: money, deals: deals, projects: projects)
+        let all = items
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                header
-                ArrangeablePage("today", columns: true, boxes: everythingBoxes(numbers))
+                header(all)
+                ArrangeablePage("today", columns: true, boxes: everythingBoxes(numbers, all))
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 34)
@@ -62,7 +63,7 @@ struct TodayView: View {
     }
 
     /// Today's boxes in their usual order; she can rearrange, resize or hide them.
-    private func everythingBoxes(_ numbers: TodayNumbers) -> [PageBox] {
+    private func everythingBoxes(_ numbers: TodayNumbers, _ all: [Item]) -> [PageBox] {
         var boxes: [PageBox] = []
         if logins.googleCalendarReady {
             boxes.append(PageBox("calendar", "Today's calendar", color: Palette.blue) {
@@ -72,24 +73,27 @@ struct TodayView: View {
             })
         }
         boxes += [
-            PageBox("needsYou", "Needs you", color: Theme.coral) { needsYou },
+            PageBox("needsYou", "A few things for you", color: Theme.coral) { needsYou(all) },
             PageBox("time", "Where your time went", color: Palette.orchid, half: true) {
-                DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) }) {
+                DashCard(title: "Where your time went", color: Palette.orchid, action: { navigator.open(.projects) },
+                         takeaway: numbers.timeTakeaway) {
                     HoursDonut(slices: numbers.hoursThisMonth)
                 }
             },
             PageBox("week", "The week ahead", color: Theme.teal, half: true) {
-                DashCard(title: "The week ahead", color: Theme.teal) {
+                DashCard(title: "The week ahead", color: Theme.teal, takeaway: weekTakeaway) {
                     WeekStrip(projects: projects.active) { navigator.openProject($0) }
                 }
             },
             PageBox("moneyIn", "Money in", color: Palette.lime, half: true) {
-                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) }) {
+                DashCard(title: "Money in · last 6 months", color: Palette.lime, action: { navigator.open(.money) },
+                         takeaway: numbers.moneyTakeaway) {
                     MoneyInChart(numbers: numbers)
                 }
             },
             PageBox("funnel", "Where your jobs are", color: Palette.violet, half: true) {
-                DashCard(title: "Where your jobs are", color: Palette.violet, action: { navigator.open(.projects) }) {
+                DashCard(title: "Where your jobs are", color: Palette.violet, action: { navigator.open(.projects) },
+                         takeaway: numbers.funnelTakeaway) {
                     StageFunnel(steps: numbers.funnel)
                 }
             },
@@ -98,6 +102,10 @@ struct TodayView: View {
                 AutoFiledToday().frame(maxWidth: 720, alignment: .leading)
             },
         ]
+        // Extras she can switch on from "Choose boxes".
+        boxes += TodayMore.boxes(projects: projects, deals: deals, money: money, navigator: navigator)
+        boxes.append(PageBox("ask", "Ask Lens", color: Palette.violet, off: true,
+                             about: "Ask Lens a question about your business, right from Today.") { askBox })
         return boxes
     }
 
@@ -157,7 +165,7 @@ struct TodayView: View {
 
     // MARK: - Pieces
 
-    private var header: some View {
+    private func header(_ all: [Item]) -> some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
@@ -173,6 +181,8 @@ struct TodayView: View {
                     .foregroundStyle(Theme.text3)
                     .frame(maxWidth: 720, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
+                Text(all.isEmpty ? "enjoy the quiet" : "you've got this")
+                    .font(Theme.script(size: 24)).foregroundStyle(Palette.violet)
             }
             Spacer()
             // Back from a networking event: cards go straight into People.
@@ -182,32 +192,100 @@ struct TodayView: View {
         .sheet(isPresented: $scanningCard) { CardScanView() }
     }
 
-    private var needsYou: some View {
-        let all = items
-        let shown = showAllItems ? all : Array(all.prefix(4))
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ColorLabel("Needs you · \(all.count)", all.contains { $0.tone == .overdue } ? Theme.coral : Theme.amber)
-                Spacer()
-                if all.count > 4 {
-                    Button(showAllItems ? "Show fewer" : "Show all \(all.count)") {
-                        withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(Theme.font(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.teal)
-                }
-            }
+    /// The same few things as Simple, in the same words: the top four as cards with one button each,
+    /// the rest folded away underneath.
+    private func needsYou(_ all: [Item]) -> some View {
+        let top = Array(all.prefix(4))
+        let rest = Array(all.dropFirst(4))
+        return VStack(alignment: .leading, spacing: 12) {
+            ColorLabel(all.isEmpty ? "Nothing needs you" : "A few things for you", Palette.violet)
             if all.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle").foregroundStyle(Theme.teal)
-                    Text("All clear. Nothing needs you right now.")
+                    Text("All clear. Lens will put anything new here.")
                         .font(Theme.font(size: 14)).foregroundStyle(Theme.text3)
                 }
                 .panel()
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 10, alignment: .top)], alignment: .leading, spacing: 8) {
-                    ForEach(shown) { item in needRow(item) }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 400), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
+                    ForEach(top) { item in thingCard(item, compact: true) }
+                }
+                if !rest.isEmpty {
+                    foldButton(rest)
+                    if showAllItems {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 10, alignment: .top)], alignment: .leading, spacing: 8) {
+                            ForEach(rest) { item in needRow(item) }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "And 8 more that can wait": opens or folds away everything after the first four.
+    private func foldButton(_ rest: [Item]) -> some View {
+        let late = rest.contains { $0.tone == .overdue }
+        let label = showAllItems ? "Show fewer"
+            : late ? "And \(rest.count) more to look at when you can" : "And \(rest.count) more that can wait"
+        return Button {
+            withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Text(label)
+                Image(systemName: "chevron.down")
+                    .font(Theme.font(size: 10, weight: .bold))
+                    .rotationEffect(.degrees(showAllItems ? 180 : 0))
+            }
+            .font(Theme.font(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.teal)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// One thing for her: an icon, what it is, and the one button that deals with it.
+    private func thingCard(_ item: Item, compact: Bool = false) -> some View {
+        let tint = simpleColor(item.tone)
+        return HStack(spacing: compact ? 14 : 16) {
+            Image(systemName: item.icon)
+                .font(.system(size: compact ? 14 : 16, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: compact ? 34 : 40, height: compact ? 34 : 40)
+                .background(tint.opacity(Theme.look == .daylight ? 0.14 : 0.22))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title).font(Theme.font(size: compact ? 14.5 : 16, weight: .bold)).foregroundStyle(Theme.text)
+                    .lineLimit(compact ? 1 : 2)
+                Text("\(item.kicker). \(item.detail)")
+                    .font(Theme.font(size: compact ? 12.5 : 14)).foregroundStyle(Theme.muted)
+                    .lineLimit(compact ? 2 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
+        }
+        .panel(padding: compact ? 14 : 18)
+    }
+
+    private var askBox: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            askBar
+            FlowLayout(spacing: 8) {
+                ForEach(["Who should I follow up with this week?", "How did last month go?", "Which jobs paid best this year?"], id: \.self) { q in
+                    Button {
+                        navigator.askDraft = q
+                        navigator.askOpen = true
+                    } label: {
+                        Text(q)
+                            .font(Theme.font(size: 12.5)).foregroundStyle(Theme.text2)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Theme.panel)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Theme.line))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -350,44 +428,20 @@ struct TodayView: View {
     }
 
     private func thingsForYou(_ all: [Item]) -> some View {
-        let shown = showAllItems ? all : Array(all.prefix(4))
+        let rest = Array(all.dropFirst(4))
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(all.isEmpty ? "Nothing needs you" : "A few things for you")
-                    .font(Theme.display(size: 22)).foregroundStyle(Theme.text)
-                if all.count > 4 {
-                    Button(showAllItems ? "Show fewer" : "See all \(all.count)") {
-                        withAnimation(.easeOut(duration: 0.2)) { showAllItems.toggle() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(Theme.font(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.teal)
-                }
-            }
+            Text(all.isEmpty ? "Nothing needs you" : "A few things for you")
+                .font(Theme.display(size: 22)).foregroundStyle(Theme.text)
             if all.isEmpty {
                 Text("All clear. Lens will put anything new here.")
                     .font(Theme.font(size: 15)).foregroundStyle(Theme.muted)
             }
-            ForEach(shown) { item in
-                let tint = simpleColor(item.tone)
-                HStack(spacing: 16) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(tint)
-                        .frame(width: 40, height: 40)
-                        .background(tint.opacity(Theme.look == .daylight ? 0.14 : 0.22))
-                        .clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.title).font(Theme.font(size: 16, weight: .bold)).foregroundStyle(Theme.text)
-                            .lineLimit(2)
-                        Text("\(item.kicker). \(item.detail)")
-                            .font(Theme.font(size: 14)).foregroundStyle(Theme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 12)
-                    Button(item.actionTitle, action: item.action).buttonStyle(PrimaryButtonStyle())
+            ForEach(all.prefix(4)) { item in thingCard(item) }
+            if !rest.isEmpty {
+                foldButton(rest)
+                if showAllItems {
+                    ForEach(rest) { item in thingCard(item) }
                 }
-                .panel(padding: 18)
             }
         }
     }
@@ -426,6 +480,23 @@ struct TodayView: View {
                 }
             }
         }
+    }
+
+    /// One line for "The week ahead": how many shoots, and the first one.
+    private var weekTakeaway: String {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let end = cal.date(byAdding: .day, value: 7, to: start) ?? start
+        let shoots = projects.active
+            .filter { $0.shootDate.map { $0 >= start && $0 < end } ?? false }
+            .sorted { ($0.shootDate ?? .distantFuture) < ($1.shootDate ?? .distantFuture) }
+        guard let first = shoots.first, let date = first.shootDate else {
+            return "No shoots in the next seven days. A good week to edit or catch up."
+        }
+        let day = cal.isDateInToday(date) ? "today" : cal.isDateInTomorrow(date) ? "tomorrow"
+            : "on " + date.formatted(.dateTime.weekday(.wide))
+        return shoots.count == 1 ? "One shoot this week: \(first.name) \(day)."
+                                 : "\(shoots.count) shoots this week. First up is \(first.name) \(day)."
     }
 
     /// What's on a day: shoots, proposals due, and calendar events.
