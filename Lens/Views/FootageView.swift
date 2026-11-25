@@ -17,20 +17,19 @@ struct FootageView: View {
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var appearance: Appearance
     @State private var query = ""
-    @State private var path: [FootageRoute] = []
     @State private var movingAll = false
     @State private var addingSite = false
     /// Watched so the page updates the moment a drive is plugged in or pulled out.
     @ObservedObject private var catalog = DriveCatalog.shared
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $navigator.libraryPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
                     ArrangeablePage("library", spacing: 28, boxes: [
                         PageBox("search", "Find footage", color: Theme.teal) { LibraryDrivesView(part: .search, query: $query) },
-                        PageBox("shoots", "Shoots", color: Palette.blue) { LibraryShootsView(query: query) { path.append($0) } },
+                        PageBox("shoots", "Shoots", color: Palette.blue) { LibraryShootsView(query: query) { navigator.libraryPath.append($0) } },
                         PageBox("drives", "Drives", color: Palette.violet) { drivesSection },
                     ])
                 }
@@ -40,7 +39,13 @@ struct FootageView: View {
             }
             .background(Theme.ground)
             .sheet(isPresented: $addingSite) { SiteImportView() }
-            .onAppear { takeRoute() }
+            .onAppear {
+                if navigator.libraryPath.isEmpty, !navigator.librarySaved.isEmpty { navigator.libraryPath = navigator.librarySaved }
+                takeRoute()
+            }
+            .onChange(of: navigator.libraryPath) { _, now in
+                if navigator.section == .footage { navigator.librarySaved = now }
+            }
             .onChange(of: navigator.footageRoute) { _, _ in takeRoute() }
             .navigationDestination(for: FootageRoute.self) { route in
                 Group {
@@ -66,7 +71,7 @@ struct FootageView: View {
     private func takeRoute() {
         guard let route = navigator.footageRoute else { return }
         navigator.footageRoute = nil
-        path = [route]
+        navigator.libraryPath = [route]
     }
 
     // MARK: - Header and drives
@@ -291,7 +296,7 @@ struct FootageView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel("Get space back")
-                Button("See exactly what's included") { path.append(.cleanupList) }
+                Button("See exactly what's included") { navigator.libraryPath.append(.cleanupList) }
                     .buttonStyle(.link).font(Theme.font(size: 13))
                 Spacer()
                 if total > 0, let capacity = viewModel.roots.first.flatMap(DriveInfo.capacity(for:)) {
@@ -310,10 +315,10 @@ struct FootageView: View {
                             disabled: readyProjects.isEmpty || movingAll) { moveAllReady() }
                 reclaimTile(color: Theme.chartCache, title: "Premiere cache", bytes: cache,
                             detail: "Premiere rebuilds this whenever it needs it. Always safe to clear.",
-                            action: "Review", disabled: cache == 0) { path.append(.cache) }
+                            action: "Review", disabled: cache == 0) { navigator.libraryPath.append(.cache) }
                 reclaimTile(color: Theme.chartDuplicates, title: "Duplicates", bytes: dupes,
                             detail: "\(viewModel.duplicateGroups.count) sets of copies. The one linked in Premiere is always kept.",
-                            action: "Review", disabled: dupes == 0) { path.append(.duplicates) }
+                            action: "Review", disabled: dupes == 0) { navigator.libraryPath.append(.duplicates) }
             }
         }
     }
@@ -361,7 +366,7 @@ struct FootageView: View {
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer()
-                Button("Sort them") { path.append(.organize) }
+                Button("Sort them") { navigator.libraryPath.append(.organize) }
                     .buttonStyle(SecondaryButtonStyle())
                     .disabled(viewModel.organizeProposals.isEmpty)
             }
@@ -378,7 +383,7 @@ struct FootageView: View {
                             .foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Button("Review") { path.append(.retirees) }
+                    Button("Review") { navigator.libraryPath.append(.retirees) }
                         .buttonStyle(SecondaryButtonStyle())
                 }
                 .panel(padding: 20)

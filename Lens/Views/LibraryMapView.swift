@@ -47,6 +47,18 @@ enum MapSpot {
     }
 }
 
+/// Where the Library map was left: its view, zoom and the list that was open, so coming back
+/// from a shoot (or from another section) finds the map just as she left it.
+@MainActor
+final class MapMemory {
+    static let shared = MapMemory()
+    var region: MKCoordinateRegion?
+    var span: Double?
+    var stack: PinCluster?
+    /// The pins the map was last fitted to; when they change (a search, a new shoot) it fits again.
+    var pinsKey = ""
+}
+
 /// The Library as a map, the way the Photos app shows Places: a picture where each shoot happened,
 /// grouped with a count when zoomed out. Click one to open it; click a group to list everything in it beside the map.
 struct LibraryMapView: View {
@@ -77,9 +89,16 @@ struct LibraryMapView: View {
         }
         .onMapCameraChange(frequency: .onEnd) { context in
             span = max(context.region.span.latitudeDelta, context.region.span.longitudeDelta)
+            memory.region = context.region
+            memory.span = span
         }
-        .onAppear { fitAll() }
-        .onChange(of: pins.map(\.id)) { _, _ in fitAll() }
+        .onAppear { restoreOrFit() }
+        .onChange(of: pinsKey) { _, key in
+            guard key != memory.pinsKey else { return }
+            memory.pinsKey = key
+            fitAll()
+        }
+        .onChange(of: stack?.id) { _, _ in memory.stack = stack }
         .frame(height: 540)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
@@ -110,6 +129,21 @@ struct LibraryMapView: View {
         let shoots = group.pins.filter(\.isShoot).count
         if shoots == group.pins.count { return "\(shoots) shoots" }
         return "\(group.pins.count) here"
+    }
+
+    private var memory: MapMemory { MapMemory.shared }
+    private var pinsKey: String { pins.map(\.id).sorted().joined(separator: ",") }
+
+    /// Back to where she left the map, if these are the same pins; otherwise frame them all.
+    private func restoreOrFit() {
+        if memory.pinsKey == pinsKey, let region = memory.region {
+            position = .region(region)
+            span = memory.span
+            stack = memory.stack
+        } else {
+            memory.pinsKey = pinsKey
+            fitAll()
+        }
     }
 
     /// Frames every pin, with room above each one for its picture (pins hang from their spot).

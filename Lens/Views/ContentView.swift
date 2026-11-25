@@ -89,6 +89,14 @@ final class Navigator: ObservableObject {
 
     /// A Library page to open when the Library next shows, like one shoot's photos and videos.
     @Published var footageRoute: FootageRoute?
+    /// Where she is in the Library (a shoot, a drive, a folder), kept here so going to another
+    /// section and back returns her to the same page instead of the top.
+    @Published var libraryPath: [FootageRoute] = []
+    /// A copy of `libraryPath` taken while the Library is showing. SwiftUI empties the live one
+    /// when the Library is put away, so this is what's put back on return.
+    var librarySaved: [FootageRoute] = []
+    /// The tab each project was last on, so a project opens where she left it.
+    var projectTabs: [UUID: ProjectTab] = [:]
 
     func openShoot(_ id: UUID) {
         footageRoute = .shoot(id)

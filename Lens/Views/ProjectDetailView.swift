@@ -24,7 +24,13 @@ struct ProjectDetailView: View {
     private var books: ProjectBooks { ProjectBooks.make(project, money: money, deals: deals) }
 
     var body: some View {
-        if appearance.simple { simpleBody } else { everythingBody }
+        Group {
+            if appearance.simple { simpleBody } else { everythingBody }
+        }
+        // Back on the same tab she left this project on, even after visiting another section.
+        .onAppear { tab = navigator.projectTabs[project.id] ?? .overview }
+        .onChange(of: project.id) { _, id in tab = navigator.projectTabs[id] ?? .overview }
+        .onChange(of: tab) { _, now in navigator.projectTabs[project.id] = now }
     }
 
     /// Overview's boxes in their usual order; she can rearrange, resize or hide them.
