@@ -40,6 +40,8 @@ struct FootageView: View {
             }
             .background(Theme.ground)
             .sheet(isPresented: $addingSite) { SiteImportView() }
+            .onAppear { takeRoute() }
+            .onChange(of: navigator.footageRoute) { _, _ in takeRoute() }
             .navigationDestination(for: FootageRoute.self) { route in
                 Group {
                     switch route {
@@ -58,6 +60,13 @@ struct FootageView: View {
                 .background(Theme.ground)
             }
         }
+    }
+
+    /// Opens the page another screen asked for, like a project's photos and videos.
+    private func takeRoute() {
+        guard let route = navigator.footageRoute else { return }
+        navigator.footageRoute = nil
+        path = [route]
     }
 
     // MARK: - Header and drives

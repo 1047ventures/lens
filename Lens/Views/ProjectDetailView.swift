@@ -18,7 +18,9 @@ struct ProjectDetailView: View {
     @EnvironmentObject private var appearance: Appearance
     @State private var addingPerson = false
 
-    private var files: [MediaFile] { project.files(in: viewModel.allFiles) }
+    @ObservedObject private var index = LibraryIndex.shared
+    @ObservedObject private var links = LibraryLinks.shared
+    @ObservedObject private var catalog = DriveCatalog.shared
     private var books: ProjectBooks { ProjectBooks.make(project, money: money, deals: deals) }
 
     var body: some View {
@@ -237,64 +239,89 @@ struct ProjectDetailView: View {
 
     // MARK: - Footage
 
+    /// The photos and videos the Library has filed under this project, on any drive.
+    private var libraryFiles: (photos: Int, videos: Int, bytes: Int64, sample: [LibraryItem]) {
+        let shelf = index.shelf(projects: projects.projects, links: links, catalog: catalog)
+        var photos = 0, videos = 0, bytes: Int64 = 0
+        var items: [LibraryItem] = []
+        for i in shelf.byProject[project.id] ?? [] where index.folders.indices.contains(i) {
+            let f = index.folders[i]
+            photos += f.photos; videos += f.videos; bytes += f.bytes
+            items += f.items.compactMap { index.items.indices.contains($0) ? index.items[$0] : nil }
+        }
+        let picked = items.filter { $0.kind == .photo || $0.kind == .video }.sorted { $0.date < $1.date }
+        let step = max(picked.count / 5, 1)
+        let sample = stride(from: 0, to: picked.count, by: step).prefix(5).map { picked[$0] }
+        return (photos, videos, bytes, sample)
+    }
+
     private var footagePanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let found = libraryFiles
+        return VStack(alignment: .leading, spacing: 14) {
             SectionLabel("Footage")
-            if project.isOnServer {
-                Text("On the server")
-                    .font(Theme.font(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.text)
-                if let path = project.archivedPath {
-                    Text(path)
-                        .font(Theme.font(size: 12, design: .monospaced))
-                        .foregroundStyle(Theme.muted)
-                        .lineLimit(1).truncationMode(.middle)
+            if found.photos + found.videos > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HeadlineNumber(text: "\(found.photos + found.videos)", size: 30)
+                    Text(footageCounts(found.photos, found.videos, found.bytes))
+                        .font(Theme.font(size: 14))
+                        .foregroundStyle(Theme.text3)
+                }
+                Button { navigator.openShoot(project.id) } label: {
+                    HStack(spacing: 4) {
+                        ForEach(found.sample) { item in
+                            Thumbnail(url: LibraryFiles.url(of: item, catalog: catalog), assetID: item.assetID, kind: item.kind)
+                                .frame(width: 88, height: 56)
+                                .background(Theme.raised)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            } else if project.folderURL != nil || project.isOnServer {
+                Text("Lens hasn't looked in this project's folder yet. Look at its drive in Library and the photos and videos show up here.")
+                    .font(Theme.font(size: 14))
+                    .foregroundStyle(Theme.text3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("No footage folder yet. Pick the folder this project's photos and videos live in.")
+                    .font(Theme.font(size: 14))
+                    .foregroundStyle(Theme.text3)
+            }
+            if let path = project.isOnServer ? project.archivedPath : project.folderPath {
+                Text((project.isOnServer ? "On the server: " : "") + path)
+                    .font(Theme.font(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            HStack(spacing: 10) {
+                if found.photos + found.videos > 0 {
+                    Button("See the photos and videos") { navigator.openShoot(project.id) }
+                        .buttonStyle(PrimaryButtonStyle())
+                } else if project.folderURL != nil || project.isOnServer {
+                    Button("Open Library") { navigator.open(.footage) }
+                        .buttonStyle(SecondaryButtonStyle())
+                } else {
+                    Button("Choose folder…") { chooseFolder() }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+                if let path = project.isOnServer ? project.archivedPath : project.folderPath {
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                     }
                     .buttonStyle(SecondaryButtonStyle())
                 }
-            } else if let folder = project.folderURL {
-                if viewModel.hasScanned {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        HeadlineNumber(text: "\(files.count)", size: 30)
-                        Text("clip\(files.count == 1 ? "" : "s") · \(ByteFormat.string(files.reduce(0) { $0 + $1.sizeBytes }))")
-                            .font(Theme.font(size: 14))
-                            .foregroundStyle(Theme.text3)
-                    }
-                    if !files.isEmpty {
-                        HStack(spacing: 4) {
-                            ForEach(files.prefix(5)) { file in
-                                ThumbnailImageView(file: file, size: CGSize(width: 88, height: 50))
-                            }
-                        }
-                    }
-                } else {
-                    Text("Read the drive in Library to see this project's clips.")
-                        .font(Theme.font(size: 14))
-                        .foregroundStyle(Theme.text3)
-                }
-                Text(folder.path)
-                    .font(Theme.font(size: 12, design: .monospaced))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1).truncationMode(.middle)
-                HStack(spacing: 10) {
-                    Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([folder])
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    Button("Open Library") { navigator.open(.footage) }
-                        .buttonStyle(SecondaryButtonStyle())
-                }
-            } else {
-                Text("No footage folder yet. Pick the folder this project's clips live in.")
-                    .font(Theme.font(size: 14))
-                    .foregroundStyle(Theme.text3)
-                Button("Choose folder…") { chooseFolder() }
-                    .buttonStyle(SecondaryButtonStyle())
             }
         }
         .panel(padding: 22)
+        .onAppear { index.start() }
+    }
+
+    private func footageCounts(_ photos: Int, _ videos: Int, _ bytes: Int64) -> String {
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos) photo\(photos == 1 ? "" : "s")") }
+        if videos > 0 { parts.append("\(videos) video\(videos == 1 ? "" : "s")") }
+        parts.append(ByteFormat.string(bytes))
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Story and details

@@ -87,6 +87,14 @@ final class Navigator: ObservableObject {
         section = .people
     }
 
+    /// A Library page to open when the Library next shows, like one shoot's photos and videos.
+    @Published var footageRoute: FootageRoute?
+
+    func openShoot(_ id: UUID) {
+        footageRoute = .shoot(id)
+        section = .footage
+    }
+
     func openProject(_ id: UUID) {
         projectID = id
         section = .projects
