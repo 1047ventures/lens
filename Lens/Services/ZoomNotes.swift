@@ -65,6 +65,10 @@ final class ZoomNotes: ObservableObject {
     /// Notes the user said aren't for a client, so the same meeting read again from Zoom stays out of the way.
     private var dismissedStubs: [Stub] = []
     private var again = false
+    /// From an earlier version's one-time check. Still saved so the file keeps the same shape.
+    private var rechecked = false
+    /// The user's own address, which is on nearly every call and so never says which project it's for.
+    private var me: String { logins?.ownerEmail ?? "" }
 
     /// Zoom's AI summaries started in 2023, so there's nothing older to look for.
     private static let oldest = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2023, month: 1, day: 1).date!
@@ -94,7 +98,7 @@ final class ZoomNotes: ObservableObject {
             let onProjects = Set(projects.projects.filter { ($0.meetingNotes ?? []).contains { $0.id == note.id } }.map(\.id))
             let onDeals = Set(deals.deals.filter { ($0.meetingNotes ?? []).contains { $0.id == note.id } }.map(\.id))
             // Emma's own choice for the people on this call.
-            let chosen = Self.memoryKeys(note).filter { $0.hasPrefix("person:") }.compactMap { remembered[$0] }
+            let chosen = Self.memoryKeys(note, me: me).filter { $0.hasPrefix("person:") }.compactMap { remembered[$0] }
             if chosen.contains(where: { onProjects.contains($0) }) { continue }
             if !note.fromZoom && !Self.looksLikeSummary(note) {
                 removeEverywhere(note)
@@ -578,17 +582,17 @@ final class ZoomNotes: ObservableObject {
     /// it's the only one, or because a word in the summary happens to match.
     private func match(_ note: MeetingNote, deals: DealStore, projects: ProjectStore, useMemory: Bool = true) -> Placement {
         if useMemory {
-            for key in Self.memoryKeys(note) {
+            for key in Self.memoryKeys(note, me: me) {
                 if let id = remembered[key], let p = projects.project(id: id) {
                     return .sure(dealID: deals.deals.first(where: { $0.projectID == p.id })?.id, projectID: p.id)
                 }
             }
         }
-        let me = (logins?.ownerEmail ?? "").lowercased()
+        let owner = me.lowercased()
         let callEmails = Set(((note.attendees ?? []) + (note.people ?? []).map(\.email))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { $0.contains("@") && $0 != me && !$0.hasSuffix("zoom.us") })
-        let callNames = Set((note.people ?? []).filter { $0.email.lowercased() != me || me.isEmpty }
+            .filter { $0.contains("@") && $0 != owner && !$0.hasSuffix("zoom.us") })
+        let callNames = Set((note.people ?? []).filter { $0.email.lowercased() != owner || owner.isEmpty }
             .compactMap { Self.fullName($0.name) })
         let title = Self.plain(note.title)
 
@@ -614,7 +618,7 @@ final class ZoomNotes: ObservableObject {
         func clear(_ t: Target) -> Bool {
             for person in t.people {
                 let email = person.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if email == me && !me.isEmpty { continue }   // Emma herself is on every call
+                if email == owner && !owner.isEmpty { continue }   // Emma herself is on every call
                 if email.contains("@"), callEmails.contains(email) { return true }
                 if let name = Self.fullName(person.name), callNames.contains(name) { return true }
             }
@@ -713,11 +717,12 @@ final class ZoomNotes: ObservableObject {
     }
 
     /// The people on the call and the meeting series, for remembering where the user put a note.
-    static func memoryKeys(_ note: MeetingNote) -> [String] {
+    /// Leaves out the user's own address: she's on every call, so it says nothing about where one goes.
+    static func memoryKeys(_ note: MeetingNote, me: String = "") -> [String] {
         var keys: [String] = []
         if let series = series(note.title) { keys.append("series:" + series) }
         let emails = (note.attendees ?? []) + (note.people ?? []).map(\.email).filter { $0.contains("@") }
-        keys += Set(emails.map { $0.lowercased() }).sorted().map { "person:" + $0 }
+        keys += Set(emails.map { $0.lowercased() }).subtracting([me.lowercased()]).sorted().map { "person:" + $0 }
         return keys
     }
 
@@ -777,7 +782,7 @@ final class ZoomNotes: ObservableObject {
 
     /// Remembers where the user put a note, for the people on the call and the meeting series.
     private func remember(_ note: MeetingNote, projectID: UUID) {
-        for key in Self.memoryKeys(note) { remembered[key] = projectID }
+        for key in Self.memoryKeys(note, me: me) { remembered[key] = projectID }
     }
 
     /// Unmatched notes whose best guess is this project. On the project page Lens asks about them.
@@ -891,7 +896,7 @@ final class ZoomNotes: ObservableObject {
     func unassign(_ note: MeetingNote) {
         removeEverywhere(note)
         // Whatever Lens remembered for this call was wrong: forget it.
-        for key in Self.memoryKeys(note) { remembered.removeValue(forKey: key) }
+        for key in Self.memoryKeys(note, me: me) { remembered.removeValue(forKey: key) }
         if !unmatched.contains(where: { $0.id == note.id }) { unmatched.insert(note, at: 0) }
         save()
     }
@@ -927,6 +932,7 @@ final class ZoomNotes: ObservableObject {
         var myNotesCursor: Date?
         var myNotesDone: Bool?
         var lastMyNotesSync: Date?
+        var rechecked: Bool?
         var summaryList: String?
         var recheckVersion: Int?
     }
@@ -955,6 +961,7 @@ final class ZoomNotes: ObservableObject {
         myNotesCursor = saved.myNotesCursor
         myNotesDone = saved.myNotesDone ?? false
         lastMyNotesSync = saved.lastMyNotesSync
+        rechecked = saved.rechecked ?? false
         summaryList = saved.summaryList
         recheckVersion = saved.recheckVersion ?? 0
     }
@@ -969,7 +976,7 @@ final class ZoomNotes: ObservableObject {
                           zoomNewest: zoomNewest, backfillCursor: backfillCursor, backfillDone: backfillDone,
                           lastZoomSync: lastZoomSync, userLevel: userLevel, dismissed: dismissedStubs,
                           myNotesRead: Array(myNotesRead), myNotesCursor: myNotesCursor, myNotesDone: myNotesDone,
-                          lastMyNotesSync: lastMyNotesSync, summaryList: summaryList, recheckVersion: recheckVersion)
+                          lastMyNotesSync: lastMyNotesSync, rechecked: rechecked, summaryList: summaryList, recheckVersion: recheckVersion)
         if let data = try? encoder.encode(saved) { try? data.write(to: DealStore.url("zoom_notes.json"), options: .atomic) }
     }
 }

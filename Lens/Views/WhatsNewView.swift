@@ -13,6 +13,14 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("2.0.5", [
+            Item(icon: "phone.connection", title: "Connect Zoom yourself",
+                 detail: "Log-ins, Zoom now walks you through making your own private Zoom app, one step at a time, with boxes to paste its two keys. Once connected, Lens reads every past AI summary, checks for new ones every hour, and shows how many it found."),
+            Item(icon: "video.badge.checkmark", title: "Calls only go where they clearly belong",
+                 detail: "A Zoom summary goes on an inquiry or project only when someone on the call is one of its people, or the client's name is in the meeting title. Everything else waits under Not placed for you to decide."),
+            Item(icon: "arrow.triangle.swap", title: "Move or remove a call",
+                 detail: "On a project's calls, use Move to to put a call on another project or inquiry, or Remove to take it off for good."),
+        ]),
         ("2.0.4", [
             Item(icon: "target", title: "Your monthly goal on Home",
                  detail: "On the Everything Home, a ring shows how much you've kept this month next to your goal, and what the month is on pace for. Set or change the goal right in the box. Don't want it? Hide it from Choose boxes."),
@@ -26,6 +34,8 @@ enum WhatsNew {
                  detail: "At the top of every project, a few lines say what it is, how it came to you, and where it stands now. Lens writes them from your emails, call notes and people, and keeps them fresh when something new comes in. Everything else is still in the tabs below."),
             Item(icon: "rectangle.split.3x1", title: "Projects as a board",
                  detail: "On Projects, switch from Pictures to Board to see every project in a column for the step it's at, Quoting through Wrapping up, so the whole flow shows at a glance. Ones waiting on you have an amber edge."),
+            Item(icon: "video.badge.checkmark", title: "Zoom notes land in the right place",
+                 detail: "Lens now only files a Zoom summary on a project when the call clearly points there, like a client's email or name. Workshops and personal calls that ended up on the wrong project are back under Unmatched notes for you to place or set aside."),
         ]),
         ("2.0.2", [
             Item(icon: "sunrise.fill", title: "Good morning cards",
