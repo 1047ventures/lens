@@ -13,6 +13,16 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("2.0.6", [
+            Item(icon: "tray.full", title: "Meet Helper",
+                 detail: "A new page, the tray icon at the top right, where Lens does your back-office busywork. Everything there waits for you to check it. Lens never sends email."),
+            Item(icon: "envelope", title: "Replies to new inquiries, already written",
+                 detail: "When Lens spots a new inquiry in Gmail, it writes a warm first reply. Change anything you like, then click Put in Gmail drafts and send it from Gmail."),
+            Item(icon: "person.crop.circle.badge.plus", title: "New prospects every week",
+                 detail: "Each week Lens researches a few organizations that fit your work and writes a personal pitch for each. Tell it who to look for under Who to look for, or click Find prospects now."),
+            Item(icon: "dollarsign.circle", title: "Zelle payments marked paid",
+                 detail: "Lens reads your Zelle emails. When a payment clearly matches an unpaid invoice, it marks it paid and tells you on Home. When it isn't sure, it asks which invoice it was for."),
+        ]),
         ("2.0.5", [
             Item(icon: "phone.connection", title: "Connect Zoom yourself",
                  detail: "Log-ins, Zoom now walks you through making your own private Zoom app, one step at a time, with boxes to paste its two keys. Once connected, Lens reads every past AI summary, checks for new ones every hour, and shows how many it found."),

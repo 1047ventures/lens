@@ -581,6 +581,9 @@ final class ConnectionStore: ObservableObject {
     /// Signed in with permission to read Gmail.
     var gmailReady: Bool { googleConnected && grantedScope("gmail.readonly") }
 
+    /// Signed in with permission to put drafts in Gmail (Lens never sends).
+    var gmailCanDraft: Bool { googleConnected && grantedScope("gmail.compose") }
+
     var googleCalendarReady: Bool { googleConnected && grantedScope("calendar.readonly") }
 
     /// Signed in before Calendar was added: Google has to be asked again.

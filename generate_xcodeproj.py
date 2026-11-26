@@ -50,6 +50,7 @@ FILES = [
 
     (f"{APP_NAME}/Views/ContentView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/WhatsNewView.swift",              f"{APP_NAME}/Views"),
+    (f"{APP_NAME}/Views/HelperView.swift",               f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/EmailSuggestionsView.swift",      f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/TeachLensView.swift",             f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/StylePickerView.swift",           f"{APP_NAME}/Views"),
@@ -113,6 +114,7 @@ FILES = [
     (f"{APP_NAME}/Services/MetaMessages.swift",           f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/GmailSync.swift",              f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomNotes.swift",              f"{APP_NAME}/Services"),
+    (f"{APP_NAME}/Services/BackOffice.swift",             f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Services/ZoomAPI.swift",                f"{APP_NAME}/Services"),
     (f"{APP_NAME}/Views/MeetingNotesView.swift",          f"{APP_NAME}/Views"),
     (f"{APP_NAME}/Views/FilingViews.swift",               f"{APP_NAME}/Views"),

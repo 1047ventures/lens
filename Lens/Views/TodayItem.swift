@@ -22,6 +22,7 @@ struct TodayItem: Identifiable {
         case "Build proposal": return "doc.text"
         case "Open project": return "envelope"
         case "Open person": return "person"
+        case "Open Helper": return kicker.contains("Zelle") ? "dollarsign.circle" : kicker == "New prospects" ? "person.crop.circle.badge.plus" : "envelope"
         case "Open project": return kicker.contains("payment") ? "dollarsign.circle" : "camera"
         default: return "sparkles"
         }
@@ -90,6 +91,33 @@ extension TodayItem {
             result.append(TodayItem(tone: .neutral, kicker: "Not in touch for \(item.days) days", title: item.person.name,
                                detail: "On \(item.deal.title), still open. Worth a hello?",
                                actionTitle: "Open person") { navigator.openPerson(item.person.id) })
+        }
+
+        // The Helper: replies, pitches and payments waiting for her.
+        let office = BackOffice.shared
+        for payment in office.paymentsNeedingYou.prefix(3) {
+            result.append(TodayItem(tone: .soon, kicker: "Zelle payment",
+                               title: "\(Money.string(payment.amount)) from \(payment.payer.isEmpty ? "someone" : payment.payer)",
+                               detail: "Which invoice was this for?",
+                               actionTitle: "Open Helper") { navigator.open(.helper) })
+        }
+        for payment in office.recentlyMatched.prefix(3) {
+            result.append(TodayItem(tone: .neutral, kicker: "Paid by Zelle",
+                               title: "\(Money.string(payment.amount)) from \(payment.payer.isEmpty ? "someone" : payment.payer)",
+                               detail: "Lens marked \(payment.matchedLabel ?? "the invoice") paid",
+                               actionTitle: "Open Helper") { navigator.open(.helper) })
+        }
+        for reply in office.readyReplies.prefix(3) {
+            result.append(TodayItem(tone: .soon, kicker: "Reply ready", title: reply.person,
+                               detail: reply.title.isEmpty ? "A first reply is written. Check it and put it in Gmail." : "About \(reply.title). Check it and put it in Gmail.",
+                               actionTitle: "Open Helper") { navigator.open(.helper) })
+        }
+        let pitches = office.readyProspects.count
+        if pitches > 0 {
+            result.append(TodayItem(tone: .neutral, kicker: "New prospects",
+                               title: "\(pitches) pitch\(pitches == 1 ? "" : "es") ready to read",
+                               detail: office.readyProspects.prefix(3).map(\.organization).joined(separator: ", "),
+                               actionTitle: "Open Helper") { navigator.open(.helper) })
         }
 
         if viewModel.hasScanned {

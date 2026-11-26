@@ -9,6 +9,8 @@ struct TodayView: View {
     @EnvironmentObject private var people: PeopleStore
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var appearance: Appearance
+    /// So Home updates when the Helper has something new.
+    @ObservedObject private var office = BackOffice.shared
     @State private var scanningCard = false
 
     private typealias Item = TodayItem

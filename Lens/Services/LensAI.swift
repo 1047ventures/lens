@@ -1215,6 +1215,7 @@ final class LensAI: ObservableObject {
         case .footage: parts.append("The Library lists her drives, Mac and Photos; use get_library and search_library for what's there")
         case .gear: parts.append("Gear lists her kit; use get_gear")
         case .money: parts.append("Money shows her books; use get_money")
+        case .helper: parts.append("Helper shows drafted replies to new inquiries, researched prospects with pitches, and Zelle payments Lens matched to invoices. Drafts only go to Gmail drafts when she clicks; Lens never sends")
         case .logins: parts.append("Log-ins is where she connects email, calendar, bank and Claude")
         default: break
         }
@@ -1520,7 +1521,7 @@ final class LensAI: ObservableObject {
         tool("get_money", "The books for a period (This month, Last month, This year, All time): revenue and costs by category, what she kept, cash in and out, who owes her, gear value, what the business is worth.",
              ["period": ["type": "string"]], []),
         tool("get_rates", "the owner's rate card: day rates, hourly rates, deposit percent, target take-home per hour.", [:], []),
-        tool("open_screen", "Show something in Lens: a person, a quote (opens its project), a project, or a section (Today, People, Projects, Library, Gear, Money, Log-ins).",
+        tool("open_screen", "Show something in Lens: a person, a quote (opens its project), a project, or a section (Today, People, Projects, Library, Gear, Money, Helper, Log-ins).",
              ["person_id": ["type": "string"], "deal_id": ["type": "string"], "project_id": ["type": "string"], "section": ["type": "string"]], []),
         tool("list_people", "Everyone in People with tags, company, last time in touch, follow-up date, open deals and projects. All filters optional: query matches names, companies, notes, and also email subjects and Zoom notes (\"the festival\"); tag (Client, Director, Interviewee, Crew, Vendor, Lead); on = a deal or project name; quiet_days = not in touch for at least that many days; follow_up_due.",
              ["query": ["type": "string"], "tag": ["type": "string"], "on": ["type": "string"],

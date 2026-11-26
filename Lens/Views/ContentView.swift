@@ -9,6 +9,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     case footage = "Library"
     case gear = "Gear"
     case money = "Money"
+    case helper = "Helper"
     case logins = "Log-ins"
     case settings = "Settings"
 
@@ -23,6 +24,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         case .footage: return "photo.stack"
         case .gear: return "camera"
         case .money: return "dollarsign"
+        case .helper: return "tray.full"
         case .logins: return "key"
         case .settings: return "gearshape"
         }
@@ -174,6 +176,7 @@ struct ContentView: View {
                 case .footage: FootageView()
                 case .gear: GearView()
                 case .money: MoneyView()
+                case .helper: HelperView()
                 case .logins: LoginsView()
                 case .settings: SettingsView(viewModel: viewModel)
                 }
@@ -330,6 +333,9 @@ struct ContentView: View {
             history.attachWork(deals: deals, projects: projects, zoom: zoom)
             // FreshBooks invoices and estimates, hourly once connected.
             freshbooks.attach(money: money, quotes: quotes, projects: projects)
+            // The Helper: inquiry replies, prospect pitches and Zelle payments, hourly.
+            BackOffice.shared.attach(gmail: gmail, deals: deals, projects: projects, people: people, money: money, logins: logins)
+            BackOffice.shared.start()
             history.start()
             logins.importZoomClient()
             zoom.start()
