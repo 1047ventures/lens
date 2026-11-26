@@ -1,17 +1,25 @@
 import Foundation
 
-/// The seven steps every gig moves through. Order matters: it drives the progress bar
+/// The steps every gig moves through. Order matters: it drives the progress bar
 /// shown wherever a project appears.
+/// Each step is saved in projects.json by its number, so the numbers never change: a new step gets
+/// a new number. The order the cases are written in is the order of the steps (use `order`, not the number).
 enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
-    case lead, booked, shoot, edit, delivered, paid, archived
+    case lead = 0, booked = 1, deposit = 7, shoot = 2, edit = 3, delivered = 4, paid = 5, archived = 6
 
     var id: Int { rawValue }
+
+    /// Where the step sits in the flow, from 0 (Quoting) up. Compare steps with this, never the saved number.
+    var order: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
+    var previous: ProjectStage? { order > 0 ? Self.allCases[order - 1] : nil }
 
     /// The step's name everywhere in Lens, read as what's happening now.
     var label: String {
         switch self {
         case .lead: return "Quoting"
         case .booked: return "Planning"
+        case .deposit: return "Deposit paid"
         case .shoot: return "Shooting"
         case .edit: return "Editing"
         case .delivered: return "Getting paid"
@@ -25,6 +33,7 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
         switch self {
         case .lead: return "Someone asked about it and it isn't booked yet. Quotes and first conversations live here."
         case .booked: return "They said yes, and the shoot hasn't happened yet."
+        case .deposit: return "Booked and the deposit is in. The shoot is next."
         case .shoot: return "Being filmed or photographed now."
         case .edit: return "Shot, and you're editing it."
         case .delivered: return "They have it, and you're waiting to be paid."
@@ -38,6 +47,7 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
         switch self {
         case .lead: return "The inquiry, your quote, and the first emails and calls land here."
         case .booked: return "The shoot date and place, who's involved, the contract, call sheets and planning calls land here."
+        case .deposit: return "The deposit, the signed contract and the final plans for shoot day land here."
         case .shoot: return "Shoot day: the photos and videos, and the hours you spend shooting."
         case .edit: return "The footage sorted by scene, camera or person, and the hours you spend editing."
         case .delivered: return "What you delivered, the invoice, and anything still owed."
@@ -51,6 +61,7 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
         switch self {
         case .lead: return "Back to quoting"
         case .booked: return "Mark as booked"
+        case .deposit: return "Mark deposit paid"
         case .shoot: return "Start shooting"
         case .edit: return "Start editing"
         case .delivered: return "Mark as delivered"
@@ -59,14 +70,14 @@ enum ProjectStage: Int, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var next: ProjectStage? { ProjectStage(rawValue: rawValue + 1) }
+    var next: ProjectStage? { order + 1 < Self.allCases.count ? Self.allCases[order + 1] : nil }
 
     /// The step a history line is about ("Paid", "Moved to Edit", "Shoot day at…"), if any.
     static func mentioned(in text: String) -> ProjectStage? {
         var t = text.lowercased().trimmingCharacters(in: .whitespaces)
         if t.hasPrefix("moved to ") { t.removeFirst(9) }
         let starts: [(String, ProjectStage)] = [
-            ("paid", .paid), ("deliver", .delivered), ("shot", .shoot), ("shoot", .shoot),
+            ("deposit", .deposit), ("paid", .paid), ("deliver", .delivered), ("shot", .shoot), ("shoot", .shoot),
             ("edit", .edit), ("booked", .booked), ("lead", .lead), ("inquiry", .lead), ("archiv", .archived),
             ("quoting", .lead), ("planning", .booked), ("getting paid", .delivered), ("wrapping up", .paid), ("put away", .archived)
         ]

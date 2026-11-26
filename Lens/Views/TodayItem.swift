@@ -44,7 +44,7 @@ extension TodayItem {
         }
 
         for project in projects.active {
-            if let date = project.shootDate, TodayItem.isSoon(date), project.stage != .lead, project.stage.rawValue <= ProjectStage.shoot.rawValue {
+            if let date = project.shootDate, TodayItem.isSoon(date), project.stage != .lead, project.stage.order <= ProjectStage.shoot.order {
                 result.append(TodayItem(tone: .soon, kicker: TodayItem.relativeDay(date), title: project.name,
                                    detail: project.location.isEmpty ? "Shoot day" : "Shoot at \(project.location)",
                                    actionTitle: "Open project", projectID: project.id) { navigator.openProject(project.id) })

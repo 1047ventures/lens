@@ -24,7 +24,7 @@ enum TopBarPins {
     static func shown(_ projects: ProjectStore) -> [Project] {
         let pinned = pinnedIDs().compactMap { projects.project(id: $0) }.filter { $0.stage != .archived }
         if !pinned.isEmpty { return Array(pinned.prefix(most)) }
-        let live = projects.active.filter { [.booked, .shoot, .edit, .delivered].contains($0.stage) }
+        let live = projects.active.filter { [.booked, .deposit, .shoot, .edit, .delivered].contains($0.stage) }
         return Array(live.sorted { ($0.shootDate ?? .distantFuture) < ($1.shootDate ?? .distantFuture) }.prefix(4))
     }
 

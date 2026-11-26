@@ -272,7 +272,7 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                 }
-                if project.stage != .lead, let previous = ProjectStage(rawValue: project.stage.rawValue - 1),
+                if project.stage != .lead, let previous = project.stage.previous,
                    project.stage != .archived {
                     Button("Back to \(previous.label.lowercased())") {
                         projects.setStage(previous, for: project, note: "Moved back to \(previous.label)")
@@ -281,6 +281,8 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(SecondaryButtonStyle())
                 }
+                Spacer()
+                ProjectMoveButton(project: project)
             }
         }
     }
@@ -507,7 +509,7 @@ enum ServerFolder {
 
 extension ProjectDetailView {
     /// The steps on the simple page. Put away folds into Wrapping up.
-    private var chips: [ProjectStage] { [.lead, .booked, .shoot, .edit, .delivered, .paid] }
+    private var chips: [ProjectStage] { [.lead, .booked, .deposit, .shoot, .edit, .delivered, .paid] }
 
     /// The chip that lights up as where the project is now.
     private var currentChip: ProjectStage { project.stage == .archived ? .paid : project.stage }
@@ -516,6 +518,7 @@ extension ProjectDetailView {
         switch project.stage {
         case .lead: return "You're quoting"
         case .booked: return "You're planning"
+        case .deposit: return "The deposit is in"
         case .shoot: return "You're shooting"
         case .edit: return "You're editing"
         case .delivered: return "You're getting paid"
@@ -541,6 +544,9 @@ extension ProjectDetailView {
             .padding(.horizontal, 48)
             .padding(.vertical, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $editing) {
+            ProjectEditor(initial: project) { projects.update($0) }
         }
         .sheet(isPresented: $addingPerson) {
             VStack(alignment: .leading, spacing: 16) {
@@ -569,11 +575,15 @@ extension ProjectDetailView {
 
     private var simpleStageLine: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(stageSentence).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+            HStack {
+                Text(stageSentence).font(Theme.font(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+                Spacer()
+                ProjectMoveButton(project: project)
+            }
             HStack(spacing: 8) {
                 ForEach(chips) { step in
                     let current = step == currentChip
-                    let past = step.rawValue < currentChip.rawValue
+                    let past = step.order < currentChip.order
                     let peeking = simplePeek == step && !current
                     Button {
                         simplePeek = current || peeking ? nil : step
@@ -589,7 +599,7 @@ extension ProjectDetailView {
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .help(current ? "Where it is now" : step.rawValue > currentChip.rawValue ? "See what's coming in \(step.label.lowercased())" : "See \(step.label.lowercased())")
+                    .help(current ? "Where it is now" : step.order > currentChip.order ? "See what's coming in \(step.label.lowercased())" : "See \(step.label.lowercased())")
                     .accessibilityLabel("\(step.label)\(current ? ", where it is now" : "")")
                 }
             }
@@ -642,6 +652,11 @@ extension ProjectDetailView {
                 Button("Mark as booked") { projects.setStage(.booked, for: project) }.buttonStyle(PrimaryButtonStyle())
             }
         case .booked:
+            HStack(spacing: 10) {
+                Button("Mark deposit paid") { projects.setStage(.deposit, for: project) }.buttonStyle(PrimaryButtonStyle())
+                Button("Start shooting") { projects.setStage(.shoot, for: project) }.buttonStyle(SecondaryButtonStyle())
+            }
+        case .deposit:
             Button("Start shooting") { projects.setStage(.shoot, for: project) }.buttonStyle(PrimaryButtonStyle())
         case .shoot:
             Button("The shoot is done, start editing") { projects.setStage(.edit, for: project) }.buttonStyle(PrimaryButtonStyle())
@@ -712,7 +727,7 @@ extension ProjectDetailView {
             if paid > 0 {
                 let who = project.client.trimmingCharacters(in: .whitespaces).isEmpty ? "They've" : "\(project.client) has"
                 var s = "\(who) paid \(Money.string(paid)) of \(Money.string(total))."
-                if paid < total { s += project.stage.rawValue < ProjectStage.delivered.rawValue ? " The rest comes after you deliver." : " The rest is still to come." }
+                if paid < total { s += project.stage.order < ProjectStage.delivered.order ? " The rest comes after you deliver." : " The rest is still to come." }
                 sentences.append(s)
             } else {
                 sentences.append("The price is \(Money.string(total)). Nothing has come in yet.")
@@ -766,6 +781,14 @@ extension ProjectDetailView {
             Button("Everything") { Appearance.shared.detail = .everything }
                 .buttonStyle(.link)
             Text(".")
+            Spacer()
+            Button("Edit details") { editing = true }
+                .buttonStyle(SecondaryButtonStyle())
+                .padding(.trailing, 8)
+            Button("Delete project") {
+                ProjectMoves.confirmDelete(project, projects: projects, deals: deals, navigator: navigator)
+            }
+            .buttonStyle(SecondaryButtonStyle())
         }
         .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
         .padding(.top, 8)
@@ -785,11 +808,11 @@ private struct StageStep: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(step.rawValue < current.rawValue ? Theme.tealDim : step == current ? Theme.text : Theme.track)
+                    .fill(step.order < current.order ? Theme.tealDim : step == current ? Theme.text : Theme.track)
                     .frame(height: 6)
                 Text(name)
                     .font(Theme.font(size: 12, weight: step == current || selected ? .bold : .medium))
-                    .foregroundStyle(selected ? Theme.text : step.rawValue <= current.rawValue ? Theme.text2 : Theme.muted)
+                    .foregroundStyle(selected ? Theme.text : step.order <= current.order ? Theme.text2 : Theme.muted)
                     .lineLimit(1)
             }
             .padding(.horizontal, 6).padding(.top, 6).padding(.bottom, 7)
@@ -800,7 +823,7 @@ private struct StageStep: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(step.rawValue > current.rawValue ? "See what's coming in \(name.lowercased())" : "See \(name.lowercased())")
+        .help(step.order > current.order ? "See what's coming in \(name.lowercased())" : "See \(name.lowercased())")
         .accessibilityLabel("\(name)\(step == current ? ", where this project is now" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

@@ -723,7 +723,7 @@ struct ProposalBuilderView: View {
     private var proofStep: some View {
         let picked = Set(deal.proofProjectIDs ?? [])
         let candidates = projects.projects
-            .filter { $0.stage.rawValue >= ProjectStage.edit.rawValue }
+            .filter { $0.stage.order >= ProjectStage.edit.order }
             .sorted { matchScore($0) > matchScore($1) }
         return VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 10) {

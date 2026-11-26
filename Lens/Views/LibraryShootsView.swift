@@ -1059,17 +1059,17 @@ struct ShootFilesView: View {
                 ForEach(ProjectStage.allCases) { step in
                     VStack(alignment: .leading, spacing: 6) {
                         Capsule()
-                            .fill(step.rawValue < p.stage.rawValue ? Theme.tealDim : step == p.stage ? Theme.teal : Theme.track)
+                            .fill(step.order < p.stage.order ? Theme.tealDim : step == p.stage ? Theme.teal : Theme.track)
                             .frame(height: 5)
                         Text(step.label)
                             .font(Theme.font(size: 11, weight: step == p.stage ? .semibold : .regular))
-                            .foregroundStyle(step.rawValue <= p.stage.rawValue ? Theme.text2 : Theme.muted)
+                            .foregroundStyle(step.order <= p.stage.order ? Theme.text2 : Theme.muted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(p.stage.rawValue + 1) of 7, \(p.stage.label)")
+            .accessibilityLabel("Step \(p.stage.order + 1) of \(ProjectStage.allCases.count), \(p.stage.label)")
             if !people.isEmpty || !recent.isEmpty {
                 HStack(alignment: .top, spacing: 32) {
                     if !people.isEmpty {
@@ -1147,6 +1147,7 @@ struct ShootFilesView: View {
         switch p.stage {
         case .lead: now = "It's still a possible job."
         case .booked: now = past ? "It's booked." : "It's booked and the shoot is coming up."
+        case .deposit: now = past ? "It's booked and the deposit is in." : "The deposit is in and the shoot is coming up."
         case .shoot: now = past ? "The shoot's done and the edit is next." : "The shoot is coming up."
         case .edit: now = "It's in the edit now."
         case .delivered: now = "It's delivered and waiting on payment."

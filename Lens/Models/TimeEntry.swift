@@ -23,7 +23,7 @@ enum TimeKind: String, Codable, CaseIterable, Identifiable {
         case .shoot: return .shoot
         case .edit, .delivered: return .edit
         case .paid, .archived: return .admin
-        case .lead, .booked: return .planning
+        case .lead, .booked, .deposit: return .planning
         }
     }
 

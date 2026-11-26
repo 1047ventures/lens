@@ -544,7 +544,7 @@ final class PeopleStore: ObservableObject {
             p.createdAt = project.createdAt
             p.addedFrom = "a project"
             p.addedOn = Date()
-            if project.stage.rawValue >= ProjectStage.booked.rawValue { p.addTag(PersonTag.client.rawValue) }
+            if project.stage.order >= ProjectStage.booked.order { p.addTag(PersonTag.client.rawValue) }
             list.append(p)
         }
 
