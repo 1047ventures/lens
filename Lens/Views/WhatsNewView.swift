@@ -20,6 +20,8 @@ enum WhatsNew {
                  detail: "A Zoom summary goes on an inquiry or project only when someone on the call is one of its people, or the client's name is in the meeting title. Everything else waits under Not placed for you to decide."),
             Item(icon: "arrow.triangle.swap", title: "Move or remove a call",
                  detail: "On a project's calls, use Move to to put a call on another project or inquiry, or Remove to take it off for good."),
+            Item(icon: "doc.badge.plus", title: "Your quote, or one from Lens",
+                 detail: "On an inquiry or project, upload the quote or proposal you made yourself, or click Have Lens make one. Lens writes it from the emails, calls and notes on the job, sized like your past work and priced from your rates. You can change anything before you send it."),
         ]),
         ("2.0.4", [
             Item(icon: "target", title: "Your monthly goal on Home",
