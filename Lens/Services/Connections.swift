@@ -657,6 +657,29 @@ final class ConnectionStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// The two keys Emma pasted from her own Zoom app on the Zoom card. New keys replace the old setup.
+    func saveZoomClient(id: String, secret: String) {
+        let id = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secret = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, !secret.isEmpty else { return }
+        if !zoomClientID.isEmpty && zoomClientID != id { forgetZoomSignIn() }
+        Keychain.set(id, for: "zoom.clientID")
+        Keychain.set(secret, for: "zoom.clientSecret")
+        zoomError = nil
+        zoomErrorCode = nil
+        objectWillChange.send()
+    }
+
+    /// Forgets the saved Zoom keys (and sign-in), so different keys can be pasted.
+    func forgetZoomClient() {
+        forgetZoomSignIn()
+        Keychain.delete("zoom.clientID")
+        Keychain.delete("zoom.clientSecret")
+        zoomError = nil
+        zoomErrorCode = nil
+        objectWillChange.send()
+    }
+
     private func forgetZoomSignIn() {
         Keychain.delete("zoom.refreshToken")
         state.zoomEmail = nil

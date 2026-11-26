@@ -25,15 +25,15 @@ enum ZoomAuth {
         case "access_denied":
             return Failure(message: "Zoom didn't let Lens in. Click Connect Zoom and press Allow.", code: code)
         case "invalid_client", "unauthorized_client":
-            return Failure(message: "Lens's Zoom setup isn't working. Ask Claude to set up Zoom for Lens again.", code: code)
+            return Failure(message: "Zoom didn't accept the keys. Click Use different keys on the Zoom card and paste the Client ID and Client Secret again.", code: code)
         case "redirect_uri_mismatch", "invalid_request", "state_mismatch":
-            return Failure(message: "Zoom's reply didn't make it back to Lens. Click Connect Zoom and try once more.", code: code)
+            return Failure(message: "Zoom's reply didn't make it back to Lens. Check the address in step 5 on the Zoom card, then click Connect Zoom again.", code: code)
         case "timeout":
             return Failure(message: "Lens stopped waiting for Zoom. Click Connect Zoom and finish signing in within a few minutes.", code: code)
         case "invalid_grant", "not_connected":
             return Failure(message: "Your Zoom sign-in has expired. Click Connect Zoom to connect again.", code: code)
         case "missing_scope":
-            return Failure(message: "Zoom isn't letting Lens read your summaries yet. Ask Claude to check the Zoom setup for Lens.", code: code)
+            return Failure(message: "Zoom isn't letting Lens read your summaries yet. In your Lens app on Zoom, check the permissions in step 6 on the Zoom card, then click Connect Zoom again.", code: code)
         case "rate_limited":
             return Failure(message: "Zoom asked Lens to slow down. Lens will carry on by itself in a little while.", code: code)
         case "network":
@@ -344,12 +344,14 @@ enum ZoomAPI {
     }
 
     /// Every AI Companion summary in her Zoom account between two dates (one page).
-    static func summaries(from: Date, to: Date, pageToken: String?, token: String) async throws -> (refs: [Ref], next: String?) {
+    /// `mine`: only her own meetings (`/users/me/meeting_summaries`, scope `meeting:read:list_summaries`),
+    /// which works for a User-managed app. Otherwise the whole account's list (needs the `:admin` scope).
+    static func summaries(from: Date, to: Date, pageToken: String?, mine: Bool = false, token: String) async throws -> (refs: [Ref], next: String?) {
         var query = [URLQueryItem(name: "page_size", value: "300"),
                      URLQueryItem(name: "from", value: utc(from)),
                      URLQueryItem(name: "to", value: utc(to))]
         if let pageToken, !pageToken.isEmpty { query.append(URLQueryItem(name: "next_page_token", value: pageToken)) }
-        let json = try await get("meetings/meeting_summaries", query: query, token: token) ?? [:]
+        let json = try await get(mine ? "users/me/meeting_summaries" : "meetings/meeting_summaries", query: query, token: token) ?? [:]
         let refs: [Ref] = (json["summaries"] as? [[String: Any]] ?? []).compactMap { item in
             guard let uuid = item["meeting_uuid"] as? String else { return nil }
             return Ref(uuid: uuid, meetingID: "\(item["meeting_id"] ?? "")",
