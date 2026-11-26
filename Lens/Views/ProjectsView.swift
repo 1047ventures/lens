@@ -389,7 +389,7 @@ enum SimpleProject {
         let ahead = p.shootDate.map { $0 >= Calendar.current.startOfDay(for: Date()) } ?? false
         switch p.stage {
         case .lead: return "Follow up and get this one booked."
-        case .booked:
+        case .booked, .deposit:
             if let day, ahead { return "Shoot day is \(day)." }
             if let day { return "The shoot was \(day). Mark it shot once it's done." }
             return "Set the shoot date when you have it."

@@ -226,12 +226,12 @@ struct StageBar: View {
             }
         }
         .accessibilityElement()
-        .accessibilityLabel("Step \(stage.rawValue + 1) of 7, \(stage.label)")
+        .accessibilityLabel("Step \(stage.order + 1) of \(ProjectStage.allCases.count), \(stage.label)")
     }
 
     private func color(for step: ProjectStage) -> Color {
         let c = Theme.current
-        if step.rawValue < stage.rawValue { return onSidebar ? c.sideAccent.opacity(0.7) : Theme.tealDim }
+        if step.order < stage.order { return onSidebar ? c.sideAccent.opacity(0.7) : Theme.tealDim }
         if step == stage { return onSidebar ? c.sideText : (Theme.isStudio ? Theme.text : Theme.teal) }
         return onSidebar ? c.sideTrack : Theme.track
     }
@@ -243,6 +243,7 @@ extension ProjectStage {
         switch self {
         case .lead: return Palette.slate
         case .booked: return Palette.blue
+        case .deposit: return Palette.mint
         case .shoot: return Palette.violet
         case .edit: return Palette.orchid
         case .delivered: return Palette.gold

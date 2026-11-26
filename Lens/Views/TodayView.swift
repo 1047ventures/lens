@@ -629,7 +629,7 @@ struct TodayView: View {
 
     private var briefing: String {
         var parts: [String] = []
-        let soon = projects.active.filter { isSoon($0.shootDate) && $0.stage != .lead && $0.stage.rawValue <= ProjectStage.shoot.rawValue }
+        let soon = projects.active.filter { isSoon($0.shootDate) && $0.stage != .lead && $0.stage.order <= ProjectStage.shoot.order }
         if let next = soon.first, let date = next.shootDate {
             parts.append("\(next.name) shoots \(relativeDay(date).lowercased()).")
         }

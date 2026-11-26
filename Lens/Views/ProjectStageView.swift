@@ -19,16 +19,16 @@ struct StageWindows {
         var starts: [ProjectStage: Date] = [.lead: .distantPast]
         for event in project.events.sorted(by: { $0.date < $1.date }) {
             guard let s = ProjectStage.mentioned(in: event.text), s != .lead,
-                  s.rawValue <= project.stage.rawValue, starts[s] == nil else { continue }
+                  s.order <= project.stage.order, starts[s] == nil else { continue }
             starts[s] = event.date
         }
         // The step it's at now takes over from the latest step with a known start.
         if starts[project.stage] == nil {
-            let latest = starts.filter { $0.key.rawValue < project.stage.rawValue }.max { $0.key.rawValue < $1.key.rawValue }
+            let latest = starts.filter { $0.key.order < project.stage.order }.max { $0.key.order < $1.key.order }
             starts[project.stage] = latest?.value ?? .distantPast
             if let k = latest?.key, k != project.stage { starts[k] = nil }
         }
-        let ordered = starts.sorted { $0.key.rawValue < $1.key.rawValue }
+        let ordered = starts.sorted { $0.key.order < $1.key.order }
         var result: [ProjectStage: DateInterval] = [:]
         for (i, entry) in ordered.enumerated() {
             let end = i + 1 < ordered.count ? ordered[i + 1].value : .distantFuture
@@ -44,7 +44,7 @@ struct StageWindows {
 
     /// "Oct 2 to Oct 9", "Since Oct 9", "Until Oct 9", "Coming up", "Skipped".
     func when(_ stage: ProjectStage) -> String {
-        if stage.rawValue > current.rawValue { return "Coming up" }
+        if stage.order > current.order { return "Coming up" }
         guard let w = windows[stage] else { return "Skipped" }
         let fmt: (Date) -> String = { $0.formatted(.dateTime.month(.abbreviated).day()) }
         let openStart = w.start == .distantPast, openEnd = w.end == .distantFuture
@@ -75,7 +75,7 @@ struct ProjectStageView<Footage: View>: View {
     @EnvironmentObject private var navigator: Navigator
 
     private var windows: StageWindows { StageWindows(project) }
-    private var reached: Bool { stage.rawValue <= project.stage.rawValue && windows.windows[stage] != nil }
+    private var reached: Bool { stage.order <= project.stage.order && windows.windows[stage] != nil }
     private var deal: Deal? { deals.deals.first { $0.projectID == project.id } }
 
     var body: some View {
@@ -133,7 +133,7 @@ struct ProjectStageView<Footage: View>: View {
             if stage == .lead, let deal { return DealCard.nextMove(deal) + "." }
             return SimpleProject.nextLine(project)
         }
-        if stage.rawValue > project.stage.rawValue {
+        if stage.order > project.stage.order {
             if stage == .shoot, let d = project.shootDate, d > Date() {
                 return "Shoot day is \(SimpleProject.when(d))\(project.location.isEmpty ? "" : " at \(project.location)"). " + stage.collects
             }
@@ -157,7 +157,7 @@ struct ProjectStageView<Footage: View>: View {
     @ViewBuilder private var main: some View {
         switch stage {
         case .lead: quoteCard
-        case .booked: EmptyView()
+        case .booked, .deposit: EmptyView()
         case .shoot, .edit:
             footage
             if stage == .edit { ProjectTimePanel(project: project, books: books) }

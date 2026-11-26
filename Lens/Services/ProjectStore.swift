@@ -14,7 +14,7 @@ final class ProjectStore: ObservableObject {
         projects
             .filter { $0.stage != .archived }
             .sorted {
-                if $0.stage != $1.stage { return $0.stage.rawValue < $1.stage.rawValue }
+                if $0.stage != $1.stage { return $0.stage.order < $1.stage.order }
                 return ($0.shootDate ?? .distantFuture) < ($1.shootDate ?? .distantFuture)
             }
     }

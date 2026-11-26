@@ -22,6 +22,12 @@ enum WhatsNew {
                  detail: "Each week Lens researches a few organizations that fit your work and writes a personal pitch for each. Tell it who to look for under Who to look for, or click Find prospects now."),
             Item(icon: "dollarsign.circle", title: "Zelle payments marked paid",
                  detail: "Lens reads your Zelle emails. When a payment clearly matches an unpaid invoice, it marks it paid and tells you on Home. When it isn't sure, it asks which invoice it was for."),
+            Item(icon: "banknote", title: "A Deposit paid step",
+                 detail: "Projects now have a Deposit paid step between Planning and Shooting, so you can see at a glance which shoots are locked in."),
+            Item(icon: "arrow.left.arrow.right", title: "Move a project to any step",
+                 detail: "On a project, click Move to any step, or right-click its picture and choose Move to. Go back to Quoting or jump ahead any time. Moving a quote past Quoting marks it booked."),
+            Item(icon: "trash", title: "Delete a project",
+                 detail: "Right-click a project and choose Delete project, or use Delete project at the bottom of its page. Lens asks first, and your footage, emails and invoices stay where they are."),
         ]),
         ("2.0.5", [
             Item(icon: "phone.connection", title: "Connect Zoom yourself",

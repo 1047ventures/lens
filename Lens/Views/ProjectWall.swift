@@ -40,10 +40,10 @@ enum WallAttention {
             if q.isStale { return DealCard.nextMove(q) }
             if let due = q.proposalDue, due < Date() { return DealCard.nextMove(q) }
             return nil
-        case .booked, .shoot:
+        case .booked, .deposit, .shoot:
             guard let d = p.shootDate else { return nil }
             let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 99
-            if p.stage == .booked && days < 0 { return "The shoot was \(SimpleProject.when(d)). Mark it shot" }
+            if (p.stage == .booked || p.stage == .deposit) && days < 0 { return "The shoot was \(SimpleProject.when(d)). Mark it shot" }
             if (0...2).contains(days) { return "Shooting \(SimpleProject.when(d))" }
             return nil
         default:
@@ -289,6 +289,8 @@ struct ProjectTile: View {
             if project.coverPath != nil {
                 Button("Let Lens pick the cover") { setCover(nil) }
             }
+            Divider()
+            ProjectMoveItems(project: project)
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first(where: ProjectCover.canUse) else { return false }
@@ -333,7 +335,7 @@ struct ProjectTile: View {
         HStack(spacing: 3) {
             ForEach(ProjectStage.allCases) { step in
                 Capsule()
-                    .fill(step.rawValue <= project.stage.rawValue ? Color.white.opacity(step == project.stage ? 1 : 0.7)
+                    .fill(step.order <= project.stage.order ? Color.white.opacity(step == project.stage ? 1 : 0.7)
                                                                   : Color.white.opacity(0.22))
                     .frame(height: 3)
             }
@@ -540,6 +542,8 @@ private struct BoardCard: View {
             } else {
                 Button("Pin to the top bar") { TopBarPins.pin(project, in: projects) }
             }
+            Divider()
+            ProjectMoveItems(project: project)
         }
         .accessibilityLabel("\(project.name), \(project.stage.label)\(reason.map { ", needs you: \($0)" } ?? "")")
     }
