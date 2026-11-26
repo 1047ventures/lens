@@ -144,8 +144,9 @@ private struct PinButton: View {
 struct TopBarPlaces: View {
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var people: PeopleStore
+    @ObservedObject private var office = BackOffice.shared
 
-    private let places: [SidebarSection] = [.people, .footage, .money, .gear]
+    private let places: [SidebarSection] = [.helper, .people, .footage, .money, .gear]
 
     var body: some View {
         HStack(spacing: 2) {
@@ -161,7 +162,7 @@ struct TopBarPlaces: View {
                         .background(on ? Theme.teal.opacity(0.14) : .clear)
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                         .overlay(alignment: .topTrailing) {
-                            if place == .people && !people.followUpsDue.isEmpty {
+                            if (place == .people && !people.followUpsDue.isEmpty) || (place == .helper && office.waitingCount > 0) {
                                 Circle().fill(Theme.amber).frame(width: 7, height: 7).offset(x: -4, y: 4)
                             }
                         }

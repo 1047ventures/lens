@@ -746,6 +746,10 @@ private struct GoogleControls: View {
                     Text("Lens now also reads Google Calendar. Sign in once more to allow it.")
                         .font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
                     signInButton("Sign in with Google again")
+                } else if !logins.gmailCanDraft {
+                    Text("To put replies and pitches in your Gmail drafts, Lens needs one more permission. Sign in once more to allow it. Lens never sends email.")
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.amber)
+                    signInButton("Sign in with Google again")
                 }
             } else if logins.hasGoogleClient {
                 Text("Google will warn that it hasn't checked Lens. Click Advanced, then Go to Lens.")

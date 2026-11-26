@@ -53,7 +53,7 @@ struct FindBar: View {
         }
 
         let places: [(String, SidebarSection)] = [("Today", .today), ("Projects", .projects), ("People", .people),
-                                                  ("Library", .footage), ("Money", .money), ("Gear", .gear),
+                                                  ("Library", .footage), ("Money", .money), ("Helper", .helper), ("Gear", .gear),
                                                   ("Log-ins", .logins), ("Settings", .settings)]
         for (name, section) in places where words.allSatisfy({ name.lowercased().contains($0) }) {
             out.append(FindResult(id: "s\(name)", kind: .place, title: name, subtitle: "Go to \(name)",

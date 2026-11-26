@@ -243,6 +243,13 @@ final class MoneyStore: ObservableObject {
         save()
     }
 
+    /// Takes back a "paid" (an undo): the money is owed again.
+    func markUnpaid(_ r: Receivable) {
+        guard let i = data.receivables.firstIndex(where: { $0.id == r.id }) else { return }
+        data.receivables[i].paidOn = nil
+        save()
+    }
+
     func addReceivable(_ r: Receivable) {
         data.receivables.append(r)
         save()
