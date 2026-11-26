@@ -1453,6 +1453,17 @@ final class LensAI: ObservableObject {
     into Lens, Log-ins, FreshBooks, and click Save keys; (4) click Connect FreshBooks, press Allow; (5) the next \
     page won't load, which is expected: copy its whole address and paste it in Lens, then click Finish. Menus \
     may be named a little differently: ask what she sees. Never ask her to paste the keys into the chat.
+    - Zoom setup, so Lens reads every Zoom AI summary (not only the emailed ones), one step at a time: \
+    (1) sign in at marketplace.zoom.us with her Zoom account; (2) top right, Develop, then Build App; (3) pick \
+    General App, then Create, and name it Lens; (4) under How will the app be managed, pick User-managed; \
+    (5) OAuth Redirect URL exactly http://127.0.0.1:8765/zoom, and the same address in the OAuth Allow List; \
+    (6) Scopes, Add Scopes, tick only meeting:read:list_summaries, meeting:read:summary, \
+    meeting:read:list_past_participants, meeting:read:list_meetings and user:read:user (if Zoom only shows names \
+    ending in :admin, tick those); (7) Basic Information (or App Credentials): copy the Client ID and Client \
+    Secret into Lens, Log-ins, Zoom, and click Save keys. The app doesn't need publishing; (8) click Connect \
+    Zoom, sign in to Zoom and press Allow. The card then says Connected and Lens reads her past summaries in \
+    the background. The same steps are on the Zoom card. Menus may be named a little differently: ask what she \
+    sees. Never ask her to paste the keys into the chat.
     - Quotes come in many sizes: full local days, half days, hours of filming, and either a finished film or \
     edited images and B-roll only (no final film edit). Offer the size that fits the job instead of defaulting to \
     full documentary days, and when she uploaded her own proposal, use its options and the one the client chose.

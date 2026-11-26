@@ -441,8 +441,9 @@ struct LoginsView: View {
                    "Each one placed on the matching inquiry or project, by the client's name and email",
                    "Ask Lens can read and search them all, so you can ask what someone said on a call"],
             never: "Never sees your Zoom password, never changes or deletes anything in Zoom, never joins your calls.",
-            steps: ["One-time setup: make a small private app on your Zoom account and paste its two keys below. The steps are right below.",
-                    "Click **Connect Zoom**, sign in to Zoom and press **Allow**.",
+            steps: ["One-time setup, about 5 minutes: make a small private app on your Zoom account. Follow the steps below, or click **Get help** and Claude walks you through it, one click at a time.",
+                    "Copy the app's two keys, the **Client ID** and **Client Secret**, paste them below and click **Save keys**.",
+                    "Click **Connect Zoom**, sign in to Zoom and press **Allow**. The card then says Connected.",
                     "Lens reads all your past summaries in the background, then checks for new ones every hour.",
                     "Make sure **Meeting summary** is on in Zoom's AI setting (link below), so every call gets one."]),
         .website: Info(
