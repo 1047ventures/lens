@@ -49,6 +49,12 @@ struct ZellePayment: Codable, Identifiable, Hashable {
     var receivableID: UUID?
     var matchedLabel: String?
     var status: Status
+    // Added for matching a payment to a project. Optional so older helper.json files still load.
+    /// The project she said this payment was for, when it wasn't an invoice.
+    var projectID: UUID? = nil
+    /// The line in Money that holds this payment, and whether Lens added it (rather than finding the bank line).
+    var txnID: UUID? = nil
+    var txnAdded: Bool? = nil
 }
 
 private struct HelperData: Codable {
@@ -60,6 +66,8 @@ private struct HelperData: Codable {
     var brief: String? = nil
     var perWeek: Int? = nil
     var weekly: Bool? = nil
+    /// Zelle sender names she tied to someone in People ("wbt collective llc" → their id).
+    var payers: [String: UUID]? = nil
 }
 
 // MARK: - The Helper
@@ -100,6 +108,7 @@ final class BackOffice: ObservableObject {
     private weak var money: MoneyStore?
     private weak var logins: ConnectionStore?
     private var zelleSeen: Set<String> = []
+    private var payers: [String: UUID] = [:]
     private var loop: Task<Void, Never>?
 
     private init() {
@@ -108,6 +117,7 @@ final class BackOffice: ObservableObject {
         replies = saved.replies
         zelle = saved.zelle
         zelleSeen = Set(saved.zelleSeen)
+        payers = saved.payers ?? [:]
         lastProspectRun = saved.lastProspectRun
         brief = saved.brief ?? Self.defaultBrief
         perWeek = saved.perWeek ?? 5
@@ -364,10 +374,185 @@ final class BackOffice: ObservableObject {
         if let rid = payment.receivableID, let r = money?.receivables.first(where: { $0.id == rid }) {
             money?.markUnpaid(r)
         }
+        if let tid = payment.txnID { money?.unbookPayment(tid, added: payment.txnAdded == true) }
         zelle[i].status = .needsYou
         zelle[i].receivableID = nil
         zelle[i].matchedLabel = nil
+        zelle[i].projectID = nil
+        zelle[i].txnID = nil
+        zelle[i].txnAdded = nil
         save()
+    }
+
+    /// She picked the project a payment was for (no invoice needed). The money goes in Money on that
+    /// project, so it counts toward what's been paid and what's still owed. A project can take any
+    /// number of payments: deposits, part payments, the balance.
+    func match(_ payment: ZellePayment, toProject projectID: UUID) {
+        guard let i = zelle.firstIndex(where: { $0.id == payment.id }), let money, let projects,
+              let p = projects.project(id: projectID) else { return }
+        let who = payment.payer.isEmpty ? "a client" : Self.pretty(payment.payer)
+        let description = "Zelle from \(who)"
+        let taken = Set(zelle.compactMap(\.txnID))
+        let booked = money.bookPayment(amount: payment.amount, date: payment.date, description: description,
+                                       projectID: p.id, category: incomeCategory(for: p, description: description),
+                                       note: "Zelle", skipping: taken)
+        var updated = zelle[i]
+        updated.status = .markedPaid
+        updated.projectID = p.id
+        updated.txnID = booked.id
+        updated.txnAdded = booked.added
+        updated.matchedLabel = p.client.isEmpty ? p.name : "\(p.client), \(p.name)"
+        // An open invoice on this project for exactly this amount is paid now too.
+        if let r = money.receivables.first(where: { $0.projectID == p.id && $0.paidOn == nil && abs($0.amount - payment.amount) < 0.01 }) {
+            money.markPaid(r, on: payment.date)
+            updated.receivableID = r.id
+        }
+        zelle[i] = updated
+        // Whoever sent it is on this project, so it shows on their page too.
+        if let person = sender(of: payment) { people?.link(person, project: p.id) }
+        projects.addEvent("Paid \(Money.string(payment.amount)) by Zelle from \(who)", to: p)
+        if p.stage == .delivered, let deals {
+            let books = ProjectBooks.make(p, money: money, deals: deals)
+            if let price = books.price, books.received >= price - 0.01 {
+                projects.setStage(.paid, for: p, note: "Paid in full by Zelle")
+            }
+        }
+        save()
+    }
+
+    /// The income kind for a payment: what Lens would sort it as, else what this project's other income is, else Other income.
+    private func incomeCategory(for p: Project, description: String) -> MoneyCategory {
+        guard let money else { return .otherIncome }
+        let guess = money.categorize(description, amount: 1)
+        if guess.group == .income { return guess }
+        let used = money.txns.filter { $0.projectID == p.id && $0.amount > 0 && $0.category.group == .income }.map(\.category)
+        return used.first ?? .otherIncome
+    }
+
+    // MARK: Who sent it, and what it was for
+
+    /// The person in People who sent a payment: one she picked before, or one whose name or company is the sender's.
+    func sender(of payment: ZellePayment) -> Person? {
+        let key = Person.nameKey(payment.payer)
+        guard !key.isEmpty, let people else { return nil }
+        if let id = payers[key], let p = people.person(id: id) { return p }
+        let bare = Self.bareName(payment.payer)
+        guard !bare.isEmpty else { return nil }
+        let hits = people.people.filter { p in
+            [p.name, p.company].contains { n in
+                let k = Self.bareName(n)
+                return !k.isEmpty && k == bare
+            }
+        }
+        return hits.count == 1 ? hits[0] : nil
+    }
+
+    /// She says who sent this payment. Lens remembers it for next time.
+    func setSender(_ person: Person?, for payment: ZellePayment) {
+        let key = Person.nameKey(payment.payer)
+        guard !key.isEmpty else { return }
+        payers[key] = person?.id
+        objectWillChange.send()
+        save()
+    }
+
+    /// Adds whoever sent a payment to People (as a client), and remembers them as the sender.
+    @discardableResult
+    func addSender(of payment: ZellePayment) -> Person? {
+        guard let people, !payment.payer.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let name = Self.pretty(payment.payer)
+        var person = Person(name: name)
+        if Self.looksLikeBusiness(payment.payer) { person.company = name }
+        person.addedFrom = "Zelle"
+        person.addTag("Client")
+        people.add(person)
+        setSender(person, for: payment)
+        return person
+    }
+
+    /// The project a payment most likely was for: the sender's own projects, or one whose client, name, people or
+    /// keywords share words with the sender (or the sender's initials: WBT for Work Better Together).
+    /// Nil when nothing clearly fits. Projects with money still owed win a tie.
+    func suggestedProject(for payment: ZellePayment) -> Project? {
+        guard let projects, !payment.payer.isEmpty else { return nil }
+        let words = Set(Self.significantWords(payment.payer))
+        let mine = Set(sender(of: payment)?.projectIDs ?? [])
+        func score(_ p: Project) -> Int {
+            var s = mine.contains(p.id) ? 3 : 0
+            var theirs = Self.significantWords(p.client + " " + p.name)
+            theirs += (p.people ?? []).filter { $0.role == "Client" }.flatMap { Self.significantWords($0.name) }
+            theirs += (p.keywords ?? []).flatMap { Self.significantWords($0) }
+            s += Set(theirs).intersection(words).count * 2
+            for n in [p.client, p.name] {
+                let initials = String(Person.nameKey(n).split(separator: " ").compactMap(\.first))
+                if initials.count >= 2, words.contains(initials) { s += 3 }
+            }
+            return s
+        }
+        let scored = projects.projects.map { ($0, score($0)) }.filter { $0.1 > 0 }
+        guard let best = scored.map(\.1).max(), best >= 2 else { return nil }
+        let top = scored.filter { $0.1 == best }.map(\.0)
+        if top.count == 1 { return top[0] }
+        let owing = top.filter { (stillOwed(on: $0) ?? 0) > 0.01 }
+        return owing.count == 1 ? owing[0] : nil
+    }
+
+    /// Projects to choose from: the likely one first, then the rest that aren't put away, then put-away ones.
+    func projectChoices(for payment: ZellePayment) -> [Project] {
+        guard let projects else { return [] }
+        let first = suggestedProject(for: payment)
+        let rest = projects.active.filter { $0.id != first?.id }
+        let away = projects.projects.filter { $0.stage == .archived && $0.id != first?.id }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return (first.map { [$0] } ?? []) + rest + away
+    }
+
+    func price(of p: Project) -> Double? {
+        guard let money, let deals else { return p.price }
+        return ProjectBooks.make(p, money: money, deals: deals).price
+    }
+
+    /// What's left to pay on a project, when it has a price.
+    func stillOwed(on p: Project) -> Double? {
+        guard let money, let deals else { return nil }
+        let books = ProjectBooks.make(p, money: money, deals: deals)
+        return books.price.map { max(0, $0 - books.received) }
+    }
+
+    /// Lowercased words that say who someone is, without LLC, Inc and everyday words.
+    static func significantWords(_ s: String) -> [String] {
+        let skip: Set<String> = ["llc", "inc", "pbc", "corp", "co", "ltd", "the", "and", "of", "for", "all", "around",
+                                 "company", "group", "media", "llp", "pllc", "foundation", "dr", "mr", "mrs", "ms",
+                                 "photo", "photos", "video", "shoot", "project", "wedding", "event", "session", "with"]
+        return Person.nameKey(s).split(separator: " ").map(String.init).filter { $0.count >= 3 && !skip.contains($0) }
+    }
+
+    /// A sender's name for matching: lowercased, without LLC, Inc and the like.
+    private static func bareName(_ s: String) -> String {
+        let endings: Set<String> = ["llc", "inc", "pbc", "corp", "co", "ltd", "llp", "pllc"]
+        return Person.nameKey(s).split(separator: " ").map(String.init).filter { !endings.contains($0) }.joined(separator: " ")
+    }
+
+    private static func looksLikeBusiness(_ s: String) -> Bool {
+        let words = Set(Person.nameKey(s).split(separator: " ").map(String.init))
+        return !words.isDisjoint(with: ["llc", "inc", "pbc", "corp", "co", "ltd", "llp", "pllc", "collective", "foundation",
+                                        "media", "studio", "studios", "group", "company", "families", "center", "church"])
+            || words.count >= 4
+    }
+
+    /// "SHANA SHOTS MEDIA AND BRANDING LLC" → "Shana Shots Media and Branding LLC". Names already in mixed case stay as they are.
+    static func pretty(_ s: String) -> String {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed == trimmed.uppercased() else { return trimmed }
+        let upper: Set<String> = ["LLC", "INC", "PBC", "LLP", "PLLC", "LTD", "USA", "CEO"]
+        let small: Set<String> = ["AND", "OF", "THE", "FOR", "AT", "IN", "ON"]
+        return trimmed.split(separator: " ").enumerated().map { i, w in
+            let word = String(w)
+            let bare = word.trimmingCharacters(in: .punctuationCharacters)
+            if upper.contains(bare) { return word }
+            if i > 0, small.contains(bare) { return word.lowercased() }
+            return word.capitalized
+        }.joined(separator: " ")
     }
 
     func dismiss(_ payment: ZellePayment) {
@@ -543,7 +728,8 @@ final class BackOffice: ObservableObject {
         // Keep the lists from growing forever: the newest 200 of each.
         let data = HelperData(prospects: Array(prospects.prefix(200)), replies: Array(replies.prefix(200)),
                               zelle: Array(zelle.prefix(200)), zelleSeen: Array(zelleSeen.suffix(1000)),
-                              lastProspectRun: lastProspectRun, brief: brief, perWeek: perWeek, weekly: weekly)
+                              lastProspectRun: lastProspectRun, brief: brief, perWeek: perWeek, weekly: weekly,
+                              payers: payers)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = .prettyPrinted

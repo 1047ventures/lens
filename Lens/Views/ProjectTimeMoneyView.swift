@@ -333,7 +333,10 @@ struct ProjectMoneyPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             if let price = books.price {
                 line("Price", Money.string(price))
-                if books.received > 0 { line("Paid so far", Money.string(books.received)) }
+                if books.received > 0 {
+                    line("Paid so far", Money.string(books.received))
+                    if books.received < price - 0.01 { line("Still owed", Money.string(price - books.received)) }
+                }
             } else if books.received > 0 {
                 line("Money in so far", Money.string(books.received))
             }

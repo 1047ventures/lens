@@ -663,7 +663,7 @@ struct ProjectMoneyTab: View {
                 if let price { figure("Price", Money.string(price)) }
                 figure("Paid to you", Money.string(moneyIn))
                 figure("Spent", Money.string(moneyOut))
-                figure("Still owed", Money.string(owed.reduce(0) { $0 + $1.amount }))
+                figure("Still owed", Money.string(stillOwed(price: price, moneyIn: moneyIn, open: owed)))
             }
             if !owed.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -703,6 +703,15 @@ struct ProjectMoneyTab: View {
                 .buttonStyle(SecondaryButtonStyle())
         }
         .panel(padding: 22)
+    }
+
+    /// With a price: the price less what's come in (income here, or invoices marked paid). Otherwise the open invoices.
+    private func stillOwed(price: Double?, moneyIn: Double, open: [Receivable]) -> Double {
+        let openTotal = open.reduce(0) { $0 + $1.amount }
+        guard let price, price > 0 else { return openTotal }
+        let paidInvoices = money.receivables.filter { $0.projectID == project.id && $0.paidOn != nil }.reduce(0) { $0 + $1.amount }
+        let income = money.txns.filter { $0.projectID == project.id && $0.amount > 0 && $0.category.group == .income }.reduce(0) { $0 + $1.amount }
+        return max(0, price - max(income, paidInvoices))
     }
 
     private func figure(_ label: String, _ value: String) -> some View {

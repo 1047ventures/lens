@@ -719,7 +719,8 @@ extension ProjectDetailView {
 
     private var moneySentences: [String] {
         let mine = money.receivables.filter { $0.projectID == project.id }
-        let paid = mine.filter { $0.paidOn != nil }.reduce(0) { $0 + $1.amount }
+        // Invoices marked paid, or money booked to the project in Money (a Zelle payment), whichever is more.
+        let paid = max(mine.filter { $0.paidOn != nil }.reduce(0) { $0 + $1.amount }, books.received)
         let total = books.price ?? (mine.isEmpty ? nil : mine.reduce(0) { $0 + $1.amount })
         let hours = project.totalHours
         var sentences: [String] = []
