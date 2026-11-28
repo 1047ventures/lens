@@ -1215,7 +1215,7 @@ final class LensAI: ObservableObject {
         case .footage: parts.append("The Library lists her drives, Mac and Photos; use get_library and search_library for what's there")
         case .gear: parts.append("Gear lists her kit; use get_gear")
         case .money: parts.append("Money shows her books; use get_money")
-        case .helper: parts.append("Helper shows drafted replies to new inquiries, researched prospects with pitches, and Zelle payments Lens matched to invoices. Drafts only go to Gmail drafts when she clicks; Lens never sends")
+        case .helper: parts.append("Helper shows drafted replies to new inquiries, researched prospects with pitches, and Zelle payments matched to invoices or projects (she picks the project on each payment card; a project can take several payments). Drafts only go to Gmail drafts when she clicks; Lens never sends")
         case .logins: parts.append("Log-ins is where she connects email, calendar, bank and Claude")
         default: break
         }

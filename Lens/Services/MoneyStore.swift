@@ -195,6 +195,38 @@ final class MoneyStore: ObservableObject {
         save()
     }
 
+    /// Books money a client paid (a Zelle payment, say) on a project. When the bank line is already in the
+    /// books (same amount, within a few days, not on another project), that line goes on the project instead
+    /// of adding a second one. Returns the line's id and whether it was added new.
+    func bookPayment(amount: Double, date: Date, description: String, projectID: UUID,
+                     category: MoneyCategory, note: String?, skipping taken: Set<UUID> = []) -> (id: UUID, added: Bool) {
+        if let i = data.txns.firstIndex(where: { t in
+            t.amount > 0 && t.account.isCash && abs(t.amount - amount) < 0.005 && !taken.contains(t.id)
+                && abs(t.date.timeIntervalSince(date)) < 4 * 86400
+                && (t.projectID == nil || t.projectID == projectID)
+                && [.income, .unsorted].contains(t.category.group)
+        }) {
+            data.txns[i].projectID = projectID
+            if data.txns[i].category.group != .income { data.txns[i].category = category }
+            save()
+            return (data.txns[i].id, false)
+        }
+        var t = Txn(date: date, amount: abs(amount), description: description, account: .checking,
+                    category: category, projectID: projectID, note: note)
+        t.addedByHand = true
+        data.txns.append(t)
+        save()
+        return (t.id, true)
+    }
+
+    /// Takes back a payment booked with `bookPayment`: a line Lens added goes away, a bank line just
+    /// comes off the project.
+    func unbookPayment(_ id: UUID, added: Bool) {
+        guard let i = data.txns.firstIndex(where: { $0.id == id }) else { return }
+        if added, data.txns[i].addedByHand == true { data.txns.remove(at: i) } else { data.txns[i].projectID = nil }
+        save()
+    }
+
     /// Only for expenses typed in by hand; statement lines stay in the books.
     func deleteHandAdded(_ txn: Txn) {
         guard txn.addedByHand == true else { return }

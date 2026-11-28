@@ -160,7 +160,7 @@ struct HelperView: View {
         let list = office.zelle.filter { showDone || $0.status == .needsYou || recent.contains($0.id) }
         return VStack(alignment: .leading, spacing: 14) {
             sectionTitle("Zelle payments",
-                         "Lens reads your Zelle emails. When a payment clearly matches an unpaid invoice, it marks it paid. Otherwise it asks you.",
+                         "Lens reads your Zelle emails. When a payment clearly matches an unpaid invoice, it marks it paid. Otherwise it asks you which invoice or project it was for.",
                          busy: office.checkingZelle)
             if list.isEmpty {
                 emptyLine("No Zelle payments to look at.")
@@ -329,14 +329,23 @@ private struct ProspectCard: View {
 private struct ZelleRow: View {
     let payment: ZellePayment
     @ObservedObject private var office = BackOffice.shared
-    @State private var choice: UUID?
+    // Watched so the lists and totals here stay up to date.
+    @EnvironmentObject private var projects: ProjectStore
+    @EnvironmentObject private var people: PeopleStore
+    @EnvironmentObject private var money: MoneyStore
+    @EnvironmentObject private var navigator: Navigator
+    @State private var choice: Target?
+    @State private var picked = false
+
+    /// What a payment was for: an unpaid invoice, or one of her projects.
+    enum Target: Hashable { case invoice(UUID), project(UUID) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: "dollarsign.circle.fill")
                     .foregroundStyle(payment.status == .markedPaid ? Theme.teal : Theme.amber)
-                Text("\(Money.string(payment.amount)) from \(payment.payer.isEmpty ? "someone" : payment.payer)")
+                Text("\(Money.string(payment.amount)) from \(payment.payer.isEmpty ? "someone" : BackOffice.pretty(payment.payer))")
                     .font(Theme.font(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
                 Text(payment.date.formatted(date: .abbreviated, time: .omitted))
                     .font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
@@ -345,35 +354,124 @@ private struct ZelleRow: View {
             switch payment.status {
             case .markedPaid:
                 HStack {
-                    Text("Marked paid: \(payment.matchedLabel ?? "the matching invoice")")
-                        .font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
+                    Text(paidLine).font(Theme.font(size: 13)).foregroundStyle(Theme.text2)
                     Spacer()
+                    if let id = payment.projectID, projects.project(id: id) != nil {
+                        Button("Open project") { navigator.openProject(id) }.buttonStyle(SecondaryButtonStyle())
+                    }
                     Button("Undo") { office.undo(payment) }.buttonStyle(SecondaryButtonStyle())
                 }
             case .needsYou:
-                HStack(spacing: 10) {
-                    Picker("Which invoice was this for?", selection: $choice) {
-                        Text("Choose an invoice").tag(UUID?.none)
-                        ForEach(office.openInvoices) { r in
-                            Text("\(r.client), \(r.label), \(Money.string(r.amount))").tag(UUID?.some(r.id))
-                        }
-                    }
-                    .font(Theme.font(size: 13))
-                    .frame(maxWidth: 460)
-                    Button("Mark paid") { if let choice { office.match(payment, to: choice) } }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(choice == nil)
-                    Button("Not a client payment") { office.dismiss(payment) }.buttonStyle(SecondaryButtonStyle())
-                    Spacer()
-                }
-                if office.openInvoices.isEmpty {
-                    Text("No unpaid invoices in Lens yet. Connect FreshBooks in Log-ins and they'll show up here.")
-                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
-                }
+                needsYou
             case .dismissed:
                 Text("Set aside").font(Theme.font(size: 13)).foregroundStyle(Theme.muted)
             }
         }
         .panel(padding: 16)
+        .onAppear {
+            guard !picked, choice == nil, payment.status == .needsYou,
+                  let p = office.suggestedProject(for: payment) else { return }
+            choice = .project(p.id)
+        }
+    }
+
+    private var paidLine: String {
+        guard let id = payment.projectID, let p = projects.project(id: id) else {
+            return "Marked paid: \(payment.matchedLabel ?? "the matching invoice")"
+        }
+        var line = "Paid toward \(payment.matchedLabel ?? p.name)."
+        if let owed = office.stillOwed(on: p) {
+            line += owed > 0.01 ? " \(Money.string(owed)) still owed." : " Paid in full."
+        }
+        return line
+    }
+
+    @ViewBuilder private var needsYou: some View {
+        let invoices = office.openInvoices
+        let choices = office.projectChoices(for: payment)
+        let suggested = office.suggestedProject(for: payment)
+        HStack(spacing: 10) {
+            Picker("What was this for?", selection: Binding(get: { choice }, set: { choice = $0; picked = true })) {
+                Text("Choose one").tag(Target?.none)
+                if !invoices.isEmpty {
+                    Section("Unpaid invoices") {
+                        ForEach(invoices) { r in
+                            Text("\(r.client), \(r.label), \(Money.string(r.amount))").tag(Target?.some(.invoice(r.id)))
+                        }
+                    }
+                }
+                if !choices.isEmpty {
+                    Section("Projects") {
+                        ForEach(choices) { p in
+                            Text(projectLine(p)).tag(Target?.some(.project(p.id)))
+                        }
+                    }
+                }
+            }
+            .font(Theme.font(size: 13))
+            .frame(maxWidth: 520)
+            Button("Mark paid") {
+                switch choice {
+                case .invoice(let id): office.match(payment, to: id)
+                case .project(let id): office.match(payment, toProject: id)
+                case nil: break
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(choice == nil)
+            Button("Not a client payment") { office.dismiss(payment) }.buttonStyle(SecondaryButtonStyle())
+            Spacer()
+        }
+        if let suggested, choice == .project(suggested.id), !picked {
+            Text("Lens thinks this is for \(suggested.name). Pick something else if it isn't.")
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+        } else if invoices.isEmpty && choices.isEmpty {
+            Text("No unpaid invoices or projects in Lens yet. Add the project in Projects, or connect FreshBooks in Log-ins.")
+                .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+        }
+        senderLine
+    }
+
+    /// Who sent it: someone in People, or a way to say who it is or add them.
+    @ViewBuilder private var senderLine: some View {
+        if !payment.payer.isEmpty {
+            if let person = office.sender(of: payment) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle").foregroundStyle(Theme.muted)
+                    Text("From \(person.name), in People.").font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                    Button("Not them") { office.setSender(nil, for: payment) }.buttonStyle(.link).font(Theme.font(size: 12))
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.crop.circle.badge.questionmark").foregroundStyle(Theme.muted)
+                    Text("\(BackOffice.pretty(payment.payer)) isn't in People yet.")
+                        .font(Theme.font(size: 12)).foregroundStyle(Theme.muted)
+                    Picker("They're", selection: Binding<UUID?>(
+                        get: { nil },
+                        set: { id in if let id, let p = people.person(id: id) { office.setSender(p, for: payment) } })) {
+                        Text("Someone already in People…").tag(UUID?.none)
+                        ForEach(people.sorted) { p in
+                            Text(p.company.isEmpty || p.company == p.name ? p.name : "\(p.name), \(p.company)").tag(UUID?.some(p.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .font(Theme.font(size: 12))
+                    .frame(maxWidth: 240)
+                    Button("Add to People") { office.addSender(of: payment) }.buttonStyle(SecondaryButtonStyle())
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private func projectLine(_ p: Project) -> String {
+        var parts = [p.client.trimmingCharacters(in: .whitespaces), p.name].filter { !$0.isEmpty }
+        if let price = office.price(of: p) {
+            var money = Money.string(price)
+            if let owed = office.stillOwed(on: p), owed > 0.01, owed < price - 0.01 { money += ", \(Money.string(owed)) owed" }
+            else if let owed = office.stillOwed(on: p), owed <= 0.01 { money += ", paid" }
+            parts.append(money)
+        }
+        return parts.joined(separator: ", ")
     }
 }

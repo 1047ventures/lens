@@ -13,6 +13,10 @@ enum WhatsNew {
 
     /// Newest first. `since` is the first version the lines apply to.
     static let notes: [(since: String, items: [Item])] = [
+        ("2.0.8", [
+            Item(icon: "dollarsign.circle", title: "Match Zelle payments to a project",
+                 detail: "In Helper, each Zelle payment now asks what it was for. Pick an unpaid invoice or any of your projects, and the money counts toward what that client has paid and what's still owed. A project can take more than one payment, like a deposit and the balance, and Lens suggests the likely project when the sender's name fits."),
+        ]),
         ("2.0.7", [
             Item(icon: "phone.connection", title: "Help connecting Zoom",
                  detail: "The Zoom card in Log-ins now lists each setup step, and Ask Lens can walk you through them one at a time. Once Zoom is connected, every call summary shows up in Lens, not only the emailed ones."),
